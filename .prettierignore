@@ -1,0 +1,8 @@
+.svelte-kit/
+build/
+node_modules/
+docs/
+AGENTS.md
+.agents/
+skills-lock.json
+package-lock.json

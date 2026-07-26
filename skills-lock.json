@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "skills": {
+    "clean-backend-architecture": {
+      "source": "GabrielMartinMoran/skills",
+      "sourceType": "github",
+      "skillPath": "skills/clean-backend-architecture/SKILL.md",
+      "computedHash": "c1b07dd03d0942987ba8a224dfef8195b0b9bbb732d72108ec351e59749b73ee"
+    },
+    "clean-code": {
+      "source": "GabrielMartinMoran/skills",
+      "sourceType": "github",
+      "skillPath": "skills/clean-code/SKILL.md",
+      "computedHash": "20aadc36d60873da645455532234906de5dc34deb2bb5c792979e2a910c5e773"
+    },
+    "clean-svelte-architecture": {
+      "source": "GabrielMartinMoran/skills",
+      "sourceType": "github",
+      "skillPath": "skills/clean-svelte-architecture/SKILL.md",
+      "computedHash": "258ee86e6eb9b735990c6563818d8137ba387ef51db5df6650f2573c5394c56f"
+    },
+    "frontend-design": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "skillPath": "skills/frontend-design/SKILL.md",
+      "computedHash": "4eabc66183767153e404b39d1b839b1c37f2d82d86f0a0d7e880a579d8d62336"
+    },
+    "svelte-code-writer": {
+      "source": "sveltejs/ai-tools",
+      "sourceType": "github",
+      "skillPath": "plugins/claude/svelte/skills/svelte-code-writer/SKILL.md",
+      "computedHash": "c0e2cce9855f8e312cbb0a05aef164b4659c672d7723e4e598ffa6bc94890542"
+    }
+  }
+}

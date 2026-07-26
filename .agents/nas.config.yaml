@@ -1,0 +1,36 @@
+version: "1.1"
+
+memory:
+  enabled: true
+  provider: mind
+
+mind_spaces:
+  project_space:
+    enabled: true
+    name: "projects/diffscribe"
+    description: "Project context, decisions, architecture, and session checkpoints"
+
+gherkin:
+  enabled: true
+  storage_path: "specs/features"
+  persist_to_repo:
+    when: "on_done"
+    format: "merged"
+  include:
+    - "product/*"
+    - "application/*"
+  exclude:
+    - "researcher/*"
+    - "sandbox/*"
+
+sdd:
+  enabled: true
+  change_memory:
+    auto_create: true
+  delta:
+    removal_policy: "remove"
+    resolve_on: "on_done"
+  memory_tracking: true
+
+config_policy:
+  require_confirmation: true

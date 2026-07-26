@@ -1,0 +1,13 @@
+node_modules/
+.svelte-kit/
+build/
+.vite/
+test-results/
+playwright-report/
+.husky/_/
+*.db
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
