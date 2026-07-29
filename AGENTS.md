@@ -82,6 +82,19 @@ El planner y el developer consumen las features como contrato de aceptación.
 Ningún código de producción se escribe sin un escenario Gherkin que lo
 especifique.
 
+### Convención de idioma para BDD
+
+Todos los archivos `.feature` bajo `specs/features/` y las step definitions
+bajo `tests/steps/` se escriben en inglés. Esta regla aplica tanto a los
+escenarios existentes como a cualquier escenario nuevo. El guard estático
+`check:bdd-language` (definido en `scripts/check-bdd-language.mjs`) se
+ejecuta como parte de la cadena de QA y detecta texto en español (diacríticos
+y wordlist curada) en patrones Gherkin y comentarios de step definitions.
+
+La documentación general (`docs/`, `AGENTS.md`) se mantiene en español.
+Los términos técnicos, comandos, paths, nombres de scripts y APIs se
+escriben en inglés como es habitual en el proyecto.
+
 ### TDD (Red → Green → Refactor)
 
 Todo código de producción debe estar respaldado por pruebas escritas antes de
@@ -112,16 +125,17 @@ Ningún cambio se considera completo si alguna de estas verificaciones falla.
 Cualquier fallo implica `FAIL`. El comando `npm run qa` ejecuta todas las
 verificaciones en orden. Si una etapa falla, las siguientes no se ejecutan.
 
-| Etapa    | Comando                      | Criterio                  |
-| -------- | ---------------------------- | ------------------------- |
-| Formato  | `npm run format`             | Sin diferencias           |
-| Lint     | `npm run lint`               | `--max-warnings=0`        |
-| Tipos    | `npm run check` o equivalente | Sin errores de tipo      |
-| Unit     | `npm run test:unit`          | 100% pasando              |
-| Integ.   | `npm run test:integration`   | 100% pasando              |
-| BDD      | `npm run test:bdd`           | 100% pasando              |
-| E2E      | `npm run test:e2e`           | 100% pasando              |
-| Build    | `npm run build`              | Build exitoso sin errores |
+| Etapa       | Comando                        | Criterio                  |
+| ----------- | ------------------------------ | ------------------------- |
+| Formato     | `npm run format`               | Sin diferencias           |
+| Lint        | `npm run lint`                 | `--max-warnings=0`        |
+| Tipos       | `npm run check` o equivalente  | Sin errores de tipo       |
+| Unit        | `npm run test:unit`            | 100% pasando              |
+| Integ.      | `npm run test:integration`     | 100% pasando              |
+| Idioma BDD  | `npm run check:bdd-language`   | Sin español en BDD        |
+| BDD         | `npm run test:bdd`             | 100% pasando              |
+| E2E         | `npm run test:e2e`             | 100% pasando              |
+| Build       | `npm run build`                | Build exitoso sin errores |
 
 Prettier se encarga del formato. ESLint con flat config gestiona el linting,
 orden de imports (`simple-import-sort`), estructura (`import-x`) y limpieza de

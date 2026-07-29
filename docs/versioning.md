@@ -196,25 +196,25 @@ liberar frecuentemente para obtener feedback temprano.
 
 ### Estrategia
 
-Las migraciones se almacenan como archivos SQL en un directorio dedicado
-(`migrations/`). Cada archivo sigue el patrón:
+Las migraciones se almacenan como archivos SQL en `src/lib/server/infrastructure/database/migrations/`. Cada archivo sigue el patrón:
 
 ```text
 001_create_workspaces.sql
-002_create_reviews.sql
-003_add_context_sources.sql
+002_app_state.sql
+003_create_reviews.sql
+004_create_review_files.sql
 ```
 
-Una tabla `_migrations` en la base de datos registra qué migraciones ya fueron
-aplicadas:
+El loader (`connection.ts`) usa `import.meta.glob('./migrations/*.sql', { eager: true, query: '?raw', import: 'default' })` para cargar y ordenar los archivos. Cada migración se ejecuta dentro de `db.transaction()` para garantizar atomicidad. La tabla `_migrations` registra las migraciones aplicadas:
 
 ```sql
 CREATE TABLE IF NOT EXISTS _migrations (
-  id INTEGER PRIMARY KEY,
-  name TEXT NOT NULL,
+  name TEXT PRIMARY KEY,
   applied_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 ```
+
+Se activa `PRAGMA foreign_keys = ON` en conexiones de producción y test para que los FK CASCADE sean efectivos.
 
 ### Compatibilidad
 

@@ -138,6 +138,30 @@ contraste equivalente.
 | `--diff-hunk-header-bg`   | `#F0F4FF`          | `#1A2744`         |
 | `--diff-line-number`      | `#6C757D`          | `#6C757D`         |
 
+### Estados de archivo (file list)
+
+| Token                           | Claro              | Oscuro             |
+| ------------------------------- | ------------------ | ------------------ |
+| `--file-list-row-hover`         | `rgba(0,0,0,0.04)` | `rgba(255,255,255,0.06)` |
+| `--file-list-row-active`        | `#EFF6FF`          | `#1E3A5F`         |
+| `--file-list-status-modified-bg`| `#FFF8E5`          | `#3D2E00`         |
+| `--file-list-status-modified-text`| `#92400E`        | `#FCD34D`         |
+| `--file-list-status-deleted-bg` | `#FFEBE9`          | `#3D1212`         |
+| `--file-list-status-deleted-text`| `#991B1B`         | `#FCA5A5`         |
+| `--file-list-status-renamed-bg` | `#EFF6FF`          | `#1E3A5F`         |
+| `--file-list-status-renamed-text`| `#1D4ED8`         | `#93C5FD`         |
+| `--file-list-status-untracked-bg`| `#F8F9FA`         | `#2D2D44`         |
+| `--file-list-status-untracked-text`| `#6C757D`       | `#9CA3AF`         |
+| `--file-list-status-unmerged-bg`| `#FEF2F2`          | `#3D1212`         |
+| `--file-list-status-unmerged-text`| `#DC2626`        | `#EF4444`         |
+| `--file-list-binary-badge-bg`   | `#6C757D`          | `#9CA3AF`         |
+| `--file-list-binary-badge-text` | `#FFFFFF`          | `#1A1A2E`         |
+
+Los estados `untracked` se tratan visualmente de forma neutra (escala de
+grises) para indicar que el archivo no está bajo control de versiones. El
+indicador binary se aplica mediante un badge compacto junto al status badge;
+el indicador no depende del color como canal único.
+
 ### Severidades de observación
 
 | Token                     | Claro              | Oscuro             |
@@ -511,6 +535,31 @@ Escala base de 4px.
 - **Tablet:** panel lateral estrecho, colapsable.
 - **Desktop y wide:** panel lateral de ancho fijo (~260px), siempre visible.
 
+#### Marcador de revisado (Review marker)
+
+Cuando existe una review activa, cada fila del file list muestra un marcador
+visual de estado de revisión:
+
+- **Revisado (✓):** verde (`--diff-added-fg`), negrita. Indica que el archivo fue marcado como revisado.
+- **No revisado (○):** gris terciario con opacidad 0.5. Indica que el archivo aún no fue marcado.
+- **Sin review activa:** la columna `.review-cell` no se renderiza (0 width).
+
+El marcador usa `aria-label="Reviewed"` / `aria-label="Not reviewed"` para
+accesibilidad. Se ubica a la derecha de la celda de estadísticas (±), con un
+ancho fijo de 32px.
+
+#### Progreso de review
+
+El panel ReviewPanel muestra una barra de progreso `<progress>` con valor
+porcentual derivado de `reviewedCount / totalCount`. El texto acompaña en
+formato `N/M files reviewed`. La barra usa `--accent` como color de relleno y
+`--surface-tertiary` como fondo. Responde a `prefers-reduced-motion` eliminando
+transiciones.
+
+**Selección de review en la lista:** Cada opción del listado de reviews
+(`role="listbox"`) usa `role="option"` con `aria-selected` que refleja si
+la review es la activa (`review.id === activeReview.id`).
+
 ### Diff viewer
 
 - **Compact:** unified por defecto. Side-by-side no disponible.
@@ -618,6 +667,22 @@ DiffScribe apunta a **WCAG 2.2 Nivel AA** como objetivo de diseño.
   del sistema operativo.
 - El foco debe ser visible en todo momento (`focus-visible`, no `focus`).
 
+#### Navegación por teclado en el sidebar de workspaces
+
+- Cada item del sidebar expone tres controles focusables: **Select**, **Rename**
+  y **Delete**. Los tres son stops de Tab naturales.
+- El botón **Select** de cada workspace incluye el atributo
+  `data-workspace-select` para targeting estable en tests.
+- El botón **Select** implementa navegación vertical por teclado:
+  - **ArrowDown:** mueve el foco al botón Select del workspace siguiente.
+  - **ArrowUp:** mueve el foco al botón Select del workspace anterior.
+  - **Home:** mueve el foco al primer botón Select del sidebar.
+  - **End:** mueve el foco al último botón Select del sidebar.
+- **Enter** y **Space** conservan el comportamiento nativo de submit del
+  formulario asociado.
+- Los botones **Rename** y **Delete** mantienen acceso directo por teclado
+  mediante Tab y activación nativa.
+
 ### Focus
 
 - Anillo de focus visible de al menos 2px de grosor con contraste ≥3:1 contra
@@ -666,7 +731,74 @@ DiffScribe apunta a **WCAG 2.2 Nivel AA** como objetivo de diseño.
 
 ---
 
-## Tecnología de estilos
+## Selección de líneas (Inc-7)
+
+La selección de líneas en el diff-viewer permite anclar observaciones a rangos específicos.
+
+**Interacciones:**
+- **Click:** selecciona una sola línea
+- **Shift+click:** extiende la selección desde el ancla hasta la línea clickeada
+- **Shift+ArrowUp/Down:** extiende la selección línea por línea
+- **L key:** ancla la selección en la línea actual
+- **Escape:** limpia la selección
+- **Keyboard-only:** navegación con Arrow keys + L para anclar + Enter para confirmar
+
+**Estados visuales:**
+- Línea seleccionada: borde izquierdo azul (3px `#4285f4`) + fondo semitransparente (`rgba(66,133,244,0.2)`)
+- En líneas added: fondo `rgba(0,200,0,0.2)`
+- En líneas deleted: fondo `rgba(200,0,0,0.2)`
+- Focus-visible: outline 1px `var(--focus-ring)`
+- Hover: `var(--surface-hover)`
+
+**Atributos accesibles:**
+- `role="checkbox"` + `tabindex="0"` en cada línea seleccionable
+- `aria-checked` refleja estado de selección (`"true"` | `"false"`)
+- `data-line-num` y `data-side` para targeting en tests E2E
+- Región ARIA live (`role="status" aria-live="polite"`) anuncia selecciones
+- Side-by-side: columna old tiene `data-side="old"`, columna new `data-side="new"`
+- Atajos globales de teclado (j/k/Arrow y Shift+Arrow) se registran en `window`
+  mediante `$effect` reactivo que se activa solo cuando el diff está renderizado
+- Ctrl+Shift+D (atajo global persistente) recarga el diff sin navegar hunks
+
+## Panel de Observaciones (Inc-7)
+
+**Layout responsive:**
+- ≥1100px: right rail de 320px fijo a la derecha del diff
+- <1100px: drawer bottom (position:fixed, max-height 40vh, bottom:0, z-index:10)
+
+**ObservationCard:**
+- Badges de tipo coloreados: issue (rojo), risk (naranja), suggestion (verde), question (azul), praise (violeta), note (gris)
+- Badge de severidad: critical/major/minor/nitpick
+- Badge de Stale (amarillo) cuando `staleStatus` no es current
+- Status dot: open (verde), resolved (azul), dismissed (gris), pending (naranja)
+- Acciones (edit, delete, status) ocultas por defecto (`display: none`), visibles
+  con `.obs-card:hover .card-actions` y `.obs-card:focus-within .card-actions` —
+  sin handlers JavaScript de `mouseenter`/`focusin`
+- Snapshot original expandible con `<details>` cuando la observación es stale
+- En modo read-only (`readOnly=true`) los botones de acción no se renderizan en
+  el DOM
+
+**ObservationForm:**
+- Select de tipo, select de severidad (solo para issue/risk)
+- Input de título (requerido, 1-200 chars)
+- Textarea de body (≤5000 chars)
+- Info de scope (filePath, lines, side) cuando hay selección activa
+- Validación client-side antes del submit
+- SHA-256 computado via Web Crypto API con formato canónico
+
+**Estados del panel:**
+- Loading: spinner + texto "Loading observations..."
+- Empty: mensaje contextual (con/sin review completada)
+- Error: fondo rojo claro con mensaje
+- Read-only: banner "This review is completed — read-only"
+
+**A11y:**
+- Form labels asociados a inputs
+- Focus-visible en todos los botones y selects
+- Estados disabled en botones durante submit
+- Mensajes de error con `role="alert"`
+
+---
 
 ### Svelte 5 + CSS propio
 

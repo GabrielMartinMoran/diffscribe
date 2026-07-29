@@ -94,6 +94,79 @@ servidor. Los módulos que tocan estos recursos deben residir bajo
 SvelteKit impone esta separación mediante `$env/static/private` para secretos
 y la convención `$lib/server/` para módulos exclusivos del servidor.
 
+### Lectura de contexto Git (Inc-3)
+
+La lectura del estado Git del workspace activo se implementa con un puerto
+técnico `GitContextReader` en `src/lib/server/application/git-context-reader.ts`
+y su adaptador `SimpleGitContextReader` en
+`src/lib/server/infrastructure/git/simple-git-context-reader.ts`.
+
+**Límites estrictos:**
+
+- El puerto expone DTOs tipados (`StatusDto`, `BranchDto`, `CommitDto`,
+  `GitContextResult`). Ningún tipo de `simple-git` cruza la frontera del
+  adaptador.
+- El adaptador usa exclusivamente APIs read-only de `simple-git` v3.36.0:
+  `status()`, `branchLocal()`, `log({maxCount})`, `revparse()`, `checkIsRepo()`.
+- No se ejecuta checkout, commit, branch, push, fetch, merge, ni reset.
+- El caso de uso `GetGitContextUseCase` devuelve datos agregados tipados +
+  timestamp de lectura. Sin caché.
+- El endpoint `GET /api/workspaces/[id]/git-context` permite refresco manual.
+  No hay polling, watcher, ni recarga automática.
+- El panel UI (`GitContextPanel.svelte`) mantiene un draft de Comparison
+  efímero en memoria del cliente. La selección de Base/Target actualiza el
+  draft sin mutar el repositorio.
+
+**Estados de HEAD cubiertos:** clean, dirty, detached, unborn, conflict, error.
+
+### Lectura de lista de archivos (Inc-4)
+
+El panel de lista de archivos muestra los archivos modificados por el
+Comparison activo. La arquitectura sigue el mismo patrón que la lectura de
+contexto Git:
+
+- **Puerto:** `GitFileListReader` en `src/lib/server/application/git-file-list-reader.ts`.
+  Expone un método `read(params)` que recibe `repositoryPath`, `comparisonType`,
+  `baseRef` y `targetRef`, y retorna un `FileListResult` tipado.
+- **Adaptador:** `SimpleGitFileListReader` en
+  `src/lib/server/infrastructure/git/simple-git-file-list-reader.ts`.
+  Implementa el puerto usando dos llamadas read-only a `simple-git.raw()` con
+  parsing NUL:
+  - `git diff --name-status -z -C -C <args>`: obtiene la lista de archivos
+    con sus códigos de estado (A, M, D, R, C, T, U).
+  - `git diff --numstat -z <args>`: obtiene adiciones y eliminaciones por
+    archivo. Los archivos binarios reportan `-` en lugar de números.
+  - `git ls-files --others --exclude-standard -z`: obtiene archivos
+    untracked cuando el target es el working tree.
+- **Detección binaria:** archivos trackeados se detectan mediante el output
+  `--numstat` (`-` para binarios). Archivos untracked se inspeccionan
+  mediante lectura read-only de los primeros 8000 bytes buscando bytes NUL.
+- **Caso de uso:** `GetFileListUseCase` en
+  `src/lib/server/application/services/get-file-list-use-case.ts`.
+  Resuelve los refs del `Comparison` y delega al adapter.
+- **Endpoint:** `GET /api/workspaces/[id]/file-list?comparison=<encoded>`.
+  Valida workspace, tipo de comparación, tipos de refs y contenido del JSON
+  antes de delegar al caso de uso. Sin parámetros de filtro, orden ni
+  paginación del lado servidor.
+- **Componente UI:** `file-list.svelte` en `src/lib/web/components/`.
+  Filtrado por path/status, ordenamiento por path/status/additions/deletions,
+  paginación (50 por página), selección de fila activa, navegación por
+  teclado, badges de estado, indicador binario y oldPath para renombrados.
+  Integrado dentro de `git-context-panel.svelte`.
+
+**Status de archivo cubiertos:** added, modified, deleted, renamed, copied,
+type-changed, unmerged, untracked, unknown. Binary es un booleano separado,
+nunca un status.
+
+**Límites estrictos:**
+- `simple-git` solo en infraestructura. Ningún tipo de `simple-git` cruza
+  la frontera del adaptador.
+- Solo operaciones read-only. Sin `git add`, `git add -N`, checkout, commit,
+  ni ninguna mutación.
+- Detección binaria de untracked mediante `readFileSync`; sin `git add`.
+- Filtrado, ordenamiento y paginación son exclusivamente del lado cliente.
+- Sin polling, watcher, recarga automática, ni mutaciones Git.
+
 ---
 
 ## Persistencia
@@ -118,21 +191,138 @@ La ubicación es configurable mediante variable de entorno, pero el default es
 SQLite opera en modo WAL (Write-Ahead Logging) por defecto. Esto permite
 lecturas concurrentes con escrituras y mejora la performance en cargas mixtas.
 
+### Aislamiento de base de datos en tests E2E
+
+Para evitar contaminación entre ejecuciones y proteger la base de datos real
+(`~/.diffscribe/diffscribe.db`), los tests E2E usan una base de datos aislada:
+
+- **Directorio único por ejecución:** El `global-setup.ts` de Playwright crea
+  un directorio temporal con `fs.mkdtempSync(path.join(os.tmpdir(), 'diffscribe-e2e-'))`
+  y lo asigna a `process.env.DIFFSCRIBE_DB_DIR` antes de que el servidor de
+  desarrollo se inicie.
+- **Teardown garantizado:** `globalTeardown` elimina el directorio temporal
+  incluso si los tests fallan o crashean.
+- **Endpoint de reset fail-closed:** `DELETE /api/test/state` permite a cada
+  test E2E limpiar la base de datos antes de ejecutarse. El endpoint:
+  - Requiere la variable de entorno `DIFFSCRIBE_E2E_RESET_SECRET` — sin ella,
+    retorna 404 indistinguible de una ruta inexistente.
+  - Requiere el header `x-reset-secret` con el valor exacto del secreto.
+    Errores de secreto retornan 404.
+  - Canonicaliza el directorio de la DB con `fs.realpathSync` para resolver
+    symlinks.
+  - Rechaza paths fuera de `os.tmpdir()` y paths que resuelvan dentro de
+    `~/.diffscribe`, usando `path.relative()` semántico (no substring checks).
+  - Ejecuta `DELETE FROM app_state` y `DELETE FROM workspaces` en una
+    transacción atómica. Las migraciones, el esquema y otros archivos no se
+    modifican.
+- **Reset por test:** Una función helper `resetDb()` en
+  `tests/e2e/helpers/reset-db.ts` se invoca desde `test.beforeEach` en cada
+  archivo de spec E2E (`smoke`, `workspace-management`, `workspace-registration`,
+  `git-context-panel`, `file-list-panel`).
+- **Seguridad:** La base de datos real en `~/.diffscribe/` nunca se lee,
+  borra, migra ni abre desde código de testing E2E. El endpoint de reset no
+  acepta paths arbitrarios y nunca expone el secreto en logs.
+- **Sin impacto en producción:** El endpoint de reset no está disponible sin
+  la variable de entorno `DIFFSCRIBE_E2E_RESET_SECRET`. En producción, la
+  variable no se define, resultando en 404 para cualquier petición al
+  endpoint.
+
+### Aislamiento de base de datos en Vitest (unit, integration, BDD)
+
+Los tests unitarios, de integración y BDD ejecutados con Vitest también
+deben usar una base de datos aislada. Para lograrlo sin modificar el código
+de producción más allá de un guard fail-closed, se implementaron dos
+mecanismos complementarios:
+
+#### Guard fail-closed en `connection.ts`
+
+El módulo `src/lib/server/infrastructure/database/connection.ts` resuelve
+el directorio de la base de datos de forma lazy dentro de `getDb()`. Antes
+de abrir la conexión, verifica:
+
+- Si `process.env.VITEST` está presente y `DIFFSCRIBE_DB_DIR` no está
+  definida, lanza un error descriptivo. Esto impide que cualquier test
+  de Vitest use accidentalmente la base de datos de producción en
+  `~/.diffscribe`.
+- Si `process.env.VITEST` NO está presente (producción o servidor de
+  desarrollo), usa `DIFFSCRIBE_DB_DIR` si está definida o hace fallback
+  a `~/.diffscribe/diffscribe.db`.
+- Si `process.env.VITEST` está presente Y `DIFFSCRIBE_DB_DIR` apunta a un
+  directorio temporal seguro, permite la conexión normalmente.
+
+Este guard es evaluado en cada llamada a `getDb()`, no en tiempo de carga
+del módulo. La función `createTestDb()` (base de datos en memoria) no se
+ve afectada por este guard, ya que no usa `DIFFSCRIBE_DB_DIR`.
+
+#### Global setup por proyecto Vitest
+
+Cada proyecto Vitest (`unit` e `integration` en `vitest.config.ts`, y el
+proyecto BDD en `vitest.bdd.config.ts`) configura un `globalSetup` que:
+
+- Crea un directorio temporal único con `fs.mkdtempSync` bajo `os.tmpdir()`
+  y lo inyecta en los workers mediante `provide('dbDir', dbDir)`.
+- Los workers reciben el directorio a través de `inject('dbDir')` en el
+  archivo `tests/setup/vitest-setup.ts`, que asigna
+  `process.env.DIFFSCRIBE_DB_DIR` antes de que se cargue cualquier test o
+  step definition.
+- El `teardown` del `globalSetup` elimina el directorio temporal incluso
+  si los tests fallan o crashean.
+
+#### Verificación de aislamiento
+
+- **Tests unitarios:** `tests/unit/infrastructure/connection-guard.test.ts`
+  verifica los tres escenarios del guard fail-closed (VITEST sin env lanza
+  error, VITEST con temp dir permite conexión, sin VITEST en modo producción
+  permite conexión).
+- **Tests de integración:** `tests/integration/database/test-isolation.test.ts`
+  verifica que `DIFFSCRIBE_DB_DIR` está definido, es absoluto, existe, está
+  bajo `os.tmpdir()`, no está bajo `~/.diffscribe`, y que `getDb()` resuelve
+  correctamente al directorio aislado.
+- **Tests BDD:** `specs/features/application/test-db-isolation.feature`
+  cubre los mismos tres escenarios del guard en formato Gherkin, con step
+  definitions en `tests/steps/test-db-isolation.steps.ts`.
+- **Sin impacto en producción:** El guard solo se activa cuando
+  `process.env.VITEST` está presente. Vitest establece esta variable
+  automáticamente en todos los workers. En el servidor de desarrollo y en
+  producción, la variable no existe, por lo que el guard nunca se activa
+  y el fallback a `~/.diffscribe` funciona normalmente.
+
 ### Migraciones
 
 Las migraciones se aplican al iniciar la aplicación. Cada migración es un
-archivo SQL numerado que se ejecuta en orden. Una tabla `_migrations` registra
-qué migraciones ya fueron aplicadas.
+archivo SQL numerado (`001_*.sql`, `002_*.sql`, etc.) cargado mediante
+`import.meta.glob('./migrations/*.sql', { eager: true, query: '?raw' })`. Se
+ejecutan en orden alfabético y cada una se envuelve en `db.transaction()` para
+atomicidad. Una tabla `_migrations` registra qué migraciones ya fueron
+aplicadas, garantizando idempotencia.
 
-Las migraciones deben mantener compatibilidad hacia atrás dentro de una misma
-versión mayor (consultar [docs/versioning.md](versioning.md)).
+Migraciones actuales:
+- `001_create_workspaces` — tabla `workspaces` con id, display_name, repository_path, timestamps
+- `002_app_state` — tabla `app_state` key/value para estado de aplicación
+- `003_create_reviews` — tabla `reviews` con FK `workspace_id` ON DELETE CASCADE, CHECK en status y comparison_type, `json_valid()` en comparison_json
+- `004_create_review_files` — tabla `review_files` con PK compuesta `(review_id, file_path)`, FK `review_id` ON DELETE CASCADE
 
-### Snapshots
+`PRAGMA foreign_keys = ON` se activa en conexiones de producción y test
+(`connection.ts`). Las migraciones deben mantener compatibilidad hacia atrás
+dentro de una misma versión mayor (consultar
+[docs/versioning.md](versioning.md)).
 
-DiffScribe usa snapshots completos del diff para preservar el contexto de las
-observaciones. Cuando se crea una observación, se guarda el fragmento exacto del
-diff en ese momento. Esto permite consultar observaciones anteriores aunque el
-repositorio haya cambiado.
+### Active Review (app_state)
+
+La review activa por workspace se almacena en `app_state` con clave
+`active_review:<workspaceId>`. No hay tabla separada de active review.
+Crear una review establece la clave; completarla la limpia; eliminar el
+workspace también limpia la clave desde `DeleteWorkspaceUseCase`. Al cargar
+la página (`+page.server.ts`), se verifica que la review activa referenciada
+exista; si no (clave huérfana), se limpia automáticamente.
+
+### E2E Reset
+
+El endpoint `DELETE /api/test/state` limpia `review_files`, `reviews`,
+`app_state` y `workspaces` en una transacción atómica. El FK CASCADE
+garantiza que eliminar workspaces también elimina sus reviews y review_files,
+pero el orden explícito en el reset asegura la limpieza incluso si
+`foreign_keys` está desactivado.
 
 ---
 
@@ -246,14 +436,19 @@ asíncrono o una base de datos separada.
 modelo de concurrencia sin sacrificar performance. No hay contención real entre
 múltiples conexiones.
 
-### ADR-002: Snapshots completos de diff
+### ADR-002: Snapshot híbrido con hash canónico para staleness
 
-**Decisión:** Almacenar un snapshot completo del fragmento de diff al crear una
-observación, en lugar de solo referencias a líneas y hashes.
+**Decisión:** Cada observación almacena dos artefactos inmutables al crearse:
+1. `comparison_snapshot_json` — el JSON del Comparison activo (siempre presente, para todos los tipos de observación).
+2. `diff_snapshot` y `content_hash` (SHA-256) — solo para observaciones file-level y range-level. Nulos para observaciones review-level.
 
-**Razón:** El repositorio puede cambiar después de crear la observación. Un
-snapshot preserva el contexto exacto que el reviewer vio. El costo de
-almacenamiento es bajo para fragmentos de texto.
+**Formato canónico del hash:** `filePath + ":" + side + ":" + String(startLine) + ":" + contenido normalizado LF`. Sin hunk header ni changeType. Se usa `node:crypto` sin dependencias externas.
+
+**Razón:** El snapshot de diff preserva el contexto exacto que vio el reviewer. El hash SHA-256 permite detectar cambios de contenido de forma determinista. La combinación (snapshot + hash) cubre tanto la visualización del contexto original como la detección eficiente de staleness.
+
+**Staleness (derivado, no persistido):** Se recalcula bajo demanda al abrir el ObservationPanel, cambiar el Comparison o refrescar el diff. Sin polling ni watchers. Status posibles: `current`, `stale-content-changed`, `stale-range-missing`, `stale-file-deleted`, `stale-file-renamed`, `stale-binary`, `stale-truncated`, `stale-comparison-changed`, `stale-unknown`. Commit-vs-commit es siempre current para file/range. Binary devuelve CURRENT si el comparison no cambió.
+
+**Triggers:** Apertura del panel, cambio de Comparison, refresh manual del diff.
 
 ### ADR-003: Interfaces de repositorio en dominio
 
@@ -296,9 +491,113 @@ Vite/SvelteKit.
 
 ---
 
+## Inc-7: Observations
+
+**Arquitectura de capas:**
+
+| Capa | Componentes nuevos |
+|------|-------------------|
+| `domain/` | `Observation` (entidad), `ObservationId`, `LineRange`, `ObservationType/Severity/Origin/Status` (enums), `StaleStatus` (enum), `ObservationRepository` (puerto) |
+| `application/` | `CreateObservationUseCase`, `GetObservationUseCase`, `ListObservationsUseCase`, `UpdateObservationUseCase`, `DeleteObservationUseCase`, `TransitionObservationStatusUseCase` |
+| `infrastructure/` | `SqliteObservationRepository`, `ObservationMapper`, `ContentHasher` (SHA-256 canónico), `StaleDeriver` (9 statuses) |
+| `web/routes/` | REST: `GET/POST /observations`, `GET/PATCH/DELETE /observations/:id`, `POST /observations/:id/status` |
+| `web/components/` | `ObservationPanel`, `ObservationCard`, `ObservationForm`, line selection en `DiffViewer` |
+
+**Migración:** `005_create_observations` con FK `review_id -> reviews(id) ON DELETE CASCADE`, CHECKs para type/status/origin/severity, `json_valid()` en comparison_snapshot_json, diff_snapshot y content_hash nulos juntos, índices en review_id/type/status.
+
+**Hash canónico:** `SHA-256(filePath + ":" + side + ":" + startLine + ":" + LF-normalized content)` via `node:crypto`. Sin dependencias externas.
+
+**REST endpoints:**
+- `GET/POST /api/workspaces/[id]/reviews/[reviewId]/observations`
+- `GET/PATCH/DELETE .../[observationId]`
+- `POST .../[observationId]/status` body `{status}`
+
+**Guards:** Workspace existe, review pertenece al workspace, observation pertenece al review. Mutación en review completed/archived → 409. Range sobre binary → 422.
+
+**Staleness:** Recalculado bajo demanda (apertura panel, cambio Comparison, refresh diff). 9 statuses. Binary → CURRENT si comparison no cambió. Rename detectado antes que file-deleted.
+
+---
+
 ## Referencias
 
 - [Product Requirements Document](PRD.md) — requisitos y decisiones de producto
 - [Guía de diseño](design.md) — tokens CSS, layout, breakpoints y accesibilidad
 - [Modelo de dominio](domain.md) — entidades, value objects, aggregates
 - [Versionado](versioning.md) — SemVer, Conventional Commits, migraciones
+
+---
+
+## Componentes — Diff Viewer (Inc‑5)
+
+### GitFileDiffReader
+
+Puerto de aplicación (`src/lib/server/application/git-file-diff-reader.ts`) con
+un único método `read()` que recibe `repositoryPath`, `comparisonType`,
+`baseRef`, `targetRef` y `relativePath`. Devuelve un `FileDiffResult` tipado.
+
+### SimpleGitFileDiffReader
+
+Implementación en infraestructura (`src/lib/server/infrastructure/git/simple-git-file-diff-reader.ts`).
+Usa `simple-git` para ejecutar `git diff` con paths separados por `--`.
+Soporta los 8 `ComparisonType` y detección de archivos untracked (lectura desde
+filesystem). Detecta renames mediante fallback con `--name-status -M` cuando el
+path filter elimina la información de rename. Aplica hard cap de 256 KB o 5 000
+líneas antes del parseo.
+
+### UnifiedDiffParser
+
+Parser custom (`src/lib/server/infrastructure/git/unified-diff-parser.ts`),
+sin dependencia de librerías de terceros. Maneja headers de hunk
+(`@@ -old,count +new,count @@`), líneas context/add/delete, números de línea
+old/new, `\\ No newline at end of file`, rename from/to, detección binaria y
+diffs multi-hunk.
+
+### Shiki — Resaltado de sintaxis
+
+- `language-map.ts`: ~40 extensiones mapeadas a lenguajes Shiki (`BundledLanguage`).
+  Extensión desconocida → `text`.
+- `highlighter.ts`: singleton lazy con `createHighlighter({ themes: ['min-light','min-dark'], langs: [...] })`.
+  Usa `codeToTokens` por línea, no `codeToHtml`. Nunca se importa en el bundle
+  del navegador.
+- `token-renderer.ts`: `escapeHtml()` + `renderTokensToHtml()` que convierte
+  tokens Shiki en spans inline con atributos HTML escapados. El contenido de
+  cada token pasa por `escapeHtml` antes de inyectarse como `{@html}` en el
+  componente Svelte.
+
+### GetFileDiffUseCase
+
+Caso de uso en `src/lib/server/application/services/get-file-diff-use-case.ts`.
+Resuelve el lenguaje desde el path con `resolveLanguage()`, delega en el reader
+para obtener el diff crudo, y aplica resaltado solo a líneas `context` y
+`added`. Las líneas `deleted` quedan en texto plano (`html: ''`).
+
+### Endpoint: GET /api/workspaces/[id]/file-diff
+
+Endpoint en `src/routes/api/workspaces/[id]/file-diff/+server.ts`. Recibe
+`comparison` (JSON encoded) y `path` (repo‑relative encoded). Valida workspace,
+comparison, path no vacío y rechaza traversal (`/abs`, `..`, `~`, null bytes).
+Usa argument arrays para Git, nunca interpolación de shell.
+
+### DI — workspace-services.ts
+
+`createWorkspaceServices()` inyecta `SimpleGitFileDiffReader` y un adaptador de
+`getHighlighter()` en `GetFileDiffUseCase`. El highlighter se construye como
+wrapper para que coincida con la interfaz `DiffHighlighter`.
+
+### Componente: diff-viewer.svelte
+
+Componente Svelte 5 con 7 estados: placeholder (sin archivo), loading, error
+con retry, binary, empty, truncated y rendered. Unificado por defecto con
+números old/new e indicadores multi‑canal add/delete. Toggle side‑by‑side solo
+≥900 px; forzado unificado debajo. `@html` seguro porque el HTML proviene del
+servidor ya escapado. Navegación de hunks con teclado (j/k, ↑/↓), shortcut
+Ctrl+Shift+D, aria‑pressed, focus‑visible y reduced motion. Sin polling ni
+auto‑refresh.
+
+### Integración en +page.svelte
+
+El estado `selectedFile` se propaga desde `GitContextPanel.onFileSelect` hacia
+`DiffViewer` con `comparisonDraft` y `activeWorkspaceId`. No hay persistencia
+en DB ni en URL. Layout principal usa `grid-template-columns: 300px 1fr` con
+un sub‑grid `grid-template-rows: auto 1fr` en el área principal para apilar
+GitContextPanel + DiffViewer verticalmente.

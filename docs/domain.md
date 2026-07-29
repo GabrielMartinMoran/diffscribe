@@ -53,66 +53,95 @@ al workspace por ID).
 
 ### Review
 
-Sesión persistente de análisis sobre una comparación Git.
+Sesión persistente de análisis sobre una comparación Git. En Etapa 1 implementada sin Observation ni contextSnapshot.
 
 ```text
-id:             ReviewId (UUID)
+id:             ReviewId (UUID v4)
 workspaceId:    WorkspaceId
-title:          string (opcional)
-status:         ReviewStatus
-comparison:     Comparison
+title:          string | null (opcional)
+status:         ReviewStatus (draft → completed; in_progress/archived en DB CHECK)
+comparison:     Comparison (capturada al crear; persistida como JSON + comparison_type)
 createdAt:      DateTime
 updatedAt:      DateTime
-completedAt:    DateTime (opcional)
-reviewedFiles:  Set<FilePath>
-contextSnapshot:ReviewContextSnapshot
+completedAt:    DateTime | null
 ```
 
-**Invariantes:**
+**Invariantes implementadas (Etapa 1):**
 
-- Una review siempre pertenece a un workspace existente.
-- El `status` sigue las transiciones definidas en la máquina de estados.
-- `completedAt` solo puede asignarse cuando el status transiciona a `Completed`.
-- `comparison` debe ser válido al momento de creación (aunque el repositorio
-  pueda cambiar después).
-
-**Aggregate root:** Review es aggregate root de sus observaciones. Las
-observaciones no existen fuera de una review. Cualquier operación sobre una
-observación debe pasar por la review que la contiene.
+- Una review siempre pertenece a un workspace existente (FK CASCADE).
+- El `status` solo transiciona de `draft` a `completed`. La completación asigna `completedAt`.
+- Review completada es read‑only: `mark` y `unmark` devuelven 409.
+- Reabrir una review completada la mantiene `completed` (read‑only) pero la activa para el workspace.
+- `comparison` se captura del draft activo al crear la review y se persiste como JSON validado (`json_valid`).
+- No hay `reviewedFiles` estático ni inventario total. Las marcas son dinámicas: `reviewedCount` = marcas que intersectan con el file list actual; `totalCount` = tamaño del file list actual.
+- La review activa se guarda en `app_state` con clave `active_review:<workspaceId>`. Crear la activa, completar la limpia, eliminar workspace la borra por cascade.
+- Sin Observation, snapshots, stale detection, export ni portable en Etapa 1.
 
 ### Observation
 
-Conclusión registrada por el reviewer.
+Conclusión registrada por el reviewer. Implementada en Inc-7 con snapshot híbrido.
 
 ```text
-id:              ObservationId (UUID)
-reviewId:        ReviewId
-type:            ObservationType
-severity:        Severity | null
-status:          ObservationStatus
-title:           string (1-200 caracteres)
-body:            string
-agentInstruction:string (opcional)
-filePath:        FilePath (opcional)
-lineRange:       LineRange (opcional)
-diffSnapshot:    string (opcional — fragmento del diff al crear la observación)
-createdAt:       DateTime
-updatedAt:       DateTime
-origin:          ObservationOrigin
+id:                   ObservationId (UUID v4)
+reviewId:             ReviewId
+type:                 ObservationType (issue|risk|suggestion|question|praise|note)
+severity:             ObservationSeverity | null (critical|major|minor|nitpick)
+status:               ObservationStatus (open|resolved|dismissed|pending)
+title:                string (1-200 caracteres)
+body:                 string (≤5000 caracteres)
+agentInstruction:     string (≤2000 caracteres, opcional)
+filePath:             string | null (repo-relative, requerido para file/range)
+lineRange:            LineRange | null (start≥1, end≥start)
+side:                 string ("new" default, "old" explícito)
+comparisonSnapshotJson: string (JSON del Comparison al crear; siempre presente)
+diffSnapshot:         string | null (raw unified diff con prefijos +/-\space; file/range)
+contentHash:           string | null (SHA-256 canónico; file/range)
+createdAt:            DateTime
+updatedAt:            DateTime
+origin:               ObservationOrigin (human en Etapa 1; DB forward-compatible ai-generated)
 ```
 
 **Invariantes:**
 
-- `title` no puede estar vacío.
-- `severity` es obligatorio para `Issue` y `Risk`. Es `null` para `Praise` y
-  `Note`. Es opcional para `Suggestion` y `Question`.
-- `filePath` y `lineRange` son opcionales (observaciones a nivel archivo o
-  revisión general pueden no tenerlos).
-- Si `lineRange` está presente, `filePath` también debe estarlo.
-- `diffSnapshot` captura el fragmento del diff en el momento de creación. No se
-  actualiza automáticamente si el repositorio cambia.
-- `origin` indica si la observación fue creada manualmente (`human`) o generada
-  por IA (`ai-generated`).
+- `title` no puede estar vacío, máximo 200 caracteres.
+- `body` máximo 5000 caracteres; `agentInstruction` máximo 2000.
+- `severity` es obligatorio para `Issue` y `Risk`. Es `null` para `Praise` y `Note`. Opcional para `Suggestion` y `Question`.
+- `filePath` y `lineRange` son opcionales (observaciones review-level no los tienen).
+- Si `lineRange` está presente, `filePath` también debe estarlo. Si `filePath` está presente, `diffSnapshot` y `contentHash` son obligatorios.
+- Review-level: `filePath=null`, `lineRange=null`, `diffSnapshot=null`, `contentHash=null`.
+- `comparisonSnapshotJson` siempre presente (JSON válido del Comparison al crear).
+- Range sobre binary → rechazado (422). File-level binary → permitido con diff/hash null.
+- `side` solo "new" o "old". Default "new".
+- `origin` indica `human` (Etapa 1); DB CHECK acepta `ai-generated` para forward-compatibilidad.
+
+**Hash canónico:** `SHA-256(filePath + ":" + side + ":" + String(startLine) + ":" + LF-normalized content)` via `node:crypto`. Sin dependencias externas.
+
+**Snapshot híbrido:** `comparison_snapshot_json` (siempre) + `diff_snapshot`/`content_hash` (solo file/range). El snapshot preserva los prefijos `+`/`-/` ` ` del unified diff original.
+
+**Transiciones de estado:**
+```
+open → resolved | dismissed | pending
+resolved → open
+dismissed → open
+pending → open
+```
+Mutación en review completed/archived → rechazada (409).
+
+**StaleStatus (derivado, no persistido):**
+
+| Status | Condición |
+|--------|----------|
+| `current` | Sin cambios detectados |
+| `stale-content-changed` | Hash del contenido difiere del almacenado |
+| `stale-range-missing` | Las líneas referenciadas ya no existen |
+| `stale-file-deleted` | El archivo referenciado fue eliminado |
+| `stale-file-renamed` | El archivo fue renombrado |
+| `stale-binary` | El archivo es binario (solo si comparison cambió) |
+| `stale-truncated` | El contenido está truncado |
+| `stale-comparison-changed` | El Comparison activo difiere del almacenado |
+| `stale-unknown` | No se pudo determinar |
+
+Se recalcula bajo demanda al abrir ObservationPanel, cambiar Comparison o refrescar diff. Sin polling. Commit-vs-commit siempre current para file/range. Binary devuelve CURRENT si comparison no cambió. Rename detectado antes que file-deleted.
 
 ### Occurrence
 
@@ -150,9 +179,6 @@ Describe los dos estados Git usados para construir un diff.
 base:              GitRef
 target:            GitRef
 comparisonType:    ComparisonType
-baseCommit:        CommitHash (opcional)
-targetCommit:      CommitHash (opcional)
-workingTreeState:  WorkingTreeState (opcional)
 createdAt:         DateTime
 ```
 
@@ -168,7 +194,11 @@ createdAt:         DateTime
 - `commit-range` — rango de commits
 
 **Igualdad:** Dos comparisons son iguales si `base`, `target` y
-`comparisonType` coinciden. `workingTreeState` y `createdAt` son informativos.
+`comparisonType` coinciden. `createdAt` es informativo.
+
+**Serialización:** `ComparisonSerialized` provee una representación plana
+(`base`, `target`, `comparisonType`, `createdAt`) usada como input del
+endpoint `GET /api/workspaces/[id]/file-list?comparison=<encoded>`.
 
 ### GitRef
 
@@ -178,6 +208,51 @@ Referencia a un estado Git.
 type:  GitRefType  (branch | commit | head | working-tree | index)
 value: string      (nombre de rama, hash de commit, o identificador reservado)
 ```
+
+**Estado de implementación:** GitRef y Comparison están implementados como value objects
+en `src/lib/server/domain/value-objects/git-ref.ts` y
+`src/lib/server/domain/value-objects/comparison.ts`. El Comparison draft es
+efímero (no persistido en base de datos). La comparación por defecto es HEAD
+vs working tree. La selección de Base/Target es local y no ejecuta checkout ni
+mutación del repositorio. Los tipos ComparisonSerialized y GitRefSerialized
+proveen representaciones serializables para el transporte al cliente sin
+exponer instancias de clase.
+
+### FileChangeStatus
+
+Enum que representa el estado de cambio de un archivo en una comparación Git.
+
+```text
+added, modified, deleted, renamed, copied, type-changed, unmerged,
+untracked, unknown
+```
+
+**Valores:** 9 estados posibles. `binary` es un booleano separado en
+`FileListEntry`, nunca un valor de `FileChangeStatus`. Implementado en
+`src/lib/server/domain/value-objects/file-change-status.ts`.
+
+### FileListEntry / FileListResult
+
+DTOs de aplicación que representan una entrada de la lista de archivos y el
+resultado agregado:
+
+```text
+FileListEntry:
+  path:       string
+  status:     FileChangeStatus
+  binary:     boolean
+  additions?: number
+  deletions?: number
+  oldPath?:   string        (solo para rename/copy)
+  error?:     string        (solo para archivos no legibles)
+
+FileListResult:
+  entries:    FileListEntry[]
+  readAt:     string (ISO 8601)
+  error?:     { message: string; errorCode: string }
+```
+
+Implementados en `src/lib/server/application/dto/results/file-list-results.ts`.
 
 ### LineRange
 
