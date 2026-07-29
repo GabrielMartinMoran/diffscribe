@@ -6,16 +6,16 @@ interface SmokeWorld {
   result: number;
 }
 
-Given('tengo el numero {int}', (world: SmokeWorld, num: number) => {
+Given('I have the number {int}', (world: SmokeWorld, num: number) => {
   world.a = num;
 });
 
-When('le sumo {int}', (world: SmokeWorld, num: number) => {
+When('I add {int}', (world: SmokeWorld, num: number) => {
   world.b = num;
   world.result = world.a + world.b;
 });
 
-Then('el resultado es {int}', (world: SmokeWorld, expected: number) => {
+Then('the result is {int}', (world: SmokeWorld, expected: number) => {
   if (world.result !== expected) {
     throw new Error(`Expected ${expected} but got ${world.result}`);
   }

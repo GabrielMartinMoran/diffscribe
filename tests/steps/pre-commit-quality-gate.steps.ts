@@ -12,6 +12,7 @@ interface PreCommitWorld {
     stdout: string;
     stderr: string;
   };
+  preHookDirtyFiles: Set<string>;
 }
 
 const repoRoot = resolve(import.meta.dirname, '../..');
@@ -63,7 +64,7 @@ function cleanupTempFile(world: PreCommitWorld): void {
 
 // ── Background steps ──
 
-Given('que el hook pre-commit esta configurado', () => {
+Given('the pre-commit hook is configured', () => {
   const hookPath = resolve(repoRoot, '.husky/pre-commit');
   if (!existsSync(hookPath)) {
     throw new Error(`.husky/pre-commit not found at ${hookPath}`);
@@ -75,7 +76,7 @@ Given('que el hook pre-commit esta configurado', () => {
   }
 });
 
-Given('los archivos estan stageados para commit', () => {
+Given('files are staged for commit', () => {
   // ponytail: stages are isolated by test runner; ensure git init exists
   const gitDir = resolve(repoRoot, '.git');
   if (!existsSync(gitDir)) {
@@ -87,7 +88,7 @@ Given('los archivos estan stageados para commit', () => {
 
 // ── Bad-format file setup ──
 
-Given('que hay un archivo con formato incorrecto stageado', (world: PreCommitWorld) => {
+Given('there is a file with incorrect formatting staged', (world: PreCommitWorld) => {
   const tempPath = resolve(repoRoot, 'tests/_precommit_test_badfmt.js');
   const badContent = 'const x=1\nconst y=2\n'; // bad formatting: no semicolons, no spaces
   writeFileSync(tempPath, badContent, 'utf-8');
@@ -100,7 +101,7 @@ Given('que hay un archivo con formato incorrecto stageado', (world: PreCommitWor
 
 // ── Bad-lint file setup ──
 
-Given('que hay un archivo con error de lint stageado', (world: PreCommitWorld) => {
+Given('there is a file with a lint error staged', (world: PreCommitWorld) => {
   const tempPath = resolve(repoRoot, 'tests/_precommit_test_badlint.js');
   const badContent = 'const unused = 1;\n'; // unused variable = lint error
   writeFileSync(tempPath, badContent, 'utf-8');
@@ -113,7 +114,15 @@ Given('que hay un archivo con error de lint stageado', (world: PreCommitWorld) =
 
 // ── Execute hook ──
 
-When('ejecuto el hook pre-commit', (world: PreCommitWorld) => {
+When('I run the pre-commit hook', (world: PreCommitWorld) => {
+  // Snapshot dirty files before hook execution to detect only
+  // hook-introduced changes, not pre-existing working-tree drift.
+  const beforeDirty = execSync('git diff --name-only', {
+    cwd: repoRoot,
+    encoding: 'utf-8',
+  }).trim();
+  world.preHookDirtyFiles = new Set(beforeDirty ? beforeDirty.split('\n') : []);
+
   const hookPath = resolve(repoRoot, '.husky/pre-commit');
   try {
     const result = execSync(`sh "${hookPath}"`, {
@@ -143,7 +152,7 @@ When('ejecuto el hook pre-commit', (world: PreCommitWorld) => {
 
 // ── Then assertions ──
 
-Then('el hook termina con codigo de salida 0', (world: PreCommitWorld) => {
+Then('the hook exits with code 0', (world: PreCommitWorld) => {
   if (world.hookResult.exitCode !== 0) {
     throw new Error(
       `Expected exit code 0 but got ${world.hookResult.exitCode}\nstdout: ${world.hookResult.stdout}\nstderr: ${world.hookResult.stderr}`,
@@ -151,26 +160,30 @@ Then('el hook termina con codigo de salida 0', (world: PreCommitWorld) => {
   }
 });
 
-Then('el hook termina con codigo de salida distinto de 0', (world: PreCommitWorld) => {
+Then('the hook exits with a non-zero code', (world: PreCommitWorld) => {
   if (world.hookResult.exitCode === 0) {
     throw new Error('Expected non-zero exit code but got 0');
   }
 });
 
-Then('no hay archivos modificados en el working tree', (world: PreCommitWorld) => {
-  // ponytail: use git diff to check working tree is clean (ignoring staged changes)
-  const dirty = execSync('git diff --name-only', {
+Then('there are no modified files in the working tree', (world: PreCommitWorld) => {
+  // Only fail if the hook introduced NEW dirty files beyond the
+  // pre-existing snapshot. This isolates the hook's effect from
+  // unrelated implementation work-in-progress in the working tree.
+  const afterDirty = execSync('git diff --name-only', {
     cwd: repoRoot,
     encoding: 'utf-8',
   }).trim();
-  if (dirty) {
-    throw new Error(`Working tree is dirty:\n${dirty}`);
+  const afterFiles = new Set(afterDirty ? afterDirty.split('\n') : []);
+  const newDirty = [...afterFiles].filter((f) => !world.preHookDirtyFiles.has(f));
+  if (newDirty.length > 0) {
+    throw new Error(`Hook introduced dirty files:\n${newDirty.join('\n')}`);
   }
   // Cleanup any temp files created during this scenario
   cleanupTempFile(world);
 });
 
-Then('el mensaje de error contiene {string}', (_world: PreCommitWorld, substr: string) => {
+Then('the error message contains {string}', (_world: PreCommitWorld, substr: string) => {
   const output = `${_world.hookResult.stdout}\n${_world.hookResult.stderr}`.toLowerCase();
   if (!output.includes(substr.toLowerCase())) {
     throw new Error(
@@ -180,7 +193,7 @@ Then('el mensaje de error contiene {string}', (_world: PreCommitWorld, substr: s
 });
 
 Then(
-  'el mensaje de error contiene {string} o {string}',
+  'the error message contains {string} or {string}',
   (_world: PreCommitWorld, substr1: string, substr2: string) => {
     const output = `${_world.hookResult.stdout}\n${_world.hookResult.stderr}`.toLowerCase();
     if (!output.includes(substr1.toLowerCase()) && !output.includes(substr2.toLowerCase())) {
@@ -191,21 +204,18 @@ Then(
   },
 );
 
-Then(
-  'el archivo con formato incorrecto conserva su contenido original',
-  (world: PreCommitWorld) => {
-    if (!existsSync(world.tempFilePath)) {
-      throw new Error(`Temp file no longer exists: ${world.tempFilePath}`);
-    }
-    const current = readFileSync(world.tempFilePath, 'utf-8');
-    if (current !== world.tempFileOriginalContent) {
-      throw new Error(
-        'File was modified by the hook.\nOriginal:\n' +
-          world.tempFileOriginalContent +
-          '\nCurrent:\n' +
-          current,
-      );
-    }
-    cleanupTempFile(world);
-  },
-);
+Then('the incorrectly formatted file retains its original content', (world: PreCommitWorld) => {
+  if (!existsSync(world.tempFilePath)) {
+    throw new Error(`Temp file no longer exists: ${world.tempFilePath}`);
+  }
+  const current = readFileSync(world.tempFilePath, 'utf-8');
+  if (current !== world.tempFileOriginalContent) {
+    throw new Error(
+      'File was modified by the hook.\nOriginal:\n' +
+        world.tempFileOriginalContent +
+        '\nCurrent:\n' +
+        current,
+    );
+  }
+  cleanupTempFile(world);
+});

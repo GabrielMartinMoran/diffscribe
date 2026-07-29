@@ -2,5 +2,6 @@ import { expect, test } from '@playwright/test';
 
 test('landing page shows DiffScribe', async ({ page }) => {
   await page.goto('/');
-  await expect(page.locator('body')).toContainText('DiffScribe');
+  await expect(page).toHaveTitle('DiffScribe');
+  await expect(page.locator('#workspace-sidebar')).toBeVisible();
 });
