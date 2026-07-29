@@ -5,7 +5,7 @@ import path from 'node:path';
 
 import { expect, test } from '@playwright/test';
 
-import { registerAndSelectWorkspace } from './helpers/register-workspace';
+import { registerAndSelectWorkspace, selectRailTab } from './helpers/register-workspace';
 import { resetDb } from './helpers/reset-db';
 
 function mkTempDir(): string {
@@ -40,6 +40,7 @@ test.describe('Git Context Panel (E2E)', () => {
   });
 
   test('shows empty state when no workspace is active', async ({ page }) => {
+    await selectRailTab(page, 'git');
     const panel = page.locator('#git-context-panel');
     await expect(panel).toBeVisible({ timeout: 10000 });
     await expect(async () => {
@@ -52,7 +53,7 @@ test.describe('Git Context Panel (E2E)', () => {
     const repoDir = path.join(fixtureDir, 'repo');
     try {
       createGitRepo(repoDir);
-      await registerAndSelectWorkspace(page, repoDir, `Clean-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `Clean-${Date.now()}`, 'git');
 
       // After activation, verify the git context panel is visible
       const panel = page.locator('#git-context-panel');
@@ -71,12 +72,13 @@ test.describe('Git Context Panel (E2E)', () => {
     const repoDir = path.join(fixtureDir, 'repo');
     try {
       createGitRepo(repoDir);
-      await registerAndSelectWorkspace(page, repoDir, `Dirty-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `Dirty-${Date.now()}`, 'git');
 
       // Make unstaged changes
       fs.appendFileSync(path.join(repoDir, 'README.md'), '\n# dirty');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       const panel = page.locator('#git-context-panel');
       await expect(panel).toBeVisible({ timeout: 10000 });
@@ -92,7 +94,7 @@ test.describe('Git Context Panel (E2E)', () => {
     const repoDir = path.join(fixtureDir, 'repo');
     try {
       createGitRepo(repoDir);
-      await registerAndSelectWorkspace(page, repoDir, `Staged-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `Staged-${Date.now()}`, 'git');
 
       // Create staged and unstaged changes in a tracked file
       fs.appendFileSync(path.join(repoDir, 'README.md'), '\nstaged');
@@ -101,6 +103,7 @@ test.describe('Git Context Panel (E2E)', () => {
 
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       const panel = page.locator('#git-context-panel');
       await expect(panel).toBeVisible({ timeout: 10000 });
@@ -116,11 +119,12 @@ test.describe('Git Context Panel (E2E)', () => {
     const repoDir = path.join(fixtureDir, 'repo');
     try {
       createGitRepo(repoDir);
-      await registerAndSelectWorkspace(page, repoDir, `Untracked-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `Untracked-${Date.now()}`, 'git');
 
       fs.writeFileSync(path.join(repoDir, 'new.txt'), 'new');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       const panel = page.locator('#git-context-panel');
       await expect(panel).toBeVisible({ timeout: 10000 });
@@ -139,9 +143,10 @@ test.describe('Git Context Panel (E2E)', () => {
       execSync('git checkout -b fix/b', { cwd: repoDir, stdio: 'pipe' });
       execSync('git checkout master', { cwd: repoDir, stdio: 'pipe' });
 
-      await registerAndSelectWorkspace(page, repoDir, `Branches-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `Branches-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       const panel = page.locator('#git-context-panel');
       await expect(panel).toBeVisible({ timeout: 10000 });
@@ -166,9 +171,10 @@ test.describe('Git Context Panel (E2E)', () => {
         execSync(`git commit -m "commit ${i}"`, { cwd: repoDir, stdio: 'pipe' });
       }
 
-      await registerAndSelectWorkspace(page, repoDir, `Commits-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `Commits-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       const panel = page.locator('#git-context-panel');
       await expect(panel).toBeVisible({ timeout: 10000 });
@@ -190,9 +196,10 @@ test.describe('Git Context Panel (E2E)', () => {
       execSync('git checkout -b fix/typo', { cwd: repoDir, stdio: 'pipe' });
       execSync('git checkout master', { cwd: repoDir, stdio: 'pipe' });
 
-      await registerAndSelectWorkspace(page, repoDir, `Filter-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `Filter-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       const panel = page.locator('#git-context-panel');
       await expect(panel).toBeVisible({ timeout: 10000 });
@@ -219,9 +226,10 @@ test.describe('Git Context Panel (E2E)', () => {
       execSync('git commit --allow-empty -m "Fix typo"', { cwd: repoDir, stdio: 'pipe' });
       execSync('git commit --allow-empty -m "Refactor auth"', { cwd: repoDir, stdio: 'pipe' });
 
-      await registerAndSelectWorkspace(page, repoDir, `Filter-C-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `Filter-C-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       const panel = page.locator('#git-context-panel');
       await expect(panel).toBeVisible({ timeout: 10000 });
@@ -242,9 +250,10 @@ test.describe('Git Context Panel (E2E)', () => {
     const repoDir = path.join(fixtureDir, 'repo');
     try {
       createGitRepo(repoDir);
-      await registerAndSelectWorkspace(page, repoDir, `Slots-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `Slots-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       const panel = page.locator('#git-context-panel');
       await expect(panel).toBeVisible({ timeout: 10000 });
@@ -266,9 +275,10 @@ test.describe('Git Context Panel (E2E)', () => {
     const repoDir = path.join(fixtureDir, 'repo');
     try {
       createGitRepo(repoDir);
-      await registerAndSelectWorkspace(page, repoDir, `Refresh-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `Refresh-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       const panel = page.locator('#git-context-panel');
       await expect(panel).toBeVisible({ timeout: 10000 });
@@ -296,9 +306,10 @@ test.describe('Git Context Panel (E2E)', () => {
     const repoDir = path.join(fixtureDir, 'repo');
     try {
       createGitRepo(repoDir);
-      await registerAndSelectWorkspace(page, repoDir, `Invalidate-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `Invalidate-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       // Invalidate by removing .git, then use refresh button
       rmDir(path.join(repoDir, '.git'));
@@ -330,9 +341,10 @@ test.describe('Git Context Panel (E2E)', () => {
     const repoDir = path.join(fixtureDir, 'repo');
     try {
       createGitRepo(repoDir);
-      await registerAndSelectWorkspace(page, repoDir, `AdapterErr-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `AdapterErr-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       // Corrupt the repo so the git adapter returns an error
       rmDir(path.join(repoDir, '.git'));
@@ -365,6 +377,7 @@ test.describe('Git Context Panel (E2E)', () => {
     page,
   }) => {
     // This scenario is already covered by the first test; verify minimal visibility
+    await selectRailTab(page, 'git');
     const panel = page.locator('#git-context-panel');
     await expect(panel).toBeVisible({ timeout: 10000 });
   });
@@ -374,9 +387,10 @@ test.describe('Git Context Panel (E2E)', () => {
     const repoDir = path.join(fixtureDir, 'repo');
     try {
       createGitRepo(repoDir);
-      await registerAndSelectWorkspace(page, repoDir, `Kb-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `Kb-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       const panel = page.locator('#git-context-panel');
       await expect(panel).toBeVisible({ timeout: 10000 });
@@ -397,9 +411,10 @@ test.describe('Git Context Panel (E2E)', () => {
     const repoDir = path.join(fixtureDir, 'repo');
     try {
       createGitRepo(repoDir);
-      await registerAndSelectWorkspace(page, repoDir, `Kbf-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `Kbf-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       const panel = page.locator('#git-context-panel');
       await expect(panel).toBeVisible({ timeout: 10000 });

@@ -38,6 +38,7 @@ export default defineConfig({
       'tests/steps/a11y-diff-viewer.steps.ts',
       'tests/steps/a11y-observation-card.steps.ts',
       'tests/steps/test-db-isolation.steps.ts',
+      'tests/steps/ui-redesign.steps.ts',
     ],
   },
 });

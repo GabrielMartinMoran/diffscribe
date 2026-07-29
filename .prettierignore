@@ -1,3 +1,7 @@
+# Generated artifacts — not source code
+.pas/
+session-*.md
+
 .svelte-kit/
 build/
 node_modules/

@@ -125,6 +125,71 @@
   --ease-in: cubic-bezier(0.4, 0, 1, 1);
 }
 
+/* ═══════════════════════════════════════
+ *  Synthwave '84 — tokens completos
+ *  Paleta fuente: #920075, #2e2157, #2de2e6, #540d6e, #0d0221
+ *  Glow reservado para foco/selección/activo.
+ *  ═══════════════════════════════════════ */
+
+[data-theme='synthwave-84'] {
+  --surface-primary: #0d0221;
+  --surface-secondary: #2e2157;
+  --surface-tertiary: #1a0a3e;
+  --surface-elevated: #0d0221;
+  --surface-overlay: rgba(45, 33, 87, 0.3);
+
+  --text-primary: #2de2e6;
+  --text-secondary: #b0a8d0;
+  --text-tertiary: #7a6a9a;
+  --text-inverse: #0d0221;
+  --text-link: #2de2e6;
+
+  --border-subtle: #2e2157;
+  --border-default: #540d6e;
+  --border-strong: #920075;
+
+  --accent: #920075;
+  --accent-hover: #b0108a;
+  --accent-muted: #2e2157;
+
+  --focus-ring: #2de2e6;
+  --focus-ring-offset: 2px;
+
+  --state-hover: rgba(45, 33, 87, 0.4);
+  --state-active: rgba(146, 0, 117, 0.3);
+  --state-disabled-bg: #1a0a3e;
+  --state-disabled-text: #7a6a9a;
+  --state-error-bg: #3d1212;
+  --state-error-border: #78281f;
+  --state-success-bg: #0d3320;
+  --state-success-border: #196f3d;
+  --state-loading: #2e2157;
+
+  --diff-added-bg: rgba(45, 222, 230, 0.1);
+  --diff-added-border: #2de2e6;
+  --diff-added-text: #2de2e6;
+  --diff-removed-bg: rgba(146, 0, 117, 0.15);
+  --diff-removed-border: #920075;
+  --diff-removed-text: #e06c5d;
+  --diff-modified-bg: rgba(84, 13, 110, 0.2);
+  --diff-modified-border: #540d6e;
+  --diff-hunk-header-bg: #2e2157;
+
+  --severity-critical: #ef4444;
+  --severity-major: #f97316;
+  --severity-minor: #eab308;
+  --severity-info: #2de2e6;
+
+  --shadow-none: none;
+  --shadow-sm: 0 1px 2px rgba(45, 222, 230, 0.1);
+  --shadow-md: 0 2px 8px rgba(45, 222, 230, 0.15);
+  --shadow-lg: 0 4px 16px rgba(45, 222, 230, 0.2);
+}
+
+/* ═══════════════════════════════════════
+ *  Dark Deep — tokens oscuros
+ *  ═══════════════════════════════════════ */
+
 [data-theme='dark'] {
   --surface-primary: #1a1a2e;
   --surface-secondary: #16213e;
@@ -175,6 +240,24 @@
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
   --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
   --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+/* ═══════════════════════════════════════
+ *  Syntax token colors
+ *
+ *  Shiki emits --shiki-light and --shiki-dark as inline CSS custom
+ *  properties on each token span. These rules apply the correct value
+ *  based on the active theme so the browser computes the actual color.
+ *  ═══════════════════════════════════════ */
+
+[data-shiki-token] {
+  color: var(--shiki-light);
+  font-weight: var(--shiki-font-weight, inherit);
+}
+
+[data-theme='dark'] [data-shiki-token],
+[data-theme='synthwave-84'] [data-shiki-token] {
+  color: var(--shiki-dark);
 }
 
 @media (prefers-reduced-motion: reduce) {

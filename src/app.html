@@ -1,8 +1,20 @@
 <!doctype html>
-<html lang="es">
+<html lang="es" data-theme="dark">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script>
+      (function () {
+        var theme = 'dark';
+        try {
+          var stored = localStorage.getItem('diffscribe-theme');
+          if (stored === 'synthwave-84') theme = stored;
+        } catch (e) {
+          /* localStorage inaccessible — use default */
+        }
+        document.documentElement.setAttribute('data-theme', theme);
+      })();
+    </script>
     %sveltekit.head%
   </head>
   <body data-sveltekit-prerender="true">

@@ -5,7 +5,7 @@ import path from 'node:path';
 
 import { expect, test } from '@playwright/test';
 
-import { registerAndSelectWorkspace } from './helpers/register-workspace';
+import { registerAndSelectWorkspace, selectRailTab } from './helpers/register-workspace';
 import { resetDb } from './helpers/reset-db';
 
 function mkTempDir(): string {
@@ -42,14 +42,16 @@ test.describe('File List Panel (E2E)', () => {
       createGitRepo(repoDir);
       // Create a modified file
       fs.appendFileSync(path.join(repoDir, 'README.md'), '\n# modified');
-      await registerAndSelectWorkspace(page, repoDir, `FL-Mod-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `FL-Mod-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       const panel = page.locator('#file-list-panel');
       await expect(panel).toBeVisible({ timeout: 8000 });
-      // A modified file should appear in the file list
+      // A modified file should appear in the file list — wait with auto-retry
       const rows = panel.locator('.file-row');
+      await expect(rows.first()).toBeVisible({ timeout: 10000 });
       const count = await rows.count();
       expect(count).toBeGreaterThanOrEqual(1);
     } finally {
@@ -70,9 +72,10 @@ test.describe('File List Panel (E2E)', () => {
       execSync('git add rm-file.ts && git commit -m "add"', { cwd: repoDir, stdio: 'pipe' });
       execSync('git rm rm-file.ts', { cwd: repoDir, stdio: 'pipe' });
 
-      await registerAndSelectWorkspace(page, repoDir, `FL-Status-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `FL-Status-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       const panel = page.locator('#file-list-panel');
       await expect(panel).toBeVisible({ timeout: 8000 });
@@ -90,9 +93,10 @@ test.describe('File List Panel (E2E)', () => {
     try {
       createGitRepo(repoDir);
       fs.writeFileSync(path.join(repoDir, 'untracked.txt'), 'fresh');
-      await registerAndSelectWorkspace(page, repoDir, `FL-Untracked-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `FL-Untracked-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       const panel = page.locator('#file-list-panel');
       await expect(panel).toBeVisible({ timeout: 8000 });
@@ -117,9 +121,10 @@ test.describe('File List Panel (E2E)', () => {
       // Modify to create changes
       fs.appendFileSync(path.join(repoDir, 'src/auth/login.ts'), '\nmod');
 
-      await registerAndSelectWorkspace(page, repoDir, `FL-Filter-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `FL-Filter-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       const panel = page.locator('#file-list-panel');
       await expect(panel).toBeVisible({ timeout: 8000 });
@@ -156,9 +161,10 @@ test.describe('File List Panel (E2E)', () => {
       fs.appendFileSync(path.join(repoDir, 'a.ts'), '\nmod');
       fs.appendFileSync(path.join(repoDir, 'b.ts'), '\nmod');
 
-      await registerAndSelectWorkspace(page, repoDir, `FL-Sort-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `FL-Sort-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       const panel = page.locator('#file-list-panel');
       await expect(panel).toBeVisible({ timeout: 8000 });
@@ -207,9 +213,10 @@ test.describe('File List Panel (E2E)', () => {
         fs.appendFileSync(path.join(repoDir, `file${String(i).padStart(3, '0')}.ts`), '\nmod');
       }
 
-      await registerAndSelectWorkspace(page, repoDir, `FL-Page-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `FL-Page-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       const panel = page.locator('#file-list-panel');
       await expect(panel).toBeVisible({ timeout: 8000 });
@@ -233,9 +240,10 @@ test.describe('File List Panel (E2E)', () => {
       execSync('git add . && git commit -m "add"', { cwd: repoDir, stdio: 'pipe' });
       fs.appendFileSync(path.join(repoDir, 'main.ts'), '\nmod');
 
-      await registerAndSelectWorkspace(page, repoDir, `FL-Click-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `FL-Click-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       const panel = page.locator('#file-list-panel');
       await expect(panel).toBeVisible({ timeout: 8000 });
@@ -265,9 +273,10 @@ test.describe('File List Panel (E2E)', () => {
         fs.appendFileSync(path.join(repoDir, `file${i}.ts`), '\nmod');
       }
 
-      await registerAndSelectWorkspace(page, repoDir, `FL-Kb-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `FL-Kb-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       const panel = page.locator('#file-list-panel');
       await expect(panel).toBeVisible({ timeout: 8000 });
@@ -292,9 +301,10 @@ test.describe('File List Panel (E2E)', () => {
     const repoDir = path.join(fixtureDir, 'repo');
     try {
       createGitRepo(repoDir);
-      await registerAndSelectWorkspace(page, repoDir, `FL-Empty-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `FL-Empty-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       const panel = page.locator('#file-list-panel');
       await expect(panel).toBeVisible({ timeout: 8000 });
@@ -310,9 +320,10 @@ test.describe('File List Panel (E2E)', () => {
     const repoDir = path.join(fixtureDir, 'repo');
     try {
       createGitRepo(repoDir);
-      await registerAndSelectWorkspace(page, repoDir, `FL-Error-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `FL-Error-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
       // Invalidate the workspace
       rmDir(path.join(repoDir, '.git'));
       // Click refresh to trigger error
@@ -360,9 +371,10 @@ test.describe('File List Panel (E2E)', () => {
         }
       });
 
-      await registerAndSelectWorkspace(page, repoDir, `FL-Retry-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `FL-Retry-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       // The file list panel should transition to error state with Retry button
       const panel = page.locator('#file-list-panel');
@@ -397,6 +409,7 @@ test.describe('File List Panel (E2E)', () => {
   });
 
   test('no active workspace shows empty panel', async ({ page }) => {
+    await selectRailTab(page, 'git');
     const panel = page.locator('#git-context-panel');
     await expect(panel).toBeVisible({ timeout: 10000 });
     // Use toPass for retry tolerance — SSR timing may delay .empty-state render
@@ -415,9 +428,10 @@ test.describe('File List Panel (E2E)', () => {
         .toString()
         .trim();
 
-      await registerAndSelectWorkspace(page, repoDir, `FL-NoMut-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `FL-NoMut-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       const panel = page.locator('#file-list-panel');
       await expect(panel).toBeVisible({ timeout: 8000 });

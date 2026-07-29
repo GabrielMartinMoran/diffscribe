@@ -6,7 +6,7 @@ import path from 'node:path';
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 
-import { registerAndSelectWorkspace } from './helpers/register-workspace';
+import { registerAndSelectWorkspace, selectRightPanelTab } from './helpers/register-workspace';
 import { resetDb } from './helpers/reset-db';
 
 function mkTempDir(): string {
@@ -44,11 +44,19 @@ function rmDir(dir: string): void {
 }
 
 async function createReviewAndSelectFile(page: Page): Promise<void> {
+  // Right panel defaults to Comments on every page load; select Review first
+  await selectRightPanelTab(page, 'review');
+
   const newReviewBtn = page.getByRole('button', { name: /New Review|Start a new review/ });
   await expect(newReviewBtn).toBeVisible({ timeout: 15000 });
   await expect(newReviewBtn).toBeEnabled({ timeout: 15000 });
   await newReviewBtn.click();
   await page.waitForLoadState('networkidle');
+
+  // createReview() uses fetch + invalidateAll (no page reload), so right
+  // panel stays on Review. Switch back to Comments so #observation-panel
+  // is available for downstream tests.
+  await selectRightPanelTab(page, 'comments');
 
   const fileRow = page
     .locator('[role="listbox"] [role="option"]')
@@ -67,7 +75,7 @@ test.describe('Line selection E2E', () => {
     createGitRepo(repoDir);
     await resetDb(page.request);
     await page.goto('/');
-    await registerAndSelectWorkspace(page, repoDir, 'ls-e2e');
+    await registerAndSelectWorkspace(page, repoDir, 'ls-e2e', 'git');
     await createReviewAndSelectFile(page);
   });
 
@@ -110,7 +118,7 @@ test.describe('Observation CRUD E2E', () => {
     createGitRepo(repoDir);
     await resetDb(page.request);
     await page.goto('/');
-    await registerAndSelectWorkspace(page, repoDir, 'obs-e2e');
+    await registerAndSelectWorkspace(page, repoDir, 'obs-e2e', 'git');
     await createReviewAndSelectFile(page);
   });
 
@@ -175,7 +183,7 @@ test.describe('Responsive observation panel', () => {
     createGitRepo(repoDir);
     await resetDb(page.request);
     await page.goto('/');
-    await registerAndSelectWorkspace(page, repoDir, 'resp-e2e');
+    await registerAndSelectWorkspace(page, repoDir, 'resp-e2e', 'git');
     await createReviewAndSelectFile(page);
   });
 
@@ -183,11 +191,11 @@ test.describe('Responsive observation panel', () => {
 
   test('right rail visible at wide viewport', async ({ page }) => {
     await page.setViewportSize({ width: 1400, height: 900 });
-    await expect(page.locator('.observation-rail')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('#observation-panel')).toBeVisible({ timeout: 10000 });
   });
 
   test('drawer visible at narrow viewport', async ({ page }) => {
     await page.setViewportSize({ width: 900, height: 900 });
-    await expect(page.locator('.observation-rail')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('#observation-panel')).toBeVisible({ timeout: 10000 });
   });
 });

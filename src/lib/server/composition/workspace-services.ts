@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 
+import type { FileSourceReader } from '$lib/server/application/file-source-reader';
 import type { GitContextReader } from '$lib/server/application/git-context-reader';
 import type { GitFileDiffReader } from '$lib/server/application/git-file-diff-reader';
 import type { GitFileListReader } from '$lib/server/application/git-file-list-reader';
@@ -8,8 +9,10 @@ import { CreateReviewUseCase } from '$lib/server/application/services/create-rev
 import { DeleteWorkspaceUseCase } from '$lib/server/application/services/delete-workspace-use-case';
 import { GetFileDiffUseCase } from '$lib/server/application/services/get-file-diff-use-case';
 import { GetFileListUseCase } from '$lib/server/application/services/get-file-list-use-case';
+import { GetFileSourceUseCase } from '$lib/server/application/services/get-file-source-use-case';
 import { GetGitContextUseCase } from '$lib/server/application/services/get-git-context-use-case';
 import { GetReviewUseCase } from '$lib/server/application/services/get-review-use-case';
+import { GetWorkspaceTreeUseCase } from '$lib/server/application/services/get-workspace-tree-use-case';
 import { GetWorkspaceUseCase } from '$lib/server/application/services/get-workspace-use-case';
 import { ListReviewsUseCase } from '$lib/server/application/services/list-reviews-use-case';
 import { ListWorkspacesUseCase } from '$lib/server/application/services/list-workspaces-use-case';
@@ -30,10 +33,13 @@ import {
   UnmarkFileUseCase,
 } from '$lib/server/application/services/review-actions-use-cases';
 import { SetActiveReviewUseCase } from '$lib/server/application/services/set-active-review-use-case';
+import type { WorkspaceTreeReader } from '$lib/server/application/workspace-tree-reader';
+import { SimpleFileSourceReader } from '$lib/server/infrastructure/git/simple-file-source-reader';
 import { SimpleGitContextReader } from '$lib/server/infrastructure/git/simple-git-context-reader';
 import { SimpleGitFileDiffReader } from '$lib/server/infrastructure/git/simple-git-file-diff-reader';
 import { SimpleGitFileListReader } from '$lib/server/infrastructure/git/simple-git-file-list-reader';
 import { SimpleGitValidator } from '$lib/server/infrastructure/git/simple-git-validator';
+import { SimpleWorkspaceTreeReader } from '$lib/server/infrastructure/git/simple-workspace-tree-reader';
 import { SqliteAppStateRepository } from '$lib/server/infrastructure/repositories/sqlite-app-state-repository';
 import { SqliteObservationRepository } from '$lib/server/infrastructure/repositories/sqlite-observation-repository';
 import { SqliteReviewRepository } from '$lib/server/infrastructure/repositories/sqlite-review-repository';
@@ -50,6 +56,8 @@ export interface WorkspaceServices {
   getGitContextUseCase: GetGitContextUseCase;
   getFileListUseCase: GetFileListUseCase;
   getFileDiffUseCase: GetFileDiffUseCase;
+  getFileSourceUseCase: GetFileSourceUseCase;
+  getWorkspaceTreeUseCase: GetWorkspaceTreeUseCase;
   createReviewUseCase: CreateReviewUseCase;
   listReviewsUseCase: ListReviewsUseCase;
   getReviewUseCase: GetReviewUseCase;
@@ -75,6 +83,8 @@ export function createWorkspaceServices(db: Database.Database): WorkspaceService
   const gitContextReader: GitContextReader = new SimpleGitContextReader();
   const gitFileListReader: GitFileListReader = new SimpleGitFileListReader();
   const gitFileDiffReader: GitFileDiffReader = new SimpleGitFileDiffReader();
+  const fileSourceReader: FileSourceReader = new SimpleFileSourceReader();
+  const workspaceTreeReader: WorkspaceTreeReader = new SimpleWorkspaceTreeReader();
 
   return {
     registerUseCase: new RegisterWorkspaceUseCase(repository, gitValidator),
@@ -96,6 +106,13 @@ export function createWorkspaceServices(db: Database.Database): WorkspaceService
         return h.highlight(code, lang);
       },
     }),
+    getFileSourceUseCase: new GetFileSourceUseCase(fileSourceReader, gitFileDiffReader, {
+      highlight: async (code, lang) => {
+        const h = await getHighlighter();
+        return h.highlight(code, lang);
+      },
+    }),
+    getWorkspaceTreeUseCase: new GetWorkspaceTreeUseCase(workspaceTreeReader),
     createReviewUseCase: new CreateReviewUseCase(reviewRepository, appState),
     listReviewsUseCase: new ListReviewsUseCase(reviewRepository, repository),
     getReviewUseCase: new GetReviewUseCase(reviewRepository),

@@ -167,6 +167,50 @@ nunca un status.
 - Filtrado, ordenamiento y paginación son exclusivamente del lado cliente.
 - Sin polling, watcher, recarga automática, ni mutaciones Git.
 
+### Lectura del árbol del proyecto (Project tree)
+
+El árbol completo del repositorio se sirve a través del endpoint
+`GET /api/workspaces/[id]/tree`. Sigue el mismo patrón de Clean Architecture
+que los readers existentes:
+
+- **Puerto:** `WorkspaceTreeReader` en `src/lib/server/application/`. Expone un
+  método `read(repositoryPath)` que retorna un `WorkspaceTreeNode` raíz con
+  hijos recursivos.
+- **Adaptador:** en `src/lib/server/infrastructure/`. Implementa el puerto
+  recorriendo el filesystem de forma read‑only (sin `git` para la estructura
+  del árbol; solo para metadatos de cambio).
+- **Caso de uso:** `GetWorkspaceTreeUseCase`.
+- **Endpoint:** `GET /api/workspaces/[id]/tree`. Retorna el árbol completo como
+  JSON.
+- **Contrato:** el árbol es read‑only. No hay operaciones de mutación.
+
+### Lectura de source (Source View)
+
+La fuente completa de un archivo se sirve a través del endpoint
+`GET /api/workspaces/[id]/source`. Sigue Clean Architecture:
+
+- **Puerto:** `FileSourceReader` en `src/lib/server/application/`. Expone un
+  método `read(repositoryPath, relativePath)` que retorna un `FileSource` con
+  líneas numeradas y metadatos de cambio Git.
+- **Adaptador:** en `src/lib/server/infrastructure/`. Lee el archivo del
+  filesystem (read‑only), aplica Shiki para syntax highlighting y consulta el
+  diff activo para derivar `changeType` por línea.
+- **Caso de uso:** `GetFileSourceUseCase`.
+- **Endpoint:** `GET /api/workspaces/[id]/source?path=<encoded>`. Retorna
+  source con highlighting y change markers.
+- **Contrato:** el source view es read‑only. Sin edición, auto‑fix ni mutación.
+
+### Preferencias del lado cliente
+
+El tema activo (`ThemeKey`) y los anchos de panel redimensionados se almacenan
+exclusivamente en `localStorage` del navegador. Estos valores:
+
+- No se persisten en SQLite ni en el servidor.
+- No forman parte del modelo de dominio del lado servidor.
+- No se sincronizan entre dispositivos ni sesiones.
+- Se resuelven en el cliente y se aplican mediante el atributo `data-theme` en
+  el elemento `<html>`.
+
 ---
 
 ## Persistencia

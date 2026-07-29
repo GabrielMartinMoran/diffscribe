@@ -1,7 +1,9 @@
 # DiffScribe — Guía de diseño
 
-**Estado:** Borrador inicial — los valores de branding, tipografía definitiva,
-icon set y resize de paneles quedan `[PENDIENTE]`.
+**Estado:** Actualizado para UI redesign v1. El icon set (Lucide), sistema de
+temas (Dark Deep + Synthwave '84'), layout de rail izquierdo con panel
+contextual, panel derecho con Comments/Review, y resize/colapso de paneles están
+resueltos. Branding visual y tipografía definitiva permanecen `[PENDIENTE]`.
 
 Esta guía define el sistema visual de DiffScribe: principios, tokens CSS,
 layout, comportamiento responsive, estados de componentes, accesibilidad y
@@ -508,32 +510,133 @@ Escala base de 4px.
 
 ---
 
+## Temas
+
+DiffScribe incluye dos temas globales seleccionables por el usuario. La
+preferencia se almacena en `localStorage` del navegador (client‑only, no se
+persiste en servidor). La clave de tema es `ThemeKey: dark | synthwave-84`.
+
+### Dark Deep (predeterminado)
+
+El tema oscuro definido en `[data-theme="dark"]` es el tema Dark Deep. Sus
+valores están documentados en la tabla de la sección Tokens de color y en el
+bloque CSS correspondiente. Es el tema por defecto de la aplicación.
+
+### Synthwave '84'
+
+Tema alternativo inspirado en la paleta retro‑futurista Synthwave '84. La
+paleta proviene de https://www.color-hex.com/color-palette/114197:
+
+| Rol           | Hex       | Uso                                        |
+| ------------- | --------- | ------------------------------------------ |
+| Fondo profundo| `#0d0221` | Superficies primarias                      |
+| Fondo medio   | `#2e2157` | Superficies secundarias, bordes            |
+| Acento        | `#920075` | Acento principal, hover activo             |
+| Acento claro  | `#540d6e` | Acento secundario, muted                   |
+| Neón          | `#2de2e6` | Texto de alto contraste, focus, selección  |
+
+El glow (sombra exterior brillante) se aplica exclusivamente a estados de
+foco (`focus-visible`), selección activa y elementos con estado `active`. No se
+aplica glow a elementos en estado default, hover simple ni elementos estáticos.
+El glow se implementa con `box-shadow` y el color neón `#2de2e6` con opacidad
+controlada.
+
+```css
+[data-theme="synthwave-84"] {
+  --surface-primary: #0d0221;
+  --surface-secondary: #2e2157;
+  --surface-tertiary: #1a0a3e;
+  --surface-elevated: #0d0221;
+  --surface-overlay: rgba(45, 33, 87, 0.30);
+
+  --text-primary: #2de2e6;
+  --text-secondary: #b0a8d0;
+  --text-tertiary: #7a6a9a;
+  --text-inverse: #0d0221;
+  --text-link: #2de2e6;
+
+  --border-subtle: #2e2157;
+  --border-default: #540d6e;
+  --border-strong: #920075;
+
+  --accent: #920075;
+  --accent-hover: #b0108a;
+  --accent-muted: #2e2157;
+
+  --focus-ring: #2de2e6;
+  --focus-ring-offset: 2px;
+
+  --state-hover: rgba(45, 33, 87, 0.40);
+  --state-active: rgba(146, 0, 117, 0.30);
+  --state-disabled-bg: #1a0a3e;
+  --state-disabled-text: #7a6a9a;
+  --state-error-bg: #3d1212;
+  --state-error-border: #78281f;
+  --state-success-bg: #0d3320;
+  --state-success-border: #196f3d;
+  --state-loading: #2e2157;
+
+  --diff-added-bg: rgba(45, 222, 230, 0.10);
+  --diff-added-border: #2de2e6;
+  --diff-added-text: #2de2e6;
+  --diff-removed-bg: rgba(146, 0, 117, 0.15);
+  --diff-removed-border: #920075;
+  --diff-removed-text: #e06c5d;
+  --diff-modified-bg: rgba(84, 13, 110, 0.20);
+  --diff-modified-border: #540d6e;
+  --diff-hunk-header-bg: #2e2157;
+
+  --severity-critical: #ef4444;
+  --severity-major: #f97316;
+  --severity-minor: #eab308;
+  --severity-info: #2de2e6;
+
+  --shadow-none: none;
+  --shadow-sm: 0 1px 2px rgba(45, 222, 230, 0.10);
+  --shadow-md: 0 2px 8px rgba(45, 222, 230, 0.15);
+  --shadow-lg: 0 4px 16px rgba(45, 222, 230, 0.20);
+}
+```
+
+Los tokens de diff en Synthwave usan los colores neón y acento con opacidad
+controlada para mantener legibilidad sin saturar el fondo oscuro.
+
+---
+
 ## Breakpoints
 
 | Breakpoint  | Rango                    | Uso                                     |
 | ----------- | ------------------------ | --------------------------------------- |
-| `compact`   | `max-width: 768px`       | Móvil, panel único                      |
-| `tablet`    | `769px – 1024px`         | Dos paneles apilables                   |
-| `desktop`   | `min-width: 1025px`      | Tres/cuatro zonas, layout completo      |
-| `wide`      | `min-width: 1440px`      | Máximo espacio, side-by-side cómodo     |
+| `compact`   | `max-width: 768px`       | Móvil, panel único, drawers superpuestos|
+| `tablet`    | `769px – 1024px`         | Rail + panel contextual colapsable      |
+| `desktop`   | `min-width: 1025px`      | Rail + panel contextual + panel derecho |
+| `wide`      | `min-width: 1440px`      | Máximo espacio, paneles expandidos      |
+
+El diseño adopta mobile-first: la interfaz es funcional desde el primer momento
+en compact, y las capacidades se expanden progresivamente en tablet, desktop y
+wide. No hay una versión "solo desktop" que se adapte después a móvil.
 
 ---
 
 ## Comportamiento responsive
 
-### Navegación global
+### Rail y panel contextual
 
-- **Compact:** colapsada en un menú tipo drawer o bottom sheet. El selector de
-  workspace ocupa la zona superior.
-- **Tablet y desktop:** barra lateral fija con íconos y labels. El workspace
-  activo se destaca.
-- **Wide:** igual que desktop, con más espacio para labels extendidos.
+- **Compact (móvil):** el rail izquierdo se reduce a íconos sin labels visibles.
+  El panel contextual y el panel derecho se presentan como drawers superpuestos
+  o bottom sheets, nunca permanentes. Solo una zona visible a la vez.
+- **Tablet:** rail con íconos; panel contextual colapsable. El panel derecho se
+  muestra como overlay al activar un tab.
+- **Desktop y wide:** rail + panel contextual visible. El panel derecho es
+  visible cuando hay una revisión activa.
 
-### File list
+### Project tree (tab Project)
 
-- **Compact:** lista colapsable que ocupa el ancho completo sobre el diff.
+- **Compact:** árbol colapsable que ocupa el ancho completo sobre la zona
+  central al activarse.
 - **Tablet:** panel lateral estrecho, colapsable.
-- **Desktop y wide:** panel lateral de ancho fijo (~260px), siempre visible.
+- **Desktop y wide:** panel contextual con el árbol visible (ancho
+  redimensionable).
 
 #### Marcador de revisado (Review marker)
 
@@ -568,40 +671,88 @@ la review es la activa (`review.id === activeReview.id`).
 - **Desktop:** unified o side-by-side según preferencia del usuario.
 - **Wide:** side-by-side cómodo con números de línea visibles.
 
-### Observation panel
+### Panel derecho (Comments / Review)
 
-- **Compact:** panel inferior o drawer que cubre el diff.
-- **Tablet:** panel inferior o lateral estrecho.
-- **Desktop y wide:** panel lateral derecho (~320px), siempre visible.
+El panel derecho contiene dos tabs: Comments (lista de observaciones) y Review
+(progreso y controles de la revisión activa).
+
+- **Compact:** drawer inferior o superpuesto que cubre la zona central.
+- **Tablet:** overlay lateral al activar un tab; colapsable.
+- **Desktop y wide:** panel lateral derecho (~320px), colapsable y
+  redimensionable.
 
 ---
 
-## Layout de cuatro zonas
+## Layout rail + paneles
 
-La interfaz principal se organiza en cuatro zonas:
+La interfaz principal se organiza en tres zonas más un rail izquierdo:
 
 ```text
-┌──────────┬──────────────────────────┬─────────────┐
-│          │                          │             │
-│  Nav     │  Diff Viewer             │  Obs.       │
-│  global  │  (unified o              │  Panel      │
-│  + file  │   side-by-side)          │             │
-│  list    │                          │             │
-│          │                          │             │
-└──────────┴──────────────────────────┴─────────────┘
+┌───┬────────────────┬──────────────────────┬──────────────┐
+│   │  Contextual    │                      │              │
+│   │  Panel         │   Central Area       │  Right       │
+│ R │ ────────────── │  (Diff Viewer /      │  Panel       │
+│ A │ • Workspaces   │   Source View)       │ ───────────  │
+│ I │ • Project      │                      │ • Comments   │
+│ L │ • Git          │                      │ • Review     │
+│   │                │                      │              │
+└───┴────────────────┴──────────────────────┴──────────────┘
 ```
+
+### Rail izquierdo
+
+Rail compacto de íconos (Lucide) que permite alternar entre vistas globales:
+Workspaces, configuración y preferencias. Es fijo, no scrollea. Su ancho está
+diseñado para íconos sin labels en desktop compacto y se expande en wide.
+
+### Panel contextual
+
+Panel colapsable y redimensionable a la derecha del rail. Contiene tres tabs:
+
+- **Workspaces:** lista de workspaces registrados, selector rápido y acceso a
+  historial.
+- **Project:** árbol read‑only completo del repositorio activo. Al abrir un
+  archivo, la zona central muestra la fuente normal con syntax highlighting y
+  marcadores de líneas afectadas por Git (change type), sin diff.
+- **Git:** comparación Git existente (estado, ramas, commits) y diff viewer
+  integrado.
+
+El panel contextual scrollea su contenido de forma independiente según el tab
+activo.
+
+### Zona central
+
+Muestra el contenido principal:
+
+- **Diff Viewer** (desde el tab Git): vista unificada o side‑by‑side del diff
+  entre dos estados Git.
+- **Source View** (desde el tab Project): fuente del archivo seleccionado con
+  syntax highlighting y marcadores de líneas afectadas.
+
+### Panel derecho
+
+Panel colapsable y redimensionable con dos tabs:
+
+- **Comments:** lista de observaciones/comentarios sobre la revisión activa.
+- **Review:** resumen, progreso y controles de la revisión activa.
+
+Ambos paneles (contextual y derecho) pueden colapsarse y redimensionarse dentro
+de límites mínimos y máximos predefinidos.
 
 ### Scroll ownership
 
 Cada zona maneja su propio scroll de forma independiente:
 
-- La **file list** scrollea verticalmente su contenido.
-- El **diff viewer** scrollea tanto vertical como horizontalmente (para líneas
-  largas en side-by-side).
-- El **observation panel** scrollea su lista de observaciones.
-- La **navegación global** es fija (no scrollea).
+- El **rail izquierdo** es fijo (no scrollea).
+- El **panel contextual** scrollea verticalmente su contenido (árbol Project,
+  lista de workspaces, Git context). Cada tab tiene su propio scroll.
+- La **zona central** (Diff Viewer o Source View) scrollea vertical y
+  horizontalmente (para líneas largas en side-by-side o archivos fuente
+  extensos).
+- El **panel derecho** scrollea verticalmente su contenido (Comments y Review).
+- La **navegación global** (cabecera) es fija (no scrollea).
 
-La barra de scroll del viewport principal es propiedad del diff viewer. Los
+La barra de scroll del viewport principal es propiedad de la zona central. Los
 paneles laterales no empujan el contenido central.
 
 ### Side-by-side mínimo
@@ -609,6 +760,112 @@ paneles laterales no empujan el contenido central.
 El modo side-by-side requiere un ancho mínimo aproximado de 900px en el
 viewport para ser usable. Por debajo de ese umbral, la interfaz fuerza unified
 independientemente de la preferencia del usuario.
+
+---
+
+## Panel collapse y resize
+
+Los paneles contextual (izquierdo) y derecho pueden colapsarse y
+redimensionarse mediante drag handles:
+
+### Colapso
+
+- Cada panel tiene un botón de toggle (icono Lucide `PanelLeftClose` /
+  `PanelLeftOpen` para el contextual; `PanelRightClose` / `PanelRightOpen` para
+  el derecho).
+- El estado colapsado oculta el contenido del panel pero mantiene visible el
+  rail de tabs o un indicador mínimo.
+- Al colapsar el panel contextual, la zona central ocupa el espacio liberado.
+- Al colapsar el panel derecho, la zona central se expande hasta el borde
+  derecho del viewport.
+
+### Resize
+
+- Cada panel tiene un drag handle (`cursor: col-resize`) en su borde compartido
+  con la zona central.
+- Límites: ancho mínimo 200px, ancho máximo 480px para el panel contextual;
+  ancho mínimo 240px, ancho máximo 480px para el panel derecho.
+- El ancho se persiste en `localStorage` (client‑only) para mantener la
+  preferencia entre sesiones.
+- En compact (móvil) los paneles no son redimensionables; se comportan como
+  drawers de ancho completo o predefinido.
+
+---
+
+## Icon set
+
+DiffScribe usa **Lucide** como librería de íconos. Los componentes consumen
+íconos Lucide mediante import directo. No se usa sprite sheet ni carga remota.
+
+### Convenciones
+
+- Los íconos decorativos (sin significado independiente) llevan
+  `aria-hidden="true"`.
+- Los íconos con función informativa (estados, alertas, badges) llevan
+  `aria-label` descriptivo.
+- El tamaño base es 16×16px (`--text-sm`). Íconos en rails y tabs usan
+  20×20px.
+- El color hereda del `currentColor` del contexto (texto, acento o estado).
+
+---
+
+## Source View (tab Project)
+
+Cuando el usuario selecciona un archivo en el árbol Project, la zona central
+muestra el **Source View**: el contenido completo del archivo con syntax
+highlighting y marcadores de líneas afectadas por Git.
+
+### Comportamiento
+
+- **Read‑only:** no se permite edición, modificación, auto‑fix ni mutación del
+  archivo.
+- **Syntax highlighting:** se aplica resaltado Shiki según la extensión del
+  archivo. Lenguaje no reconocido → `text`.
+- **Git change markers:** cada línea afectada muestra un marcador en el gutter
+  (added, modified, deleted) según el diff entre working tree y HEAD u otra
+  comparación activa.
+- **Sin diff:** el Source View no muestra diff lado a lado ni unificado. Es la
+  fuente completa con anotaciones, no un diff.
+- **Archivos binarios o muy grandes:** se muestra un mensaje informativo en
+  lugar del contenido, idéntico al tratamiento del Diff Viewer.
+
+### Estados
+
+| Estado       | Descripción                                      |
+| ------------ | ------------------------------------------------ |
+| `loading`    | Spinner + "Loading file..."                      |
+| `rendered`   | Contenido completo con highlighting y marcadores |
+| `binary`     | Mensaje "Binary file — preview not available"    |
+| `too-large`  | Mensaje "File too large to display"              |
+| `empty`      | Archivo vacío sin contenido                      |
+| `error`      | Mensaje de error con opción de retry             |
+
+---
+
+## Project tree
+
+El **Project tree** es la representación jerárquica read‑only del repositorio
+activo dentro del tab Project del panel contextual.
+
+### Comportamiento
+
+- Árbol completo del repositorio (no solo archivos modificados).
+- Cada entrada muestra: nombre, tipo (archivo/directorio) y ChangeStatus tree
+  cuando el archivo tiene cambios Git.
+- Al hacer clic en un archivo, se abre en Source View en la zona central.
+- La selección activa se destaca visualmente.
+- Directorios colapsables/expandibles.
+- Archivos binarios y no legibles se muestran en el árbol pero no pueden
+  abrirse en Source View (se informa al usuario).
+
+### Estados del árbol
+
+| Estado       | Descripción                                      |
+| ------------ | ------------------------------------------------ |
+| `loading`    | Spinner + "Loading project tree..."              |
+| `rendered`   | Árbol completo con todos los nodos               |
+| `empty`      | Repositorio vacío sin archivos                   |
+| `error`      | Mensaje de error con retry                       |
 
 ---
 
@@ -633,15 +890,20 @@ según su naturaleza:
 No todos los componentes requieren los diez estados. La tabla siguiente lista
 el subset esperado por tipo de componente:
 
-| Componente       | Estados requeridos                                    |
-| ---------------- | ----------------------------------------------------- |
-| Botón            | default, hover, focus-visible, active, disabled, loading |
-| Input / Select   | default, focus-visible, disabled, error, success      |
-| File list item   | default, hover, focus-visible, active, disabled       |
-| Diff line        | default, hover, active (seleccionada)                 |
-| Observation card | default, hover, focus-visible, active (seleccionada)  |
-| Panel            | default, loading, empty, error, stale                 |
-| Badge / Tag      | default (por tipo y severidad)                        |
+| Componente         | Estados requeridos                                    |
+| ------------------ | ----------------------------------------------------- |
+| Botón              | default, hover, focus-visible, active, disabled, loading |
+| Input / Select     | default, focus-visible, disabled, error, success      |
+| File list item     | default, hover, focus-visible, active, disabled       |
+| Project tree item  | default, hover, focus-visible, active, disabled       |
+| Diff line          | default, hover, active (seleccionada)                 |
+| Source view        | loading, rendered, binary, too-large, empty, error    |
+| Observation card   | default, hover, focus-visible, active (seleccionada)  |
+| Panel              | default, loading, empty, error, stale, collapsed      |
+| Panel tab          | default, hover, focus-visible, active, disabled       |
+| Badge / Tag        | default (por tipo y severidad)                        |
+| Rail icon          | default, hover, focus-visible, active                 |
+| Drag handle        | default, hover, active                                |
 
 ---
 
@@ -804,8 +1066,9 @@ La selección de líneas en el diff-viewer permite anclar observaciones a rangos
 
 DiffScribe no usa Tailwind ni frameworks de utilidades CSS. El enfoque es:
 
-- **Tokens globales** definidos en `:root` y `[data-theme="dark"]`, cargados
-  como CSS global desde un archivo `app.css` o equivalente.
+- **Tokens globales** definidos en `:root` (tema claro), `[data-theme="dark"]`
+  (Dark Deep) y `[data-theme="synthwave-84"]` (Synthwave '84'), cargados como
+  CSS global desde un archivo `app.css` o equivalente.
 - **Estilos scoped** de Svelte para componentes individuales. Cada componente
   consume tokens globales mediante variables CSS y define sus reglas locales.
 - **Sin preprocesador:** CSS nativo con variables. No se requiere Sass, Less ni
@@ -844,9 +1107,4 @@ antes o durante la implementación de componentes:
 - **Branding:** nombre visual, logotipo, paleta complementaria al acento.
 - **Tipografía definitiva:** selección de fuente mono para código y fuente sans
   para UI. Evaluar fuentes web auto-hospedadas vs. sistema.
-- **Icon set:** librería de íconos (Lucide, Phosphor, o SVG propio).
-- **Resize de paneles:** comportamiento de paneles redimensionables (drag
-  handles, persistencia de anchos).
-- **Acento definitivo:** `#2563EB` es placeholder; validar contraste y
-  armonía con el resto de la paleta.
 - **Regresión visual automatizada:** herramienta y flujo de snapshot testing.

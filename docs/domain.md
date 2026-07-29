@@ -292,14 +292,76 @@ priority:      number
 
 ### WorkspacePreferences
 
-Preferencias de visualización y comportamiento.
+Preferencias de visualización y comportamiento por workspace.
 
 ```text
 defaultDiffMode:   DiffMode (unified | side-by-side)
-defaultTheme:      Theme (light | dark | system)
 fileListWidth:     number (px, solo si es configurable por el usuario)
 observationPanelWidth: number (px, solo si es configurable por el usuario)
 ```
+
+Nota: el tema activo (`ThemeKey: dark | synthwave-84`) es una preferencia
+global del navegador almacenada en `localStorage`, no una preferencia por
+workspace. La preferencia de tema no viaja al servidor ni se persiste en SQLite.
+
+### ThemeKey
+
+Preferencia global de tema, almacenada exclusivamente en `localStorage` del
+navegador. No es una entidad de dominio ni se persiste en servidor.
+
+```text
+ThemeKey: "dark" | "synthwave-84"
+```
+
+- `dark` es el tema Dark Deep (predeterminado).
+- `synthwave-84` es el tema alternativo Synthwave '84'.
+- El valor se resuelve en el cliente y se aplica mediante el atributo
+  `data-theme` en el elemento `<html>`.
+
+### WorkspaceTreeNode
+
+Representación read‑only de una entrada en el árbol del proyecto. Se obtiene
+desde el endpoint `GET /api/workspaces/[id]/tree`.
+
+```text
+path:       string (ruta relativa al repositorio)
+kind:       "file" | "directory"
+name:       string (nombre del archivo o directorio)
+children?:  WorkspaceTreeNode[] (solo si kind = "directory")
+changeType?: FileChangeStatus | null (si el archivo tiene cambios Git)
+```
+
+**Contrato read‑only:** el árbol es exclusivamente de lectura. No admite
+operaciones de creación, renombre, eliminación, edición ni mutación desde la
+interfaz.
+
+### FileSource
+
+Representación read‑only del contenido fuente de un archivo del repositorio. Se
+obtiene desde el endpoint `GET /api/workspaces/[id]/source`.
+
+```text
+path:      string (ruta relativa al repositorio)
+language:  string (lenguaje detectado, o "text")
+lines:     FileSourceLine[]
+```
+
+Cada línea contiene:
+
+```text
+lineNumber: number (1‑based)
+content:    string (texto de la línea)
+changeType: "added" | "removed" | "modified" | "unchanged" | null
+```
+
+El `changeType` se deriva de la comparación Git activa y sirve como marcador
+visual en el gutter. No representa un diff ni reemplaza al Diff Viewer del tab
+Git.
+
+**Contrato read‑only:** el source view es exclusivamente de lectura. No se
+permite edición, auto‑fix ni mutación del archivo desde la interfaz.
+
+---
 
 ### ReviewContextSnapshot
 

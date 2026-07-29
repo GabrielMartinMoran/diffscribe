@@ -41,30 +41,153 @@ describe('token-renderer', () => {
   });
 
   describe('renderTokensToHtml', () => {
-    it('renders single token with color', () => {
-      const tokens: Array<{ content: string; htmlAttrs?: Record<string, string> }> = [
-        { content: 'const', htmlAttrs: { style: 'color: #0000FF' } },
+    // ──── Shiki dual-theme tests (real-world usage) ────
+
+    it('adds data-shiki-token marker attribute for Shiki tokens', () => {
+      const tokens = [
+        {
+          content: 'const',
+          htmlAttrs: { '--shiki-light': '#D32F2F', '--shiki-dark': '#F97583' },
+        },
       ];
       const result = renderTokensToHtml(tokens);
-      expect(result).toContain('<span style="color: #0000FF">');
+      expect(result).toContain('data-shiki-token');
+    });
+
+    it('renders --shiki-light and --shiki-dark as CSS variables in style attribute', () => {
+      const tokens = [
+        {
+          content: 'const',
+          htmlAttrs: { '--shiki-light': '#D32F2F', '--shiki-dark': '#F97583' },
+        },
+      ];
+      const result = renderTokensToHtml(tokens);
+      // Style attribute must contain the CSS custom properties as CSS declarations
+      expect(result).toContain('style="');
+      expect(result).toContain('--shiki-light: #D32F2F');
+      expect(result).toContain('--shiki-dark: #F97583');
+    });
+
+    it('does not produce --shiki-* as inert HTML attributes', () => {
+      const tokens = [
+        {
+          content: 'const',
+          htmlAttrs: { '--shiki-light': '#D32F2F', '--shiki-dark': '#F97583' },
+        },
+      ];
+      const result = renderTokensToHtml(tokens);
+      // --shiki-light should NOT appear as an HTML attribute (key="value" outside style)
+      // It should only appear inside the style attribute value
+      expect(result).toMatch(/style=["']--shiki-light/);
+    });
+
+    it('rejects arbitrary CSS properties and only accepts known Shiki keys', () => {
+      const tokens = [
+        {
+          content: 'const',
+          htmlAttrs: {
+            '--shiki-light': '#D32F2F',
+            '--shiki-dark': '#F97583',
+            color: 'red',
+            background: 'blue',
+          },
+        },
+      ];
+      const result = renderTokensToHtml(tokens);
+      // Known Shiki keys should be in style
+      expect(result).toContain('--shiki-light');
+      expect(result).toContain('--shiki-dark');
+      // Arbitrary CSS keys should NOT appear
+      expect(result).not.toContain('color: red');
+      expect(result).not.toContain('background: blue');
+    });
+
+    it('preserves --shiki-font-weight when present', () => {
+      const tokens = [
+        {
+          content: 'fn',
+          htmlAttrs: {
+            '--shiki-light': '#D32F2F',
+            '--shiki-dark': '#F97583',
+            '--shiki-font-weight': 'bold',
+          },
+        },
+      ];
+      const result = renderTokensToHtml(tokens);
+      expect(result).toContain('--shiki-font-weight: bold');
+    });
+
+    it('sanitizes values with dangerous characters', () => {
+      const tokens = [
+        {
+          content: 'bad',
+          htmlAttrs: {
+            '--shiki-light': '#D32F2F"; color: red',
+          },
+        },
+      ];
+      const result = renderTokensToHtml(tokens);
+      // The value with a quote should be excluded from the style
+      expect(result).not.toContain('color: red');
+    });
+
+    it('still escapes HTML content when using Shiki attributes', () => {
+      const tokens = [
+        {
+          content: '<div>',
+          htmlAttrs: { '--shiki-light': '#FF0000', '--shiki-dark': '#FF5555' },
+        },
+      ];
+      const result = renderTokensToHtml(tokens);
+      expect(result).toContain('&lt;div&gt;');
+      expect(result).not.toContain('<div>');
+    });
+
+    it('renders empty style when no valid Shiki keys present', () => {
+      const tokens = [{ content: 'text', htmlAttrs: { color: 'red', background: 'blue' } }];
+      const result = renderTokensToHtml(tokens);
+      // Should have marker but no style attribute with arbitrary keys
+      expect(result).toContain('data-shiki-token');
+      expect(result).not.toContain('color: red');
+      expect(result).not.toContain('background: blue');
+    });
+
+    // ──── Legacy / edge-case tests ────
+
+    it('renders single token with Shiki colors', () => {
+      const tokens = [
+        {
+          content: 'const',
+          htmlAttrs: { '--shiki-light': '#D32F2F', '--shiki-dark': '#F97583' },
+        },
+      ];
+      const result = renderTokensToHtml(tokens);
       expect(result).toContain('const');
     });
 
     it('renders multiple tokens', () => {
       const tokens: Array<{ content: string; htmlAttrs?: Record<string, string> }> = [
-        { content: 'const', htmlAttrs: { style: 'color: #0000FF' } },
+        {
+          content: 'const',
+          htmlAttrs: { '--shiki-light': '#D32F2F', '--shiki-dark': '#F97583' },
+        },
         { content: ' ', htmlAttrs: {} },
-        { content: 'x', htmlAttrs: { style: 'color: #000000' } },
+        {
+          content: 'x',
+          htmlAttrs: { '--shiki-light': '#1976D2', '--shiki-dark': '#79B8FF' },
+        },
       ];
       const result = renderTokensToHtml(tokens);
-      expect(result).toContain('<span style="color: #0000FF">const</span>');
-      expect(result).toContain('<span > </span>');
-      expect(result).toContain('<span style="color: #000000">x</span>');
+      expect(result).toContain('const');
+      expect(result).toContain('x');
     });
 
     it('escapes token content', () => {
-      const tokens: Array<{ content: string; htmlAttrs?: Record<string, string> }> = [
-        { content: '<div>', htmlAttrs: { style: 'color: red' } },
+      const tokens = [
+        {
+          content: '<div>',
+          htmlAttrs: { '--shiki-light': '#D32F2F', '--shiki-dark': '#F97583' },
+        },
       ];
       const result = renderTokensToHtml(tokens);
       expect(result).toContain('&lt;div&gt;');
@@ -76,13 +199,10 @@ describe('token-renderer', () => {
       expect(result).toBe('');
     });
 
-    it('renders multple html attributes', () => {
-      const tokens: Array<{ content: string; htmlAttrs?: Record<string, string> }> = [
-        { content: 'foo', htmlAttrs: { style: 'color: red', class: 'token keyword' } },
-      ];
+    it('renders token with htmlAttrs undefined', () => {
+      const tokens = [{ content: 'plain' }];
       const result = renderTokensToHtml(tokens);
-      expect(result).toContain('style="color: red"');
-      expect(result).toContain('class="token keyword"');
+      expect(result).toContain('plain');
     });
   });
 });

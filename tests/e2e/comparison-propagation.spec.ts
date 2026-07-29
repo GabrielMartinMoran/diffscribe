@@ -5,7 +5,7 @@ import path from 'node:path';
 
 import { expect, test } from '@playwright/test';
 
-import { registerAndSelectWorkspace } from './helpers/register-workspace';
+import { registerAndSelectWorkspace, selectRailTab } from './helpers/register-workspace';
 import { resetDb } from './helpers/reset-db';
 
 function mkTempDir(): string {
@@ -39,9 +39,10 @@ test.describe('Comparison Propagation (E2E)', () => {
       createGitRepo(repoDir);
       fs.appendFileSync(path.join(repoDir, 'README.md'), '\n# changed');
 
-      await registerAndSelectWorkspace(page, repoDir, `CP-Default-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `CP-Default-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
@@ -91,9 +92,10 @@ test.describe('Comparison Propagation (E2E)', () => {
       // Modify working tree for visibility
       fs.appendFileSync(path.join(repoDir, 'README.md'), '\n# modified');
 
-      await registerAndSelectWorkspace(page, repoDir, `CP-Change-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `CP-Change-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });

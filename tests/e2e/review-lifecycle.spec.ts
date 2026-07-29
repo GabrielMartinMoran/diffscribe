@@ -5,7 +5,11 @@ import path from 'node:path';
 
 import { expect, test } from '@playwright/test';
 
-import { registerAndSelectWorkspace } from './helpers/register-workspace';
+import {
+  registerAndSelectWorkspace,
+  selectRailTab,
+  selectRightPanelTab,
+} from './helpers/register-workspace';
 import { resetDb } from './helpers/reset-db';
 
 function mkTempDir(): string {
@@ -39,9 +43,11 @@ test.describe('Review Lifecycle (E2E)', () => {
       createGitRepo(repoDir);
       fs.appendFileSync(path.join(repoDir, 'README.md'), '\nchanged');
 
-      await registerAndSelectWorkspace(page, repoDir, `RV-New-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `RV-New-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      // Right panel resets to Comments on reload; select Review to see #review-panel
+      await selectRightPanelTab(page, 'review');
 
       const reviewPanel = page.locator('#review-panel');
       await expect(reviewPanel).toBeVisible({ timeout: 10000 });
@@ -64,9 +70,11 @@ test.describe('Review Lifecycle (E2E)', () => {
       execSync('git add . && git commit -m "add files"', { cwd: repoDir, stdio: 'pipe' });
       fs.appendFileSync(path.join(repoDir, 'a.ts'), '\nmod');
 
-      await registerAndSelectWorkspace(page, repoDir, `RV-Create-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `RV-Create-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      // Right panel resets to Comments on reload; select Review to see #review-panel
+      await selectRightPanelTab(page, 'review');
 
       const reviewPanel = page.locator('#review-panel');
       await expect(reviewPanel).toBeVisible({ timeout: 10000 });
@@ -76,7 +84,8 @@ test.describe('Review Lifecycle (E2E)', () => {
       // Wait for page reload after creation
       await page.waitForLoadState('networkidle');
 
-      // After reload, review panel should show active review
+      // After reload, select Review tab again and verify active review
+      await selectRightPanelTab(page, 'review');
       await expect(reviewPanel.locator('.review-active')).toBeVisible({ timeout: 8000 });
       await expect(reviewPanel).toContainText(/draft/i);
     } finally {
@@ -93,10 +102,12 @@ test.describe('Review Lifecycle (E2E)', () => {
       execSync('git add . && git commit -m "add"', { cwd: repoDir, stdio: 'pipe' });
       fs.appendFileSync(path.join(repoDir, 'a.ts'), '\nmod');
 
-      await registerAndSelectWorkspace(page, repoDir, `RV-Complete-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `RV-Complete-${Date.now()}`, 'git');
       // Verify workspace is loaded — use goto instead of reload to ensure clean state
       await page.goto('/');
       await page.waitForLoadState('networkidle');
+      // Right panel resets to Comments on goto; select Review to see #review-panel
+      await selectRightPanelTab(page, 'review');
 
       // Create review
       await page
@@ -104,6 +115,8 @@ test.describe('Review Lifecycle (E2E)', () => {
         .getByRole('button', { name: /new review/i })
         .click();
       await page.waitForLoadState('networkidle');
+      // After creation the page reloads; select Review tab again
+      await selectRightPanelTab(page, 'review');
       await page
         .locator('#review-panel .review-active')
         .waitFor({ state: 'visible', timeout: 8000 });
@@ -126,6 +139,8 @@ test.describe('Review Lifecycle (E2E)', () => {
 
       // Page reloads automatically via onReviewChange. Wait for fresh page.
       await page.waitForLoadState('networkidle');
+      // After completion reload, select Review tab again
+      await selectRightPanelTab(page, 'review');
       // Confirm Svelte hydration by waiting for recognizable text
       await page.waitForSelector('#review-panel', { state: 'visible', timeout: 10000 });
       await expect(page.locator('#review-panel')).toContainText(
@@ -162,16 +177,20 @@ test.describe('Review Lifecycle (E2E)', () => {
       execSync('git add . && git commit -m "add"', { cwd: repoDir, stdio: 'pipe' });
       fs.appendFileSync(path.join(repoDir, 'a.ts'), '\nmod');
 
-      await registerAndSelectWorkspace(page, repoDir, `RV-Marker-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `RV-Marker-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
+      // Right panel resets to Comments on reload; select Review to see #review-panel
+      await selectRightPanelTab(page, 'review');
 
       const reviewPanel = page.locator('#review-panel');
       await expect(reviewPanel).toBeVisible({ timeout: 10000 });
       await reviewPanel.getByRole('button', { name: /new review/i }).click();
       await page.waitForLoadState('networkidle');
 
-      // After page reload, review panel should show active review state
+      // After page reload, select Review tab again and verify active review
+      await selectRightPanelTab(page, 'review');
       await expect(reviewPanel.locator('.review-active')).toBeVisible({ timeout: 8000 });
 
       // File list should show review markers
@@ -198,9 +217,10 @@ test.describe('Review Lifecycle (E2E)', () => {
       createGitRepo(repoDir);
       fs.appendFileSync(path.join(repoDir, 'README.md'), '\nchanged');
 
-      await registerAndSelectWorkspace(page, repoDir, `RV-NoMarker-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `RV-NoMarker-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
@@ -220,9 +240,11 @@ test.describe('Review Lifecycle (E2E)', () => {
       createGitRepo(repoDir);
       fs.appendFileSync(path.join(repoDir, 'README.md'), '\nchanged');
 
-      await registerAndSelectWorkspace(page, repoDir, `RV-List-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `RV-List-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      // Right panel resets to Comments on reload; select Review to see #review-panel
+      await selectRightPanelTab(page, 'review');
 
       // Create review
       await page
@@ -230,6 +252,8 @@ test.describe('Review Lifecycle (E2E)', () => {
         .getByRole('button', { name: /new review/i })
         .click();
       await page.waitForLoadState('networkidle');
+      // After creation the page reloads; select Review tab again
+      await selectRightPanelTab(page, 'review');
 
       // Complete it — wait for active state, then ensure button interactive
       await page
@@ -252,6 +276,8 @@ test.describe('Review Lifecycle (E2E)', () => {
 
       // Page reloads. Wait for it to settle and hydrate.
       await page.waitForLoadState('networkidle');
+      // After completion reload, select Review tab again
+      await selectRightPanelTab(page, 'review');
       await page.locator('#review-panel').waitFor({ state: 'visible', timeout: 8000 });
       await expect(page.locator('#review-panel')).toContainText(
         /No active review|Untitled|New Review/,
@@ -287,14 +313,18 @@ test.describe('Review Cascade and Reset (E2E)', () => {
       createGitRepo(repoDir);
       fs.appendFileSync(path.join(repoDir, 'README.md'), '\nchanged');
 
-      await registerAndSelectWorkspace(page, repoDir, `RV-Reset-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `RV-Reset-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      // Right panel resets to Comments on reload; select Review to see #review-panel
+      await selectRightPanelTab(page, 'review');
 
       const reviewPanel = page.locator('#review-panel');
       await expect(reviewPanel).toBeVisible({ timeout: 10000 });
       await reviewPanel.getByRole('button', { name: /new review/i }).click();
       await page.waitForLoadState('networkidle');
+      // After creation the page reloads; select Review tab again
+      await selectRightPanelTab(page, 'review');
 
       await expect(reviewPanel.locator('.review-active')).toBeVisible({ timeout: 8000 });
 
@@ -302,6 +332,8 @@ test.describe('Review Cascade and Reset (E2E)', () => {
       await resetDb(request);
       await page.reload();
       await page.waitForLoadState('networkidle');
+      // After reset + reload, select Review tab again
+      await selectRightPanelTab(page, 'review');
 
       // After reset, no active review should be shown
       await expect(reviewPanel.locator('.review-placeholder')).toBeVisible({ timeout: 10000 });

@@ -5,7 +5,7 @@ import path from 'node:path';
 
 import { expect, test } from '@playwright/test';
 
-import { registerAndSelectWorkspace } from './helpers/register-workspace';
+import { registerAndSelectWorkspace, selectRailTab } from './helpers/register-workspace';
 import { resetDb } from './helpers/reset-db';
 
 function mkTempDir(): string {
@@ -45,9 +45,10 @@ test.describe('Diff Viewer (E2E)', () => {
       fs.writeFileSync(path.join(repoDir, 'src', 'app.ts'), 'line1\nMODIFIED\nline3\n');
       execSync('git add src/app.ts', { cwd: repoDir, stdio: 'pipe' });
 
-      await registerAndSelectWorkspace(page, repoDir, `DV-Core-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `DV-Core-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       // Wait for file list to appear
       const fileList = page.locator('#file-list-panel');
@@ -79,9 +80,10 @@ test.describe('Diff Viewer (E2E)', () => {
       fs.writeFileSync(path.join(repoDir, 'src', 'new.ts'), 'lineA\nlineB\nlineC\n');
       execSync('git add .', { cwd: repoDir, stdio: 'pipe' });
 
-      await registerAndSelectWorkspace(page, repoDir, `DV-Added-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `DV-Added-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
@@ -107,9 +109,10 @@ test.describe('Diff Viewer (E2E)', () => {
       execSync('git add . && git commit -m "add"', { cwd: repoDir, stdio: 'pipe' });
       execSync('git rm rm.ts', { cwd: repoDir, stdio: 'pipe' });
 
-      await registerAndSelectWorkspace(page, repoDir, `DV-Deleted-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `DV-Deleted-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
@@ -137,9 +140,10 @@ test.describe('Diff Viewer (E2E)', () => {
       execSync('git add . && git commit -m "add"', { cwd: repoDir, stdio: 'pipe' });
       execSync('git mv old.ts new.ts', { cwd: repoDir, stdio: 'pipe' });
 
-      await registerAndSelectWorkspace(page, repoDir, `DV-Rename-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `DV-Rename-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
@@ -167,9 +171,10 @@ test.describe('Diff Viewer (E2E)', () => {
       fs.writeFileSync(path.join(repoDir, 'logo.png'), buf);
       execSync('git add logo.png', { cwd: repoDir, stdio: 'pipe' });
 
-      await registerAndSelectWorkspace(page, repoDir, `DV-Binary-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `DV-Binary-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
@@ -193,9 +198,10 @@ test.describe('Diff Viewer (E2E)', () => {
       fs.writeFileSync(path.join(repoDir, 'empty.ts'), '');
       execSync('git add empty.ts', { cwd: repoDir, stdio: 'pipe' });
 
-      await registerAndSelectWorkspace(page, repoDir, `DV-Empty-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `DV-Empty-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
@@ -217,9 +223,10 @@ test.describe('Diff Viewer (E2E)', () => {
       createGitRepo(repoDir);
       fs.writeFileSync(path.join(repoDir, 'untracked.ts'), 'fresh content\nline2\n');
 
-      await registerAndSelectWorkspace(page, repoDir, `DV-Untracked-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `DV-Untracked-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
@@ -244,9 +251,10 @@ test.describe('Diff Viewer (E2E)', () => {
       createGitRepo(repoDir);
       fs.appendFileSync(path.join(repoDir, 'README.md'), '\nchanged');
 
-      await registerAndSelectWorkspace(page, repoDir, `DV-Loading-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `DV-Loading-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
@@ -268,15 +276,19 @@ test.describe('Diff Viewer (E2E)', () => {
       fs.appendFileSync(path.join(repoDir, 'README.md'), '\nchanged');
 
       // Register first with a valid repo
-      await registerAndSelectWorkspace(page, repoDir, `DV-Error-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `DV-Error-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
+
+      // Wait for file list to load before corrupting the repo
+      const fileList = page.locator('#file-list-panel');
+      await expect(fileList).toBeVisible({ timeout: 8000 });
+      await expect(fileList.locator('.file-row').first()).toBeVisible({ timeout: 10000 });
 
       // Now corrupt the repo to force diff fetch error
       fs.rmSync(path.join(repoDir, '.git', 'HEAD'));
 
-      const fileList = page.locator('#file-list-panel');
-      await expect(fileList).toBeVisible({ timeout: 8000 });
       const fileRow = fileList.locator('.file-row').first();
       await fileRow.click();
 
@@ -303,9 +315,10 @@ test.describe('Diff Viewer (E2E)', () => {
     try {
       createGitRepo(repoDir);
 
-      await registerAndSelectWorkspace(page, repoDir, `DV-Placeholder-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `DV-Placeholder-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       // Without selecting a file, the diff viewer should show placeholder
       const diffViewer = page.locator('.diff-viewer');
@@ -326,9 +339,10 @@ test.describe('Diff Viewer (E2E)', () => {
       createGitRepo(repoDir);
       fs.appendFileSync(path.join(repoDir, 'README.md'), '\nchanged');
 
-      await registerAndSelectWorkspace(page, repoDir, `DV-Responsive-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `DV-Responsive-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       // Set viewport to >=900px
       await page.setViewportSize({ width: 1024, height: 768 });
@@ -356,11 +370,12 @@ test.describe('Diff Viewer (E2E)', () => {
       createGitRepo(repoDir);
       fs.appendFileSync(path.join(repoDir, 'README.md'), '\nchanged');
 
-      await registerAndSelectWorkspace(page, repoDir, `DV-Mobile-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `DV-Mobile-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
 
       await page.setViewportSize({ width: 375, height: 667 });
+      await selectRailTab(page, 'git');
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
@@ -386,9 +401,10 @@ test.describe('Diff Viewer (E2E)', () => {
       createGitRepo(repoDir);
       fs.appendFileSync(path.join(repoDir, 'README.md'), '\nchanged');
 
-      await registerAndSelectWorkspace(page, repoDir, `DV-Shortcut-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `DV-Shortcut-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
@@ -418,9 +434,10 @@ test.describe('Diff Viewer (E2E)', () => {
         .toString()
         .trim();
 
-      await registerAndSelectWorkspace(page, repoDir, `DV-ReadOnly-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `DV-ReadOnly-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
@@ -455,9 +472,10 @@ test.describe('Diff Viewer (E2E)', () => {
       fs.writeFileSync(path.join(repoDir, 'src', 'xss.ts'), '<script>alert(1)</script>');
       execSync('git add .', { cwd: repoDir, stdio: 'pipe' });
 
-      await registerAndSelectWorkspace(page, repoDir, `DV-XSS-${Date.now()}`);
+      await registerAndSelectWorkspace(page, repoDir, `DV-XSS-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
+      await selectRailTab(page, 'git');
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });

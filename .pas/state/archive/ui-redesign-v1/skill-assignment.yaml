@@ -1,0 +1,54 @@
+skill_assignment:
+  available_skills:
+    - clean-backend-architecture
+    - clean-code
+    - clean-svelte-architecture
+    - cognitive-writing
+    - docs-writer
+    - frontend-design
+    - IADEV-bdd-implementation
+    - IADEV-test-driven-development
+    - IADEV-validating-implementation
+    - IADEV-writing-gherkin
+    - mind-management
+    - svelte-code-writer
+  required_by_role:
+    researcher:
+      - mind-management
+      - frontend-design
+      - clean-svelte-architecture
+      - svelte-code-writer
+      - clean-code
+    developer_documentation:
+      - mind-management
+      - docs-writer
+      - cognitive-writing
+      - frontend-design
+    developer_bdd:
+      - mind-management
+      - IADEV-writing-gherkin
+      - IADEV-bdd-implementation
+      - IADEV-test-driven-development
+    developer_backend:
+      - mind-management
+      - clean-backend-architecture
+      - clean-code
+      - IADEV-test-driven-development
+      - IADEV-bdd-implementation
+    developer_ui:
+      - mind-management
+      - frontend-design
+      - clean-svelte-architecture
+      - svelte-code-writer
+      - clean-code
+      - IADEV-test-driven-development
+      - IADEV-bdd-implementation
+    qa:
+      - mind-management
+      - IADEV-validating-implementation
+      - IADEV-bdd-implementation
+      - frontend-design
+      - clean-svelte-architecture
+      - svelte-code-writer
+  missing_skills: []
+  critical_missing: []

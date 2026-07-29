@@ -695,14 +695,16 @@ Debe poder incluir:
 
 ### 12.1. Estructura general
 
-La interfaz inicial debe organizarse alrededor de cuatro zonas:
+La interfaz se organiza en tres zonas más un rail izquierdo:
 
-1. Navegación global y workspaces.
-2. Lista de archivos y progreso.
-3. Visor de diff.
-4. Panel de observaciones y asistencia.
+1. **Rail izquierdo:** íconos de navegación global (Lucide), fijo.
+2. **Panel contextual:** tres tabs — Workspaces, Project (árbol read‑only +
+   source view), Git (comparación y diff).
+3. **Zona central:** Diff Viewer o Source View según el tab activo.
+4. **Panel derecho:** dos tabs — Comments (observaciones) y Review (progreso).
 
-El resumen de revisión puede utilizar una vista separada.
+El resumen de revisión puede utilizar una vista separada. Todos los paneles son
+colapsables y redimensionables.
 
 ### 12.2. Navegación global
 
@@ -743,13 +745,16 @@ Las acciones frecuentes deben tener atajos:
 * cambiar modo de diff;
 * abrir resumen.
 
-### 12.5. Uso móvil
+### 12.5. Uso móvil y desktop
 
-La web debe ser técnicamente accesible desde dispositivos móviles dentro de una red permitida, pero la experiencia móvil completa no es un objetivo principal de la primera versión.
+La interfaz debe ser funcional desde el primer momento tanto en desktop como en
+dispositivos móviles. El diseño adopta mobile-first: la experiencia en pantallas
+pequeñas (compact) es usable y completa, y las capacidades se expanden
+progresivamente en tablet, desktop y wide.
 
-Debe priorizarse una experiencia excelente en desktop.
-
-No se debe diseñar la interfaz principal alrededor de pantallas pequeñas si eso perjudica la revisión profunda.
+No se sacrifica la revisión profunda en desktop para acomodar móvil, pero
+tampoco se pospone la experiencia móvil a una etapa posterior. Ambos tamaños
+son parte del diseño inicial.
 
 ---
 
@@ -1042,12 +1047,19 @@ Incluye:
 * integración Git;
 * selector de comparación;
 * lista de archivos;
-* diff unificado y lado a lado;
+* tree read‑only completo del repositorio (tab Project);
+* source view con syntax highlighting y marcadores de líneas Git (tab Project);
+* diff unificado y lado a lado (tab Git);
 * resaltado de sintaxis;
 * observaciones manuales;
 * progreso por archivo;
 * historial básico;
-* exportación Markdown y JSON.
+* exportación Markdown y JSON;
+* rail izquierdo + panel contextual con tabs Workspaces/Project/Git;
+* panel derecho con Comments/Review;
+* paneles colapsables y redimensionables;
+* dos temas globales: Dark Deep (predeterminado) y Synthwave '84';
+* experiencia funcional en desktop y mobile desde el inicio.
 
 **Resultado:** DiffScribe ya es útil sin IA.
 
@@ -1221,6 +1233,18 @@ Estas preguntas no bloquean la definición del producto, pero deberán resolvers
 * El artefacto principal será un review package exportable.
 * La primera versión no editará código ni realizará auto-fix.
 * La primera versión no dependerá de GitHub, GitLab ni de un proveedor de IA específico.
+* **UI redesign v1:** el layout principal usa un rail izquierdo con íconos Lucide
+  y un panel contextual con tabs Workspaces, Project y Git. El panel derecho
+  contiene Comments y Review. Ambos paneles son colapsables y redimensionables.
+* **Temas:** Dark Deep es el tema predeterminado. Synthwave '84' es el segundo
+  tema global. La preferencia se almacena en `localStorage` (client‑only).
+* **Project tree:** árbol read‑only completo del repositorio activo en el tab
+  Project. Al abrir un archivo se muestra el Source View: fuente completa con
+  syntax highlighting y marcadores de líneas afectadas por Git, sin diff.
+* **Desktop y mobile:** la interfaz es funcional desde el primer momento en ambos
+  tamaños. El diseño es mobile-first.
+* **Límites de Etapa 1:** sin edición, auto‑fix, mutación Git, proveedores
+  remotos, IA, colaboración ni sync cross-device.
  * **Etapa 1 completada (Inc‑1 a Inc‑5):** workbench con registro de workspaces, panel de contexto Git (branches/commits/comparación), file list con filtrado y selección, y diff viewer con resaltado Shiki (unified parser custom, hard cap 256 KB/5 000 líneas, side‑by‑side >=900 px, navegación de hunks, shortcut Ctrl+Shift+D). Endpoint seguro `GET /api/workspaces/[id]/file-diff`. Sin IA, sin colaboración, sin mutación de repositorio.
  * **Inc‑6 (Review Foundation):** Review aggregate con ReviewId UUID, ReviewStatus (draft/in_progress/completed/archived), captura de ComparisonSerialized con validación. Migraciones SQL 001‑004 ordenadas con `import.meta.glob`, transacción por migración y `PRAGMA foreign_keys = ON`. Tablas `reviews` y `review_files` con FK CASCADE. Repositorio SQLite con mapper Comparison↔JSON y marcas dinámicas sin inventario total. Casos de uso: create draft, list/reopen, get, set active, mark, unmark, complete. Review completada es read‑only (409 en mark/unmark). Active review en `app_state` key `active_review:<workspaceId>`. REST endpoints bajo `/api/workspaces/[id]/reviews/...`. Panel ReviewPanel con New/Complete/Mark/Unmark, progreso reactivo N/M, confirmación de completado, listado y reopen, keyboard/ARIA/reduced‑motion. Marcador visual de revisado en file‑list cuando hay active review. Propagación de Comparison unificada entre GitContextPanel, DiffViewer y Review. Eliminación de workspace limpia clave active_review y datos por FK cascade. Sin Observation, snapshots, stale detection, portable/export, CLI, IA, colaboración, ni delete individual de review.
   * **Inc‑7 (Observations):** Observation aggregate con CRUD completo. Tipos issue/risk/suggestion/question/praise/note. Severidad critical/major/minor/nitpick. Estados open/resolved/dismissed/pending con reopen. Scope review/file/range-level. Snapshot híbrido: comparison_snapshot_json (siempre) + diff_snapshot/content_hash SHA-256 canónico (solo file/range). StaleStatus derivado bajo demanda (9 estados). Migración 005, FK CASCADE, CHECKs, índices. REST: CRUD + status transition. Panel responsive right rail (>=1100px) / drawer (<1100px). Form client-side SHA-256 via Web Crypto. Line selection en diff-viewer con ARIA. Guards: completed 409, binary range 422, ownership, cascade. Sin multi-file/tags/AI/remap/polling/export/CLI/Review delete.

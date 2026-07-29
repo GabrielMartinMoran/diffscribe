@@ -1,0 +1,81 @@
+tasks:
+  - id: DOC-UI-01
+    title: Update canonical UI contracts
+    worker: pas_developer
+    status: passed
+    paths:
+      - docs/design.md
+      - docs/PRD.md
+      - docs/domain.md
+      - docs/architecture.md
+    qa_verdict: PASS
+  - id: BDD-UI-01
+    title: Add UI redesign acceptance scenarios
+    worker: pas_developer
+    status: passed
+    qa_verdict: PASS
+    lead_correction: >-
+      Lead-owned Gherkin artifact correction: changed the parameterized scenario
+      to Scenario Outline and aligned the theme scenario with data-theme=dark.
+  - id: THEME-UI-01
+    title: Implement theme tokens and local preference
+    worker: pas_developer
+    status: passed
+    qa_verdict: PASS
+  - id: TREE-UI-01
+    title: Implement project tree contract and endpoint
+    worker: pas_developer
+    status: passed
+    qa_verdict: PASS
+  - id: SOURCE-UI-01
+    title: Implement source view contract and endpoint
+    worker: pas_developer
+    status: passed
+    qa_verdict: PASS
+  - id: SHELL-UI-01
+    title: Implement rail tabs and active file shell
+    worker: pas_developer
+    status: passed_with_fix
+    qa_verdict: PASS_AFTER_SHELL-FIX-01
+  - id: SHELL-FIX-01
+    title: Remove duplicate ReviewPanel rendering
+    worker: pas_developer
+    status: passed
+    qa_verdict: PASS
+    parent_task: SHELL-UI-01
+    qa_required: true
+  - id: PROJECT-VIEW-UI-01
+    title: Implement Project tree and source viewer UI
+    worker: pas_developer
+    status: passed
+    qa_verdict: PASS
+  - id: PANELS-UI-01
+    title: Integrate Git and Comments/Review panels
+    worker: pas_developer
+    status: passed_with_retry
+    qa_verdict: PASS_AFTER_RETRY
+  - id: RESPONSIVE-UI-01
+    title: Implement collapse, resize, and responsive behavior
+    worker: pas_developer
+    status: passed
+    qa_verdict: PASS
+  - id: SYNTAX-UI-01
+    title: Correct Shiki tokens and CSS token drift
+    worker: pas_developer
+    status: passed
+    qa_verdict: PASS_AFTER_BDD_STEPS
+  - id: BDD-STEPS-UI-01
+    title: Implement UI redesign BDD step definitions
+    worker: pas_developer
+    status: passed
+    qa_verdict: BDD_PASS_E2E_COMPATIBILITY_RESOLVED
+  - id: E2E-COMPAT-UI-01
+    title: Adapt legacy E2E tests to rail-tab shell
+    worker: pas_developer
+    status: passed_with_retry
+    qa_verdict: PASS
+  - id: QA-IGNORE-01
+    title: Exclude generated PAS/session artifacts from Prettier gate
+    worker: pas_developer
+    status: passed
+    qa_verdict: PASS

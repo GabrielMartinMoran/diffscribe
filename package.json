@@ -60,6 +60,7 @@
   "dependencies": {
     "better-sqlite3": "^13.0.1",
     "shiki": "^4.3.1",
-    "simple-git": "^3.36.0"
+    "simple-git": "^3.36.0",
+    "svelte-lucide": "^3.0.1"
   }
 }
