@@ -23,8 +23,9 @@
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
     "test:bdd": "vitest run --config vitest.bdd.config.ts",
+    "check:bdd-language": "node scripts/check-bdd-language.mjs",
     "test:e2e": "playwright test",
-    "qa": "npm run format && npm run lint && npm run check && npm run test:unit && npm run test:integration && npm run test:bdd && npm run test:e2e && npm run build"
+    "qa": "npm run format && npm run lint && npm run check && npm run test:unit && npm run test:integration && npm run check:bdd-language && npm run test:bdd && npm run test:e2e && npm run build"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -32,6 +33,7 @@
     "@sveltejs/adapter-node": "^5.2.10",
     "@sveltejs/kit": "^2.20.0",
     "@sveltejs/vite-plugin-svelte": "^5.0.3",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.15.0",
     "eslint": "^10.8.0",
     "eslint-config-prettier": "^10.1.0",
@@ -54,5 +56,10 @@
   "overrides": {
     "uuid": ">=11.1.1",
     "cookie": ">=0.7.0 <1.0.0"
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.0.1",
+    "shiki": "^4.3.1",
+    "simple-git": "^3.36.0"
   }
 }
