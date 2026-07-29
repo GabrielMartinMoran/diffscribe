@@ -1,31 +1,31 @@
 @application @pre-commit
 Feature: Pre-commit quality gate
 
-  El hook pre-commit ejecuta verificaciones de formato y lint sin modificar
-  archivos. Bloquea el commit si alguna verificación falla.
+  The pre-commit hook runs format and lint checks without modifying
+  files. It blocks the commit if any check fails.
 
   Background:
-    Given que el hook pre-commit esta configurado
-      And los archivos estan stageados para commit
+    Given the pre-commit hook is configured
+      And files are staged for commit
 
-  Scenario: Hook pasa cuando formato y lint estan limpios
-    When ejecuto el hook pre-commit
-    Then el hook termina con codigo de salida 0
-      And no hay archivos modificados en el working tree
+  Scenario: Hook passes when format and lint are clean
+    When I run the pre-commit hook
+    Then the hook exits with code 0
+      And there are no modified files in the working tree
 
-  Scenario: Fallo de Prettier bloquea el commit
-    Given que hay un archivo con formato incorrecto stageado
-    When ejecuto el hook pre-commit
-    Then el hook termina con codigo de salida distinto de 0
-      And el mensaje de error contiene "prettier"
+  Scenario: Prettier failure blocks the commit
+    Given there is a file with incorrect formatting staged
+    When I run the pre-commit hook
+    Then the hook exits with a non-zero code
+      And the error message contains "prettier"
 
-  Scenario: Fallo de ESLint bloquea el commit
-    Given que hay un archivo con error de lint stageado
-    When ejecuto el hook pre-commit
-    Then el hook termina con codigo de salida distinto de 0
-      And el mensaje de error contiene "eslint" o "error"
+  Scenario: ESLint failure blocks the commit
+    Given there is a file with a lint error staged
+    When I run the pre-commit hook
+    Then the hook exits with a non-zero code
+      And the error message contains "eslint" or "error"
 
-  Scenario: El hook no modifica archivos incluso ante fallo
-    Given que hay un archivo con formato incorrecto stageado
-    When ejecuto el hook pre-commit
-    Then el archivo con formato incorrecto conserva su contenido original
+  Scenario: The hook does not modify files even on failure
+    Given there is a file with incorrect formatting staged
+    When I run the pre-commit hook
+    Then the incorrectly formatted file retains its original content

@@ -1,21 +1,21 @@
 @smoke
-Feature: Smoke — verificacion tecnica de tooling
+Feature: Smoke — technical tooling verification
 
-  El proposito de estos escenarios es confirmar que el runner de BDD funciona.
-  No describen comportamiento del workbench.
+  The purpose of these scenarios is to confirm that the BDD runner works.
+  They do not describe workbench behavior.
 
-  Scenario: Aritmetica basica
-    Given tengo el numero 2
-    When le sumo 3
-    Then el resultado es 5
+  Scenario: Basic arithmetic
+    Given I have the number 2
+    When I add 3
+    Then the result is 5
 
-  Scenario Outline: Sumas parametrizadas
-    Given tengo el numero <a>
-    When le sumo <b>
-    Then el resultado es <esperado>
+  Scenario Outline: Parameterized additions
+    Given I have the number <a>
+    When I add <b>
+    Then the result is <expected>
 
     Examples:
-      | a | b  | esperado |
+      | a | b  | expected |
       | 1 | 1  | 2        |
       | 0 | 5  | 5        |
       | 7 | -2 | 5        |
