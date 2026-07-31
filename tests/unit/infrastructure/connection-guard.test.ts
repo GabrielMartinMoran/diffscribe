@@ -12,6 +12,8 @@ const MODULE_PATH = '../../../src/lib/server/infrastructure/database/connection'
 describe('DB connection guard — Vitest fail‑closed', () => {
   const originalVitest = process.env.VITEST;
   const originalDbDir = process.env.DIFFSCRIBE_DB_DIR;
+  const originalNodeEnv = process.env.NODE_ENV;
+  const originalInMemoryDb = process.env.DIFFSCRIBE_E2E_IN_MEMORY_DB;
 
   beforeEach(() => {
     // Reset the module graph so dynamic imports re-evaluate module-level code
@@ -20,6 +22,8 @@ describe('DB connection guard — Vitest fail‑closed', () => {
       process.env.VITEST = 'true';
     }
     delete process.env.DIFFSCRIBE_DB_DIR;
+    delete process.env.NODE_ENV;
+    delete process.env.DIFFSCRIBE_E2E_IN_MEMORY_DB;
   });
 
   afterEach(() => {
@@ -32,6 +36,16 @@ describe('DB connection guard — Vitest fail‑closed', () => {
       delete process.env.DIFFSCRIBE_DB_DIR;
     } else {
       process.env.DIFFSCRIBE_DB_DIR = originalDbDir;
+    }
+    if (originalNodeEnv === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = originalNodeEnv;
+    }
+    if (originalInMemoryDb === undefined) {
+      delete process.env.DIFFSCRIBE_E2E_IN_MEMORY_DB;
+    } else {
+      process.env.DIFFSCRIBE_E2E_IN_MEMORY_DB = originalInMemoryDb;
     }
   });
 
@@ -76,5 +90,54 @@ describe('DB connection guard — Vitest fail‑closed', () => {
     } finally {
       openedDb?.close();
     }
+  });
+
+  it('returns :memory: when DIFFSCRIBE_E2E_IN_MEMORY_DB is set to "1"', async () => {
+    process.env.DIFFSCRIBE_E2E_IN_MEMORY_DB = '1';
+    delete process.env.DIFFSCRIBE_DB_DIR;
+
+    const mod = await import(MODULE_PATH);
+    let openedDb: ReturnType<typeof mod.getDb> | null = null;
+    try {
+      openedDb = mod.getDb();
+      expect(openedDb.name).toBe(':memory:');
+    } finally {
+      openedDb?.close();
+    }
+  });
+
+  it('returns the same singleton on repeated getDb() calls in memory mode', async () => {
+    process.env.DIFFSCRIBE_E2E_IN_MEMORY_DB = '1';
+
+    const mod = await import(MODULE_PATH);
+    const db1 = mod.getDb();
+    const db2 = mod.getDb();
+    try {
+      expect(db1).toBe(db2);
+      expect(db1.name).toBe(':memory:');
+    } finally {
+      db1.close();
+    }
+  });
+
+  it('enables foreign_keys pragma in memory mode', async () => {
+    process.env.DIFFSCRIBE_E2E_IN_MEMORY_DB = '1';
+
+    const mod = await import(MODULE_PATH);
+    const db = mod.getDb();
+    try {
+      const result = db.pragma('foreign_keys', { simple: true });
+      expect(result).toBe(1);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('throws when DIFFSCRIBE_E2E_IN_MEMORY_DB is set and NODE_ENV is production', async () => {
+    process.env.DIFFSCRIBE_E2E_IN_MEMORY_DB = '1';
+    process.env.NODE_ENV = 'production';
+
+    const mod = await import(MODULE_PATH);
+    expect(() => mod.getDb()).toThrow(/not allowed in production/i);
   });
 });
