@@ -1,7 +1,9 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
+import { resetDb } from './helpers/reset-db';
 
 test.describe('UI Shell — Rail tabs, theme switcher, file tabs, right panel tabs (SHELL-UI-01)', () => {
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page, request }) => {
+    await resetDb(request);
     await page.goto('/');
     await page.waitForLoadState('networkidle');
   });

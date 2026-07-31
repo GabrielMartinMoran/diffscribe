@@ -1,28 +1,17 @@
-import { execSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 
 import type { Page } from '@playwright/test';
-import { expect, test } from '@playwright/test';
 
+import { expect, test } from './fixtures';
+import { createGitFixture } from './helpers/git-fixture';
 import { waitForHydration } from './helpers/hydration';
 import { resetDb } from './helpers/reset-db';
 
-function createGitRepo(dir: string): void {
-  fs.mkdirSync(dir, { recursive: true });
-  execSync('git init', { cwd: dir, stdio: 'pipe' });
-  execSync('git config user.email "e2e@test.com"', { cwd: dir, stdio: 'pipe' });
-  execSync('git config user.name "E2E Test"', { cwd: dir, stdio: 'pipe' });
-  fs.writeFileSync(path.join(dir, 'README.md'), '# e2e');
-  execSync('git add .', { cwd: dir, stdio: 'pipe' });
-  execSync('git commit -m "init"', { cwd: dir, stdio: 'pipe' });
-}
-
-function rmDir(dir: string): void {
-  if (fs.existsSync(dir)) {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
+function initRepo(fixture: { repoPath: string; runGit(args: readonly string[]): void }): void {
+  fs.writeFileSync(path.join(fixture.repoPath, 'README.md'), '# e2e');
+  fixture.runGit(['add', '.']);
+  fixture.runGit(['commit', '-m', 'init']);
 }
 
 async function registerWorkspace(page: Page, repoPath: string, displayName: string): Promise<void> {
@@ -63,37 +52,35 @@ test.describe('Workspace Management UI (E2E)', () => {
   });
 
   test('register a workspace and see it in sidebar with valid status', async ({ page }) => {
-    const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'diffscribe-e2e-mgmt-'));
-    const repoA = path.join(fixtureRoot, 'repo-a');
+    const fixture = createGitFixture('diffscribe-e2e-mgmt-');
     const uniqueName = `E2E-Mgmt-${Date.now()}`;
 
     try {
-      createGitRepo(repoA);
-      await registerWorkspace(page, repoA, uniqueName);
+      initRepo(fixture);
+      await registerWorkspace(page, fixture.repoPath, uniqueName);
 
       const sidebarItem = page.locator(`#workspace-sidebar li:has-text("${uniqueName}")`).first();
       await expect(sidebarItem).toBeVisible();
       await expect(sidebarItem.locator('.status-valid')).toBeVisible();
     } finally {
-      rmDir(fixtureRoot);
+      fixture.cleanup();
     }
   });
 
   test('invalidate workspace when repo is removed', async ({ page }) => {
-    const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'diffscribe-e2e-mgmt-'));
-    const repoA = path.join(fixtureRoot, 'repo-a');
+    const fixture = createGitFixture('diffscribe-e2e-mgmt-');
     const uniqueName = `E2E-Inv-${Date.now()}`;
 
     try {
-      createGitRepo(repoA);
-      await registerWorkspace(page, repoA, uniqueName);
+      initRepo(fixture);
+      await registerWorkspace(page, fixture.repoPath, uniqueName);
 
       // Confirm the workspace appears in sidebar before invalidating
       let sidebarItem = page.locator(`#workspace-sidebar li:has-text("${uniqueName}")`).first();
       await expect(sidebarItem).toBeVisible({ timeout: 10000 });
 
       // Remove the repo and reload to trigger re-validation
-      rmDir(repoA);
+      fixture.cleanup();
       await page.reload();
 
       // The workspace should still be visible but now with invalid badge
@@ -101,18 +88,17 @@ test.describe('Workspace Management UI (E2E)', () => {
       await expect(sidebarItem).toBeVisible();
       await expect(sidebarItem.locator('.invalid-badge')).toBeVisible();
     } finally {
-      rmDir(fixtureRoot);
+      fixture.cleanup();
     }
   });
 
   test('select active workspace from sidebar', async ({ page }) => {
-    const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'diffscribe-e2e-mgmt-'));
-    const repoA = path.join(fixtureRoot, 'repo-a');
+    const fixture = createGitFixture('diffscribe-e2e-mgmt-');
     const uniqueName = `E2E-Sel-${Date.now()}`;
 
     try {
-      createGitRepo(repoA);
-      await registerWorkspace(page, repoA, uniqueName);
+      initRepo(fixture);
+      await registerWorkspace(page, fixture.repoPath, uniqueName);
 
       // Click the select button for the workspace
       const sidebarItem = page
@@ -130,19 +116,18 @@ test.describe('Workspace Management UI (E2E)', () => {
         .first();
       await expect(activeItem).toBeVisible();
     } finally {
-      rmDir(fixtureRoot);
+      fixture.cleanup();
     }
   });
 
   test('rename a workspace inline', async ({ page }) => {
-    const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'diffscribe-e2e-mgmt-'));
-    const repoA = path.join(fixtureRoot, 'repo-a');
+    const fixture = createGitFixture('diffscribe-e2e-mgmt-');
     const originalName = `E2E-Rn-${Date.now()}`;
     const newName = `E2E-Renamed-${Date.now()}`;
 
     try {
-      createGitRepo(repoA);
-      await registerWorkspace(page, repoA, originalName);
+      initRepo(fixture);
+      await registerWorkspace(page, fixture.repoPath, originalName);
 
       // Click the Rename button via accessible name
       const renameBtn = page
@@ -165,18 +150,17 @@ test.describe('Workspace Management UI (E2E)', () => {
       // Verify the new name appears
       await expect(page.locator(`#workspace-sidebar .name:has-text("${newName}")`)).toBeVisible();
     } finally {
-      rmDir(fixtureRoot);
+      fixture.cleanup();
     }
   });
 
   test('delete workspace preserves repo directory', async ({ page }) => {
-    const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'diffscribe-e2e-mgmt-'));
-    const repoA = path.join(fixtureRoot, 'repo-a');
+    const fixture = createGitFixture('diffscribe-e2e-mgmt-');
     const uniqueName = `E2E-Del-${Date.now()}`;
 
     try {
-      createGitRepo(repoA);
-      await registerWorkspace(page, repoA, uniqueName);
+      initRepo(fixture);
+      await registerWorkspace(page, fixture.repoPath, uniqueName);
 
       // Click Delete button
       const deleteBtn = page
@@ -195,24 +179,23 @@ test.describe('Workspace Management UI (E2E)', () => {
       await page.reload();
 
       // Verify repo still exists
-      expect(fs.existsSync(repoA)).toBe(true);
-      expect(fs.existsSync(path.join(repoA, '.git'))).toBe(true);
+      expect(fs.existsSync(fixture.repoPath)).toBe(true);
+      expect(fs.existsSync(path.join(fixture.repoPath, '.git'))).toBe(true);
 
       // Verify workspace is gone from sidebar
       await expect(page.locator(`#workspace-sidebar li:has-text("${uniqueName}")`)).toHaveCount(0);
     } finally {
-      rmDir(fixtureRoot);
+      fixture.cleanup();
     }
   });
 
   test('cancel delete preserves workspace', async ({ page }) => {
-    const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'diffscribe-e2e-mgmt-'));
-    const repoA = path.join(fixtureRoot, 'repo-a');
+    const fixture = createGitFixture('diffscribe-e2e-mgmt-');
     const uniqueName = `E2E-DelCancel-${Date.now()}`;
 
     try {
-      createGitRepo(repoA);
-      await registerWorkspace(page, repoA, uniqueName);
+      initRepo(fixture);
+      await registerWorkspace(page, fixture.repoPath, uniqueName);
 
       // Click Delete button
       const deleteBtn = page
@@ -233,22 +216,21 @@ test.describe('Workspace Management UI (E2E)', () => {
         page.locator(`#workspace-sidebar li:has-text("${uniqueName}")`).first(),
       ).toBeVisible();
     } finally {
-      rmDir(fixtureRoot);
+      fixture.cleanup();
     }
   });
 
   test('keyboard navigation in sidebar', async ({ page }) => {
-    const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'diffscribe-e2e-mgmt-'));
-    const repos: string[] = [];
+    const fixtures: ReturnType<typeof createGitFixture>[] = [];
     const names: string[] = [];
 
     try {
       for (let i = 0; i < 3; i++) {
-        const repoDir = path.join(fixtureRoot, `ws-${i}`);
-        createGitRepo(repoDir);
-        repos.push(repoDir);
+        const fixture = createGitFixture('diffscribe-e2e-mgmt-');
+        initRepo(fixture);
+        fixtures.push(fixture);
         names.push(`E2E-Key-${Date.now()}-${i}`);
-        await registerWorkspace(page, repoDir, names[i]);
+        await registerWorkspace(page, fixture.repoPath, names[i]);
       }
 
       // Explicitly focus the first workspace Select button
@@ -287,7 +269,7 @@ test.describe('Workspace Management UI (E2E)', () => {
       await activeSelect.focus();
       await expect(activeSelect).toBeFocused();
     } finally {
-      rmDir(fixtureRoot);
+      for (const f of fixtures) f.cleanup();
     }
   });
 
@@ -303,13 +285,12 @@ test.describe('Workspace Management UI (E2E)', () => {
   });
 
   test('delete active workspace clears active state', async ({ page }) => {
-    const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'diffscribe-e2e-mgmt-'));
-    const repoA = path.join(fixtureRoot, 'repo-a');
+    const fixture = createGitFixture('diffscribe-e2e-mgmt-');
     const uniqueName = `E2E-DelAct-${Date.now()}`;
 
     try {
-      createGitRepo(repoA);
-      await registerWorkspace(page, repoA, uniqueName);
+      initRepo(fixture);
+      await registerWorkspace(page, fixture.repoPath, uniqueName);
 
       // Select workspace first
       const selectBtn = page
@@ -337,7 +318,7 @@ test.describe('Workspace Management UI (E2E)', () => {
       const activeItems = page.locator('#workspace-sidebar li.active');
       await expect(activeItems).toHaveCount(0);
     } finally {
-      rmDir(fixtureRoot);
+      fixture.cleanup();
     }
   });
 });
@@ -356,16 +337,15 @@ test.describe('Hydration race regression', () => {
     });
 
     for (let i = 0; i < 5; i++) {
-      const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'diffscribe-e2e-hydration-'));
-      const repo = path.join(fixtureRoot, 'repo');
+      const fixture = createGitFixture('diffscribe-e2e-hydration-');
       const name = `E2E-Hydr-${Date.now()}-${i}`;
 
       try {
         await page.goto('/');
         await page.waitForLoadState('networkidle');
 
-        createGitRepo(repo);
-        await registerWorkspace(page, repo, name);
+        initRepo(fixture);
+        await registerWorkspace(page, fixture.repoPath, name);
 
         // Click Delete button — this is the hydration-dependent action
         const deleteBtn = page
@@ -381,7 +361,7 @@ test.describe('Hydration race regression', () => {
         await dialog.getByRole('button', { name: 'Cancel' }).click();
         await expect(dialog).not.toBeVisible({ timeout: 10000 });
       } finally {
-        rmDir(fixtureRoot);
+        fixture.cleanup();
       }
     }
   });
@@ -400,14 +380,13 @@ test.describe('Hydration race regression', () => {
       await route.continue();
     });
 
-    const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'diffscribe-e2e-hydration-multi-'));
+    const fixtures: ReturnType<typeof createGitFixture>[] = [];
     const names: string[] = [];
-    const repos: string[] = [];
     try {
       for (let i = 0; i < 3; i++) {
-        const repo = path.join(fixtureRoot, `ws-${i}`);
-        createGitRepo(repo);
-        repos.push(repo);
+        const fixture = createGitFixture('diffscribe-e2e-hydration-multi-');
+        initRepo(fixture);
+        fixtures.push(fixture);
         names.push(`E2E-HydrMulti-${Date.now()}-${i}`);
       }
 
@@ -415,7 +394,7 @@ test.describe('Hydration race regression', () => {
       const formLocator = page.locator('[data-testid="open-workspace-form"]');
 
       for (let i = 0; i < 3; i++) {
-        await registerWorkspace(page, repos[i], names[i]);
+        await registerWorkspace(page, fixtures[i].repoPath, names[i]);
 
         // After registration, the form must be closed (no state leak)
         await expect(async () => {
@@ -437,7 +416,7 @@ test.describe('Hydration race regression', () => {
       // After all registrations, the form must still be closed
       await expect(formLocator).toBeHidden({ timeout: 5000 });
     } finally {
-      rmDir(fixtureRoot);
+      for (const f of fixtures) f.cleanup();
     }
   });
 });

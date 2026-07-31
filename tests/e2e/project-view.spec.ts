@@ -1,29 +1,24 @@
-import { execSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 
-import { expect, test } from '@playwright/test';
-
+import { expect, test } from './fixtures';
+import { createGitFixture } from './helpers/git-fixture';
 import { waitForHydration } from './helpers/hydration';
+import { registerAndActivate } from './helpers/register-workspace';
 import { resetDb } from './helpers/reset-db';
 
-function mkTempDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'diffscribe-e2e-pv-'));
-}
-
-function createGitRepo(dir: string): void {
-  fs.mkdirSync(dir, { recursive: true });
-  execSync('git init', { cwd: dir, stdio: 'pipe' });
-  execSync('git config user.email "e2e@test.com"', { cwd: dir, stdio: 'pipe' });
-  execSync('git config user.name "E2E Test"', { cwd: dir, stdio: 'pipe' });
+function makeProjectRepo(fixture: {
+  repoPath: string;
+  runGit(args: readonly string[]): void;
+}): void {
+  const repoDir = fixture.repoPath;
 
   // Root files
-  fs.writeFileSync(path.join(dir, 'README.md'), '# Project\n\nRoot readme content.');
-  fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'test' }, null, 2));
+  fs.writeFileSync(path.join(repoDir, 'README.md'), '# Project\n\nRoot readme content.');
+  fs.writeFileSync(path.join(repoDir, 'package.json'), JSON.stringify({ name: 'test' }, null, 2));
 
   // Nested directory
-  const srcDir = path.join(dir, 'src');
+  const srcDir = path.join(repoDir, 'src');
   fs.mkdirSync(srcDir, { recursive: true });
   fs.writeFileSync(path.join(srcDir, 'index.ts'), 'export const greeting = "hello";\n');
   fs.writeFileSync(
@@ -39,61 +34,13 @@ function createGitRepo(dir: string): void {
     'export function Button() {\n  return <button>Click</button>;\n}\n',
   );
 
-  execSync('git add .', { cwd: dir, stdio: 'pipe' });
-  execSync('git commit -m "initial"', { cwd: dir, stdio: 'pipe' });
+  fixture.runGit(['add', '.']);
+  fixture.runGit(['commit', '-m', 'initial']);
 
   // Create modified and untracked files for change indicators
-  fs.appendFileSync(path.join(dir, 'README.md'), '\n// modified content\n');
-  fs.writeFileSync(path.join(dir, 'scratch.ts'), '// untracked file\n');
+  fs.appendFileSync(path.join(repoDir, 'README.md'), '\n// modified content\n');
+  fs.writeFileSync(path.join(repoDir, 'scratch.ts'), '// untracked file\n');
   fs.writeFileSync(path.join(srcDir, 'new-file.ts'), '// new tracked file\n');
-}
-
-function rmDir(dir: string): void {
-  if (fs.existsSync(dir)) {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-}
-
-/**
- * Register a workspace, select it, and wait for activation.
- * Does NOT click the Git tab (avoids registerAndSelectWorkspace's assumption).
- */
-async function registerAndActivate(
-  page: import('@playwright/test').Page,
-  repoPath: string,
-  name: string,
-): Promise<void> {
-  await waitForHydration(page);
-
-  const toggle = page.getByTestId('open-workspace-toggle');
-  if (
-    !(await page
-      .locator('[data-testid="open-workspace-form"]')
-      .isVisible()
-      .catch(() => false))
-  ) {
-    await toggle.click();
-  }
-
-  await page.waitForSelector('[data-testid="open-workspace-form"]', {
-    state: 'visible',
-    timeout: 10000,
-  });
-
-  await page.fill('#ws-path', repoPath);
-  await page.fill('#ws-name', name);
-  await page.click('#open-workspace-form button[type="submit"]');
-  await page.waitForLoadState('networkidle');
-
-  // Select the workspace to activate it
-  const wsItem = page.locator(`#workspace-sidebar li:has-text("${name}")`).first();
-  await expect(wsItem).toBeVisible({ timeout: 10000 });
-
-  const selectBtn = wsItem.getByRole('button', { name: /Select/ });
-  await expect(selectBtn).toBeVisible({ timeout: 5000 });
-  await selectBtn.click();
-
-  await page.waitForLoadState('networkidle');
 }
 
 test.describe('Project view — tree and source viewer (PROJECT-VIEW-UI-01)', () => {
@@ -106,13 +53,13 @@ test.describe('Project view — tree and source viewer (PROJECT-VIEW-UI-01)', ()
   test('PROJECT-VIEW-UI-01: Project tab shows tree with files and directories', async ({
     page,
   }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture('diffscribe-e2e-pv-');
     try {
-      createGitRepo(repoDir);
-      await registerAndActivate(page, repoDir, `PV-Tree-${Date.now()}`);
+      makeProjectRepo(fixture);
+      await registerAndActivate(page, fixture.repoPath, `PV-Tree-${Date.now()}`);
       await page.reload();
-      await page.waitForLoadState('networkidle');
+      // Re-verify Svelte 5 hydration after reload before any delegated-handler clicks
+      await waitForHydration(page);
 
       // Open Project tab
       const rail = page.locator('[data-testid="rail-tabs"]');
@@ -128,18 +75,18 @@ test.describe('Project view — tree and source viewer (PROJECT-VIEW-UI-01)', ()
       await expect(projectTree.locator('text=README.md')).toBeVisible({ timeout: 5000 });
       await expect(projectTree.locator('text=src')).toBeVisible();
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('PROJECT-VIEW-UI-01: Nested directories are expandable', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture('diffscribe-e2e-pv-');
     try {
-      createGitRepo(repoDir);
-      await registerAndActivate(page, repoDir, `PV-Nest-${Date.now()}`);
+      makeProjectRepo(fixture);
+      await registerAndActivate(page, fixture.repoPath, `PV-Nest-${Date.now()}`);
       await page.reload();
-      await page.waitForLoadState('networkidle');
+      // Re-verify Svelte 5 hydration after reload before any delegated-handler clicks
+      await waitForHydration(page);
 
       // Open Project tab
       const projectTab = page.locator('[data-testid="rail-tabs"] [role="tab"]').nth(1);
@@ -172,18 +119,18 @@ test.describe('Project view — tree and source viewer (PROJECT-VIEW-UI-01)', ()
       // Children should be hidden
       await expect(projectTree.locator('text=index.ts')).not.toBeVisible();
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('PROJECT-VIEW-UI-01: Changed files show change status indicators', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture('diffscribe-e2e-pv-');
     try {
-      createGitRepo(repoDir);
-      await registerAndActivate(page, repoDir, `PV-Change-${Date.now()}`);
+      makeProjectRepo(fixture);
+      await registerAndActivate(page, fixture.repoPath, `PV-Change-${Date.now()}`);
       await page.reload();
-      await page.waitForLoadState('networkidle');
+      // Re-verify Svelte 5 hydration after reload before any delegated-handler clicks
+      await waitForHydration(page);
 
       // Open Project tab
       const projectTab = page.locator('[data-testid="rail-tabs"] [role="tab"]').nth(1);
@@ -191,10 +138,11 @@ test.describe('Project view — tree and source viewer (PROJECT-VIEW-UI-01)', ()
       const projectTree = page.locator('[data-testid="project-tree"]');
       await expect(projectTree).toBeVisible({ timeout: 8000 });
 
-      // README.md should show a modified indicator
+      // Wait for the tree to finish loading before checking change indicators
       const readmeNode = projectTree
         .locator('[data-testid="tree-node"]', { hasText: 'README.md' })
         .first();
+      await expect(readmeNode).toBeVisible({ timeout: 15000 });
       await expect(readmeNode.locator('[data-testid="change-indicator"]')).toBeVisible();
 
       // scratch.ts should show an untracked indicator
@@ -211,20 +159,20 @@ test.describe('Project view — tree and source viewer (PROJECT-VIEW-UI-01)', ()
       // Check the ancestor tree-node scope
       await expect(pkgNode.locator('[data-testid="change-indicator"]')).not.toBeVisible();
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('PROJECT-VIEW-UI-01: Opening a file from Project tree shows SourceViewer', async ({
     page,
   }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture('diffscribe-e2e-pv-');
     try {
-      createGitRepo(repoDir);
-      await registerAndActivate(page, repoDir, `PV-Source-${Date.now()}`);
+      makeProjectRepo(fixture);
+      await registerAndActivate(page, fixture.repoPath, `PV-Source-${Date.now()}`);
       await page.reload();
-      await page.waitForLoadState('networkidle');
+      // Re-verify Svelte 5 hydration after reload before any delegated-handler clicks
+      await waitForHydration(page);
 
       // Open Project tab
       const projectTab = page.locator('[data-testid="rail-tabs"] [role="tab"]').nth(1);
@@ -232,46 +180,52 @@ test.describe('Project view — tree and source viewer (PROJECT-VIEW-UI-01)', ()
       const projectTree = page.locator('[data-testid="project-tree"]');
       await expect(projectTree).toBeVisible({ timeout: 8000 });
 
-      // Click README.md (a modified file) — opens source viewer
+      // Wait for the tree to finish loading: a loaded tree-node containing README.md
+      // and its file-entry must be visible before clicking (avoids the readiness
+      // race where [data-testid="project-tree"] exists in loading state before
+      // the async /api/workspaces/:id/tree response arrives).
       const readmeNode = projectTree
         .locator('[data-testid="tree-node"]', { hasText: 'README.md' })
         .first();
-      await readmeNode.locator('[data-testid="file-entry"]').click();
+      await expect(readmeNode).toBeVisible({ timeout: 15000 });
+      const fileEntry = readmeNode.locator('[data-testid="file-entry"]');
+      await expect(fileEntry).toBeVisible({ timeout: 5000 });
+      await fileEntry.click();
 
-      // SourceViewer should be visible in the center
-      const sourceViewer = page.locator('[data-testid="source-viewer"]');
-      await expect(sourceViewer).toBeVisible({ timeout: 8000 });
+      // Wait for the source viewer to load: the file-path element proves that
+      // the Svelte reactivity chain (store update → $effect → fetch → re-render)
+      // has completed.  The source-viewer container itself is always present
+      // even in the "no file selected" state, so we wait for the inner element.
+      const filePath = page.locator('[data-testid="source-file-path"]');
+      await expect(filePath).toBeVisible({ timeout: 15000 });
+      await expect(filePath).toContainText('README.md');
 
-      // File path should be shown
-      await expect(sourceViewer.locator('[data-testid="source-file-path"]')).toContainText(
-        'README.md',
-      );
-
-      // Content should be displayed
-      const sourceContent = sourceViewer.locator('[data-testid="source-content"]');
+      // Source viewer content should be displayed
+      const sourceContent = page.locator('[data-testid="source-content"]');
       await expect(sourceContent).toBeVisible();
 
       // The content should contain modified text
       await expect(sourceContent).toContainText('modified content');
 
       // Source viewer is read-only — no textarea or contenteditable
+      const sourceViewer = page.locator('[data-testid="source-viewer"]');
       await expect(sourceViewer.locator('textarea')).not.toBeVisible();
       await expect(sourceViewer.locator('[contenteditable]')).not.toBeVisible();
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('PROJECT-VIEW-UI-01: Source viewer shows line numbers and change markers', async ({
     page,
   }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture('diffscribe-e2e-pv-');
     try {
-      createGitRepo(repoDir);
-      await registerAndActivate(page, repoDir, `PV-Lines-${Date.now()}`);
+      makeProjectRepo(fixture);
+      await registerAndActivate(page, fixture.repoPath, `PV-Lines-${Date.now()}`);
       await page.reload();
-      await page.waitForLoadState('networkidle');
+      // Re-verify Svelte 5 hydration after reload before any delegated-handler clicks
+      await waitForHydration(page);
 
       // Open Project tab
       const projectTab = page.locator('[data-testid="rail-tabs"] [role="tab"]').nth(1);
@@ -279,18 +233,19 @@ test.describe('Project view — tree and source viewer (PROJECT-VIEW-UI-01)', ()
       const projectTree = page.locator('[data-testid="project-tree"]');
       await expect(projectTree).toBeVisible({ timeout: 8000 });
 
-      // Click README.md
+      // Wait for the tree to finish loading before clicking the file entry
       const readmeNode = projectTree
         .locator('[data-testid="tree-node"]', { hasText: 'README.md' })
         .first();
-      await readmeNode.locator('[data-testid="file-entry"]').click();
+      await expect(readmeNode).toBeVisible({ timeout: 15000 });
+      const fileEntry = readmeNode.locator('[data-testid="file-entry"]');
+      await expect(fileEntry).toBeVisible({ timeout: 5000 });
+      await fileEntry.click();
 
+      // Wait for source content to finish loading (observable readiness)
       const sourceViewer = page.locator('[data-testid="source-viewer"]');
-      await expect(sourceViewer).toBeVisible({ timeout: 8000 });
-
-      // Wait for content to finish loading
       const sourceContent = sourceViewer.locator('[data-testid="source-content"]');
-      await expect(sourceContent).toBeVisible({ timeout: 8000 });
+      await expect(sourceContent).toBeVisible({ timeout: 15000 });
 
       // Line numbers should be present
       const lineNumbers = sourceContent.locator('[data-testid="line-number"]');
@@ -302,18 +257,18 @@ test.describe('Project view — tree and source viewer (PROJECT-VIEW-UI-01)', ()
       const markerCount = await changeMarkers.count();
       expect(markerCount).toBeGreaterThanOrEqual(1);
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('PROJECT-VIEW-UI-01: Switching to Git tab shows DiffViewer', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture('diffscribe-e2e-pv-');
     try {
-      createGitRepo(repoDir);
-      await registerAndActivate(page, repoDir, `PV-Git-${Date.now()}`);
+      makeProjectRepo(fixture);
+      await registerAndActivate(page, fixture.repoPath, `PV-Git-${Date.now()}`);
       await page.reload();
-      await page.waitForLoadState('networkidle');
+      // Re-verify Svelte 5 hydration after reload before any delegated-handler clicks
+      await waitForHydration(page);
 
       // Open Project tab and select a file
       const rail = page.locator('[data-testid="rail-tabs"]');
@@ -325,10 +280,13 @@ test.describe('Project view — tree and source viewer (PROJECT-VIEW-UI-01)', ()
       const readmeNode = projectTree
         .locator('[data-testid="tree-node"]', { hasText: 'README.md' })
         .first();
-      await readmeNode.locator('[data-testid="file-entry"]').click();
+      await expect(readmeNode).toBeVisible({ timeout: 15000 });
+      const fileEntry = readmeNode.locator('[data-testid="file-entry"]');
+      await expect(fileEntry).toBeVisible({ timeout: 5000 });
+      await fileEntry.click();
 
-      // Source viewer is visible
-      await expect(page.locator('[data-testid="source-viewer"]')).toBeVisible({ timeout: 8000 });
+      // Wait for source content to load as observable readiness before switching tabs
+      await expect(page.locator('[data-testid="source-content"]')).toBeVisible({ timeout: 15000 });
 
       // Switch to Git tab
       const gitTab = rail.locator('[role="tab"]').nth(2);
@@ -341,7 +299,7 @@ test.describe('Project view — tree and source viewer (PROJECT-VIEW-UI-01)', ()
       const diffViewer = page.locator('[aria-label="Diff viewer"]');
       await expect(diffViewer).toBeVisible({ timeout: 8000 });
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 });

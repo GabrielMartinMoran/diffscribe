@@ -1,32 +1,11 @@
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 
-import { expect, test } from '@playwright/test';
-
+import { expect, test } from './fixtures';
+import { createGitFixture } from './helpers/git-fixture';
 import { registerAndSelectWorkspace, selectRailTab } from './helpers/register-workspace';
 import { resetDb } from './helpers/reset-db';
-
-function mkTempDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'diffscribe-e2e-fl-'));
-}
-
-function createGitRepo(dir: string): void {
-  fs.mkdirSync(dir, { recursive: true });
-  execSync('git init', { cwd: dir, stdio: 'pipe' });
-  execSync('git config user.email "e2e@test.com"', { cwd: dir, stdio: 'pipe' });
-  execSync('git config user.name "E2E Test"', { cwd: dir, stdio: 'pipe' });
-  fs.writeFileSync(path.join(dir, 'README.md'), '# e2e');
-  execSync('git add .', { cwd: dir, stdio: 'pipe' });
-  execSync('git commit -m "init"', { cwd: dir, stdio: 'pipe' });
-}
-
-function rmDir(dir: string): void {
-  if (fs.existsSync(dir)) {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-}
 
 test.describe('File List Panel (E2E)', () => {
   test.beforeEach(async ({ page, request }) => {
@@ -36,10 +15,12 @@ test.describe('File List Panel (E2E)', () => {
   });
 
   test('shows file list with entries for a modified workspace', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
       // Create a modified file
       fs.appendFileSync(path.join(repoDir, 'README.md'), '\n# modified');
       await registerAndSelectWorkspace(page, repoDir, `FL-Mod-${Date.now()}`, 'git');
@@ -55,22 +36,25 @@ test.describe('File List Panel (E2E)', () => {
       const count = await rows.count();
       expect(count).toBeGreaterThanOrEqual(1);
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('shows status badges for different file statuses', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
       // Add a new staged file
       fs.writeFileSync(path.join(repoDir, 'new-file.ts'), 'new');
-      execSync('git add new-file.ts', { cwd: repoDir, stdio: 'pipe' });
+      fixture.runGit(['add', 'new-file.ts']);
       // Delete a tracked file
       fs.writeFileSync(path.join(repoDir, 'rm-file.ts'), 'temp');
-      execSync('git add rm-file.ts && git commit -m "add"', { cwd: repoDir, stdio: 'pipe' });
-      execSync('git rm rm-file.ts', { cwd: repoDir, stdio: 'pipe' });
+      fixture.runGit(['add', 'rm-file.ts']);
+      fixture.runGit(['commit', '-m', 'add']);
+      fixture.runGit(['rm', 'rm-file.ts']);
 
       await registerAndSelectWorkspace(page, repoDir, `FL-Status-${Date.now()}`, 'git');
       await page.reload();
@@ -83,15 +67,17 @@ test.describe('File List Panel (E2E)', () => {
       // Status badges should be present
       await expect(panel.locator('.status-badge').first()).toBeVisible({ timeout: 10000 });
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('shows untracked files in file list', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
       fs.writeFileSync(path.join(repoDir, 'untracked.txt'), 'fresh');
       await registerAndSelectWorkspace(page, repoDir, `FL-Untracked-${Date.now()}`, 'git');
       await page.reload();
@@ -102,22 +88,24 @@ test.describe('File List Panel (E2E)', () => {
       await expect(panel).toBeVisible({ timeout: 8000 });
       await expect(panel).toContainText('untracked.txt', { timeout: 10000 });
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('filters files by path substring', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
       fs.mkdirSync(path.join(repoDir, 'src', 'auth'), { recursive: true });
       fs.writeFileSync(path.join(repoDir, 'src/auth/login.ts'), 'login');
       fs.writeFileSync(path.join(repoDir, 'src/auth/logout.ts'), 'logout');
       fs.mkdirSync(path.join(repoDir, 'docs'), { recursive: true });
       fs.writeFileSync(path.join(repoDir, 'docs/readme.md'), 'docs');
-      execSync('git add .', { cwd: repoDir, stdio: 'pipe' });
-      execSync('git commit -m "add files"', { cwd: repoDir, stdio: 'pipe' });
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'add files']);
       // Modify to create changes
       fs.appendFileSync(path.join(repoDir, 'src/auth/login.ts'), '\nmod');
 
@@ -143,19 +131,22 @@ test.describe('File List Panel (E2E)', () => {
       // docs/readme.md should not be visible
       await expect(panel).not.toContainText('docs/readme.md');
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('sorts files by path', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
       fs.writeFileSync(path.join(repoDir, 'c.ts'), 'c');
       fs.writeFileSync(path.join(repoDir, 'a.ts'), 'a');
       fs.writeFileSync(path.join(repoDir, 'b.ts'), 'b');
-      execSync('git add . && git commit -m "add"', { cwd: repoDir, stdio: 'pipe' });
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'add']);
       // Modify all three
       fs.appendFileSync(path.join(repoDir, 'c.ts'), '\nmod');
       fs.appendFileSync(path.join(repoDir, 'a.ts'), '\nmod');
@@ -191,15 +182,17 @@ test.describe('File List Panel (E2E)', () => {
         expect(idxB).toBeLessThan(idxC);
       }
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('paginates when file count exceeds page size', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
       // Create 51 files
       for (let i = 0; i < 51; i++) {
         fs.writeFileSync(
@@ -207,7 +200,8 @@ test.describe('File List Panel (E2E)', () => {
           `content ${i}`,
         );
       }
-      execSync('git add . && git commit -m "add 51 files"', { cwd: repoDir, stdio: 'pipe' });
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'add 51 files']);
       // Modify all to create diffs
       for (let i = 0; i < 51; i++) {
         fs.appendFileSync(path.join(repoDir, `file${String(i).padStart(3, '0')}.ts`), '\nmod');
@@ -227,17 +221,20 @@ test.describe('File List Panel (E2E)', () => {
       });
       await expect(panel).toContainText('Page 1 of');
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('selects a file row by clicking', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
       fs.writeFileSync(path.join(repoDir, 'main.ts'), 'main');
-      execSync('git add . && git commit -m "add"', { cwd: repoDir, stdio: 'pipe' });
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'add']);
       fs.appendFileSync(path.join(repoDir, 'main.ts'), '\nmod');
 
       await registerAndSelectWorkspace(page, repoDir, `FL-Click-${Date.now()}`, 'git');
@@ -256,19 +253,22 @@ test.describe('File List Panel (E2E)', () => {
       // The row should be highlighted
       await expect(row).toHaveClass(/active/);
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('keyboard navigation selects a file row', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
       for (let i = 0; i < 3; i++) {
         fs.writeFileSync(path.join(repoDir, `file${i}.ts`), `content ${i}`);
       }
-      execSync('git add . && git commit -m "add"', { cwd: repoDir, stdio: 'pipe' });
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'add']);
       for (let i = 0; i < 3; i++) {
         fs.appendFileSync(path.join(repoDir, `file${i}.ts`), '\nmod');
       }
@@ -292,15 +292,17 @@ test.describe('File List Panel (E2E)', () => {
       const secondRow = panel.locator('.file-row').nth(1);
       await expect(secondRow).toHaveClass(/active/);
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('shows empty state when working tree is clean', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
       await registerAndSelectWorkspace(page, repoDir, `FL-Empty-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
@@ -311,21 +313,23 @@ test.describe('File List Panel (E2E)', () => {
       // Empty state should show
       await expect(panel.locator('.panel-state.empty')).toBeVisible({ timeout: 10000 });
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('shows error state for invalid workspace', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
       await registerAndSelectWorkspace(page, repoDir, `FL-Error-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
       await selectRailTab(page, 'git');
       // Invalidate the workspace
-      rmDir(path.join(repoDir, '.git'));
+      fs.rmSync(path.join(repoDir, '.git'), { recursive: true, force: true });
       // Click refresh to trigger error
       const refreshBtn = page
         .locator('#git-context-panel')
@@ -338,17 +342,19 @@ test.describe('File List Panel (E2E)', () => {
         timeout: 10000,
       });
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('file list error state shows Retry button and clicking it attempts re-fetch', async ({
     page,
   }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
       // Add a modified file so the file list has content
       fs.appendFileSync(path.join(repoDir, 'README.md'), '\n# mod');
 
@@ -404,7 +410,7 @@ test.describe('File List Panel (E2E)', () => {
       expect(panelText).not.toContain('node:');
       expect(panelText).not.toContain('.ts:');
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
@@ -419,12 +425,14 @@ test.describe('File List Panel (E2E)', () => {
   });
 
   test('file list does not mutate the repository', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
       fs.appendFileSync(path.join(repoDir, 'README.md'), '\n# mod');
-      const beforeHash = execSync('git rev-parse HEAD', { cwd: repoDir, stdio: 'pipe' })
+      const beforeHash = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoDir, stdio: 'pipe' })
         .toString()
         .trim();
 
@@ -449,17 +457,20 @@ test.describe('File List Panel (E2E)', () => {
         await row.click();
       }
 
-      const afterHash = execSync('git rev-parse HEAD', { cwd: repoDir, stdio: 'pipe' })
+      const afterHash = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoDir, stdio: 'pipe' })
         .toString()
         .trim();
       expect(afterHash).toBe(beforeHash);
 
       // Verify no staged changes were created by file list interactions
-      const status = execSync('git status --porcelain', { cwd: repoDir, stdio: 'pipe' }).toString();
+      const status = execFileSync('git', ['status', '--porcelain'], {
+        cwd: repoDir,
+        stdio: 'pipe',
+      }).toString();
       // Modified files can appear as ' M' in status — verify no new staged entries
       expect(status).not.toContain('A ');
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 });

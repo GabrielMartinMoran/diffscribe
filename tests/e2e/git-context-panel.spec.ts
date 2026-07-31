@@ -1,32 +1,10 @@
-import { execSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 
-import { expect, test } from '@playwright/test';
-
+import { expect, test } from './fixtures';
+import { createGitFixture } from './helpers/git-fixture';
 import { registerAndSelectWorkspace, selectRailTab } from './helpers/register-workspace';
 import { resetDb } from './helpers/reset-db';
-
-function mkTempDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'diffscribe-e2e-git-'));
-}
-
-function createGitRepo(dir: string): void {
-  fs.mkdirSync(dir, { recursive: true });
-  execSync('git init', { cwd: dir, stdio: 'pipe' });
-  execSync('git config user.email "e2e@test.com"', { cwd: dir, stdio: 'pipe' });
-  execSync('git config user.name "E2E Test"', { cwd: dir, stdio: 'pipe' });
-  fs.writeFileSync(path.join(dir, 'README.md'), '# e2e');
-  execSync('git add .', { cwd: dir, stdio: 'pipe' });
-  execSync('git commit -m "init"', { cwd: dir, stdio: 'pipe' });
-}
-
-function rmDir(dir: string): void {
-  if (fs.existsSync(dir)) {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-}
 
 test.describe('Git Context Panel (E2E)', () => {
   test.beforeEach(async ({ page, request }) => {
@@ -49,10 +27,12 @@ test.describe('Git Context Panel (E2E)', () => {
   });
 
   test('shows clean Git status for a clean workspace', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
       await registerAndSelectWorkspace(page, repoDir, `Clean-${Date.now()}`, 'git');
 
       // After activation, verify the git context panel is visible
@@ -63,90 +43,106 @@ test.describe('Git Context Panel (E2E)', () => {
       await expect(panel.locator('.status-clean')).toBeVisible({ timeout: 8000 });
       await expect(panel).toContainText('Clean');
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('shows dirty Git status with unstaged changes', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
       await registerAndSelectWorkspace(page, repoDir, `Dirty-${Date.now()}`, 'git');
 
       // Make unstaged changes
       fs.appendFileSync(path.join(repoDir, 'README.md'), '\n# dirty');
-      await page.reload();
-      await page.waitForLoadState('networkidle');
-      await selectRailTab(page, 'git');
+
+      // Refresh Git context to pick up the changes
+      const refreshBtn = page
+        .locator('#git-context-panel')
+        .getByRole('button', { name: 'Refresh Git context' });
+      await expect(refreshBtn).toBeVisible({ timeout: 10000 });
+      await refreshBtn.click();
 
       const panel = page.locator('#git-context-panel');
       await expect(panel).toBeVisible({ timeout: 10000 });
       await expect(panel.locator('.status-dirty')).toBeVisible({ timeout: 8000 });
       await expect(panel).toContainText('Dirty');
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('shows staged and unstaged file counts', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
       await registerAndSelectWorkspace(page, repoDir, `Staged-${Date.now()}`, 'git');
 
       // Create staged and unstaged changes in a tracked file
       fs.appendFileSync(path.join(repoDir, 'README.md'), '\nstaged');
-      execSync('git add README.md', { cwd: repoDir, stdio: 'pipe' });
+      fixture.runGit(['add', 'README.md']);
       fs.appendFileSync(path.join(repoDir, 'README.md'), '\nunstaged');
 
-      await page.reload();
-      await page.waitForLoadState('networkidle');
-      await selectRailTab(page, 'git');
+      // Refresh Git context to pick up the changes
+      const refreshBtn = page
+        .locator('#git-context-panel')
+        .getByRole('button', { name: 'Refresh Git context' });
+      await expect(refreshBtn).toBeVisible({ timeout: 10000 });
+      await refreshBtn.click();
 
       const panel = page.locator('#git-context-panel');
       await expect(panel).toBeVisible({ timeout: 10000 });
       await expect(panel).toContainText('Staged: 1', { timeout: 8000 });
       await expect(panel).toContainText('Unstaged: 1');
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('shows untracked file count', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
       await registerAndSelectWorkspace(page, repoDir, `Untracked-${Date.now()}`, 'git');
 
       fs.writeFileSync(path.join(repoDir, 'new.txt'), 'new');
-      await page.reload();
-      await page.waitForLoadState('networkidle');
-      await selectRailTab(page, 'git');
+
+      // Refresh Git context to pick up the untracked file
+      const refreshBtn = page
+        .locator('#git-context-panel')
+        .getByRole('button', { name: 'Refresh Git context' });
+      await expect(refreshBtn).toBeVisible({ timeout: 10000 });
+      await refreshBtn.click();
 
       const panel = page.locator('#git-context-panel');
       await expect(panel).toBeVisible({ timeout: 10000 });
       await expect(panel).toContainText('Untracked: 1', { timeout: 8000 });
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('shows local branches with current branch highlighted', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
-      execSync('git checkout -b feat/a', { cwd: repoDir, stdio: 'pipe' });
-      execSync('git checkout -b fix/b', { cwd: repoDir, stdio: 'pipe' });
-      execSync('git checkout master', { cwd: repoDir, stdio: 'pipe' });
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
+      fixture.runGit(['checkout', '-b', 'feat/a']);
+      fixture.runGit(['checkout', '-b', 'fix/b']);
+      fixture.runGit(['checkout', 'master']);
 
       await registerAndSelectWorkspace(page, repoDir, `Branches-${Date.now()}`, 'git');
-      await page.reload();
-      await page.waitForLoadState('networkidle');
-      await selectRailTab(page, 'git');
 
       const panel = page.locator('#git-context-panel');
       await expect(panel).toBeVisible({ timeout: 10000 });
@@ -156,25 +152,24 @@ test.describe('Git Context Panel (E2E)', () => {
       await expect(panel).toContainText('feat/a');
       await expect(panel).toContainText('fix/b');
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('shows recent commits', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
       for (let i = 1; i <= 3; i++) {
         fs.writeFileSync(path.join(repoDir, `file${i}.txt`), `content ${i}`);
-        execSync('git add .', { cwd: repoDir, stdio: 'pipe' });
-        execSync(`git commit -m "commit ${i}"`, { cwd: repoDir, stdio: 'pipe' });
+        fixture.runGit(['add', '.']);
+        fixture.runGit(['commit', '-m', `commit ${i}`]);
       }
 
       await registerAndSelectWorkspace(page, repoDir, `Commits-${Date.now()}`, 'git');
-      await page.reload();
-      await page.waitForLoadState('networkidle');
-      await selectRailTab(page, 'git');
 
       const panel = page.locator('#git-context-panel');
       await expect(panel).toBeVisible({ timeout: 10000 });
@@ -182,24 +177,23 @@ test.describe('Git Context Panel (E2E)', () => {
       await expect(panel.locator('[aria-label="Commit list"]')).toBeVisible({ timeout: 8000 });
       await expect(panel).toContainText('commit 3');
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('filters branches by name', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
-      execSync('git checkout -b feat/login', { cwd: repoDir, stdio: 'pipe' });
-      execSync('git checkout -b feat/signup', { cwd: repoDir, stdio: 'pipe' });
-      execSync('git checkout -b fix/typo', { cwd: repoDir, stdio: 'pipe' });
-      execSync('git checkout master', { cwd: repoDir, stdio: 'pipe' });
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
+      fixture.runGit(['checkout', '-b', 'feat/login']);
+      fixture.runGit(['checkout', '-b', 'feat/signup']);
+      fixture.runGit(['checkout', '-b', 'fix/typo']);
+      fixture.runGit(['checkout', 'master']);
 
       await registerAndSelectWorkspace(page, repoDir, `Filter-${Date.now()}`, 'git');
-      await page.reload();
-      await page.waitForLoadState('networkidle');
-      await selectRailTab(page, 'git');
 
       const panel = page.locator('#git-context-panel');
       await expect(panel).toBeVisible({ timeout: 10000 });
@@ -213,23 +207,22 @@ test.describe('Git Context Panel (E2E)', () => {
       const branchItems = panel.locator('[aria-label="Local branches"] button');
       await expect(branchItems).toHaveCount(2, { timeout: 8000 });
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('filters commits by message', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
-      execSync('git commit --allow-empty -m "Add login"', { cwd: repoDir, stdio: 'pipe' });
-      execSync('git commit --allow-empty -m "Fix typo"', { cwd: repoDir, stdio: 'pipe' });
-      execSync('git commit --allow-empty -m "Refactor auth"', { cwd: repoDir, stdio: 'pipe' });
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
+      fixture.runGit(['commit', '--allow-empty', '-m', 'Add login']);
+      fixture.runGit(['commit', '--allow-empty', '-m', 'Fix typo']);
+      fixture.runGit(['commit', '--allow-empty', '-m', 'Refactor auth']);
 
       await registerAndSelectWorkspace(page, repoDir, `Filter-C-${Date.now()}`, 'git');
-      await page.reload();
-      await page.waitForLoadState('networkidle');
-      await selectRailTab(page, 'git');
 
       const panel = page.locator('#git-context-panel');
       await expect(panel).toBeVisible({ timeout: 10000 });
@@ -241,19 +234,18 @@ test.describe('Git Context Panel (E2E)', () => {
       await expect(panel).toContainText('Add login', { timeout: 3000 });
       await expect(panel).not.toContainText('Fix typo');
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('comparison Base/Target slots are interactive', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
       await registerAndSelectWorkspace(page, repoDir, `Slots-${Date.now()}`, 'git');
-      await page.reload();
-      await page.waitForLoadState('networkidle');
-      await selectRailTab(page, 'git');
 
       const panel = page.locator('#git-context-panel');
       await expect(panel).toBeVisible({ timeout: 10000 });
@@ -266,19 +258,18 @@ test.describe('Git Context Panel (E2E)', () => {
       // Base slot should be active
       await expect(baseSlot).toHaveAttribute('aria-pressed', 'true');
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('manual refresh updates Git status', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
       await registerAndSelectWorkspace(page, repoDir, `Refresh-${Date.now()}`, 'git');
-      await page.reload();
-      await page.waitForLoadState('networkidle');
-      await selectRailTab(page, 'git');
 
       const panel = page.locator('#git-context-panel');
       await expect(panel).toBeVisible({ timeout: 10000 });
@@ -297,22 +288,21 @@ test.describe('Git Context Panel (E2E)', () => {
       // Should show dirty after refresh
       await expect(panel.locator('.status-dirty')).toBeVisible({ timeout: 8000 });
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('shows error state for invalidated workspace with retry action', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
       await registerAndSelectWorkspace(page, repoDir, `Invalidate-${Date.now()}`, 'git');
-      await page.reload();
-      await page.waitForLoadState('networkidle');
-      await selectRailTab(page, 'git');
 
       // Invalidate by removing .git, then use refresh button
-      rmDir(path.join(repoDir, '.git'));
+      fs.rmSync(path.join(repoDir, '.git'), { recursive: true, force: true });
       // Click refresh button to trigger API call and see error
       const refreshBtn = page
         .locator('#git-context-panel')
@@ -332,22 +322,21 @@ test.describe('Git Context Panel (E2E)', () => {
       // the critical assertion is that the Retry action exists and is clickable
       await expect(page.locator('#git-context-panel')).toBeVisible({ timeout: 5000 });
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('error state shows retry action and no raw stack trace', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
       await registerAndSelectWorkspace(page, repoDir, `AdapterErr-${Date.now()}`, 'git');
-      await page.reload();
-      await page.waitForLoadState('networkidle');
-      await selectRailTab(page, 'git');
 
       // Corrupt the repo so the git adapter returns an error
-      rmDir(path.join(repoDir, '.git'));
+      fs.rmSync(path.join(repoDir, '.git'), { recursive: true, force: true });
       const refreshBtn = page
         .locator('#git-context-panel')
         .getByRole('button', { name: 'Refresh Git context' });
@@ -369,7 +358,7 @@ test.describe('Git Context Panel (E2E)', () => {
       const retryBtn = panel.getByRole('button', { name: /retry/i });
       await expect(retryBtn).toBeVisible({ timeout: 5000 });
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
@@ -383,14 +372,13 @@ test.describe('Git Context Panel (E2E)', () => {
   });
 
   test('refresh button is accessible via keyboard', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
       await registerAndSelectWorkspace(page, repoDir, `Kb-${Date.now()}`, 'git');
-      await page.reload();
-      await page.waitForLoadState('networkidle');
-      await selectRailTab(page, 'git');
 
       const panel = page.locator('#git-context-panel');
       await expect(panel).toBeVisible({ timeout: 10000 });
@@ -402,19 +390,18 @@ test.describe('Git Context Panel (E2E)', () => {
       await refreshBtn.focus();
       await expect(refreshBtn).toBeFocused();
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('branch filter input is keyboard accessible', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
       await registerAndSelectWorkspace(page, repoDir, `Kbf-${Date.now()}`, 'git');
-      await page.reload();
-      await page.waitForLoadState('networkidle');
-      await selectRailTab(page, 'git');
 
       const panel = page.locator('#git-context-panel');
       await expect(panel).toBeVisible({ timeout: 10000 });
@@ -428,7 +415,7 @@ test.describe('Git Context Panel (E2E)', () => {
       await page.keyboard.type('master');
       await expect(filterInput).toHaveValue('master');
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 });

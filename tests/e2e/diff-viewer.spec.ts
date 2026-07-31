@@ -1,28 +1,26 @@
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 
-import { expect, test } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 
+import { expect, test } from './fixtures';
+import { createGitFixture } from './helpers/git-fixture';
 import { registerAndSelectWorkspace, selectRailTab } from './helpers/register-workspace';
 import { resetDb } from './helpers/reset-db';
 
-function mkTempDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'diffscribe-e2e-dv-'));
-}
-
-function createGitRepo(dir: string): void {
-  fs.mkdirSync(dir, { recursive: true });
-  execSync('git init', { cwd: dir, stdio: 'pipe' });
-  execSync('git config user.email "e2e@test.com"', { cwd: dir, stdio: 'pipe' });
-  execSync('git config user.name "E2E Test"', { cwd: dir, stdio: 'pipe' });
-  fs.writeFileSync(path.join(dir, 'README.md'), '# e2e');
-  execSync('git add . && git commit -m "init"', { cwd: dir, stdio: 'pipe' });
-}
-
-function rmDir(dir: string): void {
-  if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
+/**
+ * Click a file-row locator and wait for the /file-diff response that the
+ * click triggers.  The response predicate is intentionally status-agnostic
+ * (no resp.status() === 200 filter) so that the DV-Error test which
+ * corrupts .git/HEAD also synchronises on the controlled error response.
+ */
+async function clickAndWaitForDiff(page: Page, fileRow: Locator): Promise<void> {
+  const diffResponse = page.waitForResponse(
+    (resp) => resp.url().includes('/file-diff') && resp.request().method() === 'GET',
+  );
+  await fileRow.click();
+  await diffResponse;
 }
 
 test.describe('Diff Viewer (E2E)', () => {
@@ -35,29 +33,29 @@ test.describe('Diff Viewer (E2E)', () => {
   // ── Core rendering ──
 
   test('shows unified diff with line numbers for a selected file', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
       fs.mkdirSync(path.join(repoDir, 'src'), { recursive: true });
       fs.writeFileSync(path.join(repoDir, 'src', 'app.ts'), 'line1\nline2\nline3\n');
-      execSync('git add . && git commit -m "add"', { cwd: repoDir, stdio: 'pipe' });
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'add']);
       fs.writeFileSync(path.join(repoDir, 'src', 'app.ts'), 'line1\nMODIFIED\nline3\n');
-      execSync('git add src/app.ts', { cwd: repoDir, stdio: 'pipe' });
+      fixture.runGit(['add', 'src/app.ts']);
 
       await registerAndSelectWorkspace(page, repoDir, `DV-Core-${Date.now()}`, 'git');
-      await page.reload();
-      await page.waitForLoadState('networkidle');
-      await selectRailTab(page, 'git');
 
       // Wait for file list to appear
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
 
-      // Click on the modified file
+      // Click on the modified file and wait for the diff response
       const fileRow = fileList.locator('.file-row').filter({ hasText: 'src/app.ts' });
       await expect(fileRow).toBeVisible({ timeout: 10000 });
-      await fileRow.click();
+      await clickAndWaitForDiff(page, fileRow);
 
       // Diff viewer should appear
       const diffViewer = page.locator('.diff-viewer');
@@ -67,28 +65,27 @@ test.describe('Diff Viewer (E2E)', () => {
       // Should contain line numbers
       await expect(diffViewer.locator('.line-number').first()).toBeVisible({ timeout: 10000 });
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('shows added lines prefixed with + and added color', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
       fs.mkdirSync(path.join(repoDir, 'src'), { recursive: true });
       fs.writeFileSync(path.join(repoDir, 'src', 'new.ts'), 'lineA\nlineB\nlineC\n');
-      execSync('git add .', { cwd: repoDir, stdio: 'pipe' });
+      fixture.runGit(['add', '.']);
 
       await registerAndSelectWorkspace(page, repoDir, `DV-Added-${Date.now()}`, 'git');
-      await page.reload();
-      await page.waitForLoadState('networkidle');
-      await selectRailTab(page, 'git');
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
       const fileRow = fileList.locator('.file-row').filter({ hasText: 'src/new.ts' });
-      await fileRow.click();
+      await clickAndWaitForDiff(page, fileRow);
 
       const diffViewer = page.locator('.diff-viewer');
       await expect(diffViewer).toBeVisible({ timeout: 8000 });
@@ -96,28 +93,28 @@ test.describe('Diff Viewer (E2E)', () => {
       // Added lines should have the + prefix and a green-ish color indicator
       await expect(diffViewer.locator('.diff-line-added').first()).toBeVisible({ timeout: 10000 });
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('shows deleted lines prefixed with - and deleted color', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
       fs.writeFileSync(path.join(repoDir, 'rm.ts'), 'line1\nline2\nline3\n');
-      execSync('git add . && git commit -m "add"', { cwd: repoDir, stdio: 'pipe' });
-      execSync('git rm rm.ts', { cwd: repoDir, stdio: 'pipe' });
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'add']);
+      fixture.runGit(['rm', 'rm.ts']);
 
       await registerAndSelectWorkspace(page, repoDir, `DV-Deleted-${Date.now()}`, 'git');
-      await page.reload();
-      await page.waitForLoadState('networkidle');
-      await selectRailTab(page, 'git');
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
       const fileRow = fileList.locator('.file-row').filter({ hasText: 'rm.ts' });
-      await fileRow.click();
+      await clickAndWaitForDiff(page, fileRow);
 
       const diffViewer = page.locator('.diff-viewer');
       await expect(diffViewer).toBeVisible({ timeout: 8000 });
@@ -125,119 +122,117 @@ test.describe('Diff Viewer (E2E)', () => {
         timeout: 10000,
       });
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   // ── File status variants ──
 
   test('shows old and new path for renamed file', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
       fs.writeFileSync(path.join(repoDir, 'old.ts'), 'content');
-      execSync('git add . && git commit -m "add"', { cwd: repoDir, stdio: 'pipe' });
-      execSync('git mv old.ts new.ts', { cwd: repoDir, stdio: 'pipe' });
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'add']);
+      fixture.runGit(['mv', 'old.ts', 'new.ts']);
 
       await registerAndSelectWorkspace(page, repoDir, `DV-Rename-${Date.now()}`, 'git');
-      await page.reload();
-      await page.waitForLoadState('networkidle');
-      await selectRailTab(page, 'git');
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
       const fileRow = fileList.locator('.file-row').filter({ hasText: 'new.ts' });
-      await fileRow.click();
+      await clickAndWaitForDiff(page, fileRow);
 
       const diffViewer = page.locator('.diff-viewer');
       await expect(diffViewer).toBeVisible({ timeout: 8000 });
       await expect(diffViewer).toContainText('old.ts');
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('shows binary file message and no line content', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
       const buf = Buffer.alloc(1024);
       buf[0] = 0;
       fs.writeFileSync(path.join(repoDir, 'logo.png'), buf);
-      execSync('git add . && git commit -m "bin"', { cwd: repoDir, stdio: 'pipe' });
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'bin']);
       buf[128] = 1;
       fs.writeFileSync(path.join(repoDir, 'logo.png'), buf);
-      execSync('git add logo.png', { cwd: repoDir, stdio: 'pipe' });
+      fixture.runGit(['add', 'logo.png']);
 
       await registerAndSelectWorkspace(page, repoDir, `DV-Binary-${Date.now()}`, 'git');
-      await page.reload();
-      await page.waitForLoadState('networkidle');
-      await selectRailTab(page, 'git');
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
       const fileRow = fileList.locator('.file-row').filter({ hasText: 'logo.png' });
-      await fileRow.click();
+      await clickAndWaitForDiff(page, fileRow);
 
       const diffViewer = page.locator('.diff-viewer');
       await expect(diffViewer).toBeVisible({ timeout: 8000 });
       await expect(diffViewer).toContainText(/binary/i);
       await expect(diffViewer.locator('.line-number')).toHaveCount(0);
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('shows empty file message', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
       fs.writeFileSync(path.join(repoDir, 'empty.ts'), '');
-      execSync('git add empty.ts', { cwd: repoDir, stdio: 'pipe' });
+      fixture.runGit(['add', 'empty.ts']);
 
       await registerAndSelectWorkspace(page, repoDir, `DV-Empty-${Date.now()}`, 'git');
-      await page.reload();
-      await page.waitForLoadState('networkidle');
-      await selectRailTab(page, 'git');
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
       const fileRow = fileList.locator('.file-row').filter({ hasText: 'empty.ts' });
-      await fileRow.click();
+      await clickAndWaitForDiff(page, fileRow);
 
       const diffViewer = page.locator('.diff-viewer');
       await expect(diffViewer).toBeVisible({ timeout: 8000 });
       await expect(diffViewer).toContainText(/empty/i);
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('shows untracked file content as added', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
       fs.writeFileSync(path.join(repoDir, 'untracked.ts'), 'fresh content\nline2\n');
 
       await registerAndSelectWorkspace(page, repoDir, `DV-Untracked-${Date.now()}`, 'git');
-      await page.reload();
-      await page.waitForLoadState('networkidle');
-      await selectRailTab(page, 'git');
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
       const fileRow = fileList.locator('.file-row').filter({ hasText: 'untracked.ts' });
-      await fileRow.click();
+      await clickAndWaitForDiff(page, fileRow);
 
       const diffViewer = page.locator('.diff-viewer');
       await expect(diffViewer).toBeVisible({ timeout: 8000 });
       await expect(diffViewer.locator('.diff-line-added').first()).toBeVisible({ timeout: 10000 });
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
@@ -245,41 +240,39 @@ test.describe('Diff Viewer (E2E)', () => {
 
   test('shows loading state while fetching diff', async ({ page }) => {
     // Loading state is transient — observed during manual trigger
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
       fs.appendFileSync(path.join(repoDir, 'README.md'), '\nchanged');
 
       await registerAndSelectWorkspace(page, repoDir, `DV-Loading-${Date.now()}`, 'git');
-      await page.reload();
-      await page.waitForLoadState('networkidle');
-      await selectRailTab(page, 'git');
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
       const fileRow = fileList.locator('.file-row').first();
-      await fileRow.click();
+      await clickAndWaitForDiff(page, fileRow);
       // Loading state briefly appears — verify diff-viewer is present
       const diffViewer = page.locator('.diff-viewer');
       await expect(diffViewer).toBeVisible({ timeout: 8000 });
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('shows error state with retry button when fetch fails', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
       fs.appendFileSync(path.join(repoDir, 'README.md'), '\nchanged');
 
       // Register first with a valid repo
       await registerAndSelectWorkspace(page, repoDir, `DV-Error-${Date.now()}`, 'git');
-      await page.reload();
-      await page.waitForLoadState('networkidle');
-      await selectRailTab(page, 'git');
 
       // Wait for file list to load before corrupting the repo
       const fileList = page.locator('#file-list-panel');
@@ -290,7 +283,7 @@ test.describe('Diff Viewer (E2E)', () => {
       fs.rmSync(path.join(repoDir, '.git', 'HEAD'));
 
       const fileRow = fileList.locator('.file-row').first();
-      await fileRow.click();
+      await clickAndWaitForDiff(page, fileRow);
 
       const diffViewer = page.locator('.diff-viewer');
       await expect(diffViewer).toBeVisible({ timeout: 8000 });
@@ -299,26 +292,19 @@ test.describe('Diff Viewer (E2E)', () => {
       // Retry button
       await expect(diffViewer.getByRole('button', { name: /retry/i })).toBeVisible();
     } finally {
-      // Restore HEAD for cleanup
-      try {
-        fs.writeFileSync(path.join(repoDir, '.git', 'HEAD'), 'ref: refs/heads/master\n');
-      } catch {
-        /* ok */
-      }
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('shows no-file-selected placeholder', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
 
       await registerAndSelectWorkspace(page, repoDir, `DV-Placeholder-${Date.now()}`, 'git');
-      await page.reload();
-      await page.waitForLoadState('networkidle');
-      await selectRailTab(page, 'git');
 
       // Without selecting a file, the diff viewer should show placeholder
       const diffViewer = page.locator('.diff-viewer');
@@ -326,31 +312,29 @@ test.describe('Diff Viewer (E2E)', () => {
       await expect(diffViewer).toContainText(/select a file|no file selected/i);
       await expect(diffViewer.locator('.line-number')).toHaveCount(0);
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   // ── Responsive layout ──
 
   test('shows side-by-side toggle at 900px viewport', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
       fs.appendFileSync(path.join(repoDir, 'README.md'), '\nchanged');
 
-      await registerAndSelectWorkspace(page, repoDir, `DV-Responsive-${Date.now()}`, 'git');
-      await page.reload();
-      await page.waitForLoadState('networkidle');
-      await selectRailTab(page, 'git');
-
-      // Set viewport to >=900px
+      // Set viewport before registration so the git panel loads at this width
       await page.setViewportSize({ width: 1024, height: 768 });
+      await registerAndSelectWorkspace(page, repoDir, `DV-Responsive-${Date.now()}`, 'git');
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
       const fileRow = fileList.locator('.file-row').first();
-      await fileRow.click();
+      await clickAndWaitForDiff(page, fileRow);
 
       const diffViewer = page.locator('.diff-viewer');
       await expect(diffViewer).toBeVisible({ timeout: 8000 });
@@ -359,20 +343,23 @@ test.describe('Diff Viewer (E2E)', () => {
       const toggle = diffViewer.locator('button[aria-pressed]');
       await expect(toggle).toBeVisible({ timeout: 10000 });
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('hides side-by-side toggle below 900px', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
       fs.appendFileSync(path.join(repoDir, 'README.md'), '\nchanged');
 
+      // Register at default viewport where sidebar is visible during hydration.
+      // Then switch to mobile: at 375px the left panel opens as an overlay
+      // drawer, so re-select the git rail to open the overlay.
       await registerAndSelectWorkspace(page, repoDir, `DV-Mobile-${Date.now()}`, 'git');
-      await page.reload();
-      await page.waitForLoadState('networkidle');
 
       await page.setViewportSize({ width: 375, height: 667 });
       await selectRailTab(page, 'git');
@@ -380,7 +367,8 @@ test.describe('Diff Viewer (E2E)', () => {
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
       const fileRow = fileList.locator('.file-row').first();
-      await fileRow.click();
+      await expect(fileRow).toBeVisible({ timeout: 10000 });
+      await clickAndWaitForDiff(page, fileRow);
 
       // Side-by-side toggle should not be visible
       const diffViewer = page.locator('.diff-viewer');
@@ -388,29 +376,28 @@ test.describe('Diff Viewer (E2E)', () => {
       const toggle = diffViewer.locator('button[aria-pressed]');
       await expect(toggle).toBeHidden({ timeout: 10000 });
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   // ── Keyboard ──
 
   test('Ctrl+Shift+D opens diff viewer when file selected', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
       fs.appendFileSync(path.join(repoDir, 'README.md'), '\nchanged');
 
       await registerAndSelectWorkspace(page, repoDir, `DV-Shortcut-${Date.now()}`, 'git');
-      await page.reload();
-      await page.waitForLoadState('networkidle');
-      await selectRailTab(page, 'git');
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
       const fileRow = fileList.locator('.file-row').first();
-      await fileRow.click();
-      // Unselect by clicking again
+      await clickAndWaitForDiff(page, fileRow);
+      // Unselect by clicking again (this toggles selection, no diff request)
       await fileRow.click();
       // Now press Ctrl+Shift+D to re-open
       await page.keyboard.press('Control+Shift+KeyD');
@@ -418,31 +405,33 @@ test.describe('Diff Viewer (E2E)', () => {
       const diffViewer = page.locator('.diff-viewer');
       await expect(diffViewer).toBeVisible({ timeout: 8000 });
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   // ── Read-only guarantee ──
 
   test('manual refresh does not mutate repository', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
       fs.appendFileSync(path.join(repoDir, 'README.md'), '\nchanged');
-      const beforeHash = execSync('git rev-parse HEAD', { cwd: repoDir, stdio: 'pipe' })
+      const beforeHash = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repoDir,
+        stdio: 'pipe',
+      })
         .toString()
         .trim();
 
       await registerAndSelectWorkspace(page, repoDir, `DV-ReadOnly-${Date.now()}`, 'git');
-      await page.reload();
-      await page.waitForLoadState('networkidle');
-      await selectRailTab(page, 'git');
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
       const fileRow = fileList.locator('.file-row').first();
-      await fileRow.click();
+      await clickAndWaitForDiff(page, fileRow);
 
       // Click refresh button if present
       const diffViewer = page.locator('.diff-viewer');
@@ -452,38 +441,47 @@ test.describe('Diff Viewer (E2E)', () => {
         await refreshBtn.click();
       }
 
-      const afterHash = execSync('git rev-parse HEAD', { cwd: repoDir, stdio: 'pipe' })
+      const afterHash = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repoDir,
+        stdio: 'pipe',
+      })
         .toString()
         .trim();
       expect(afterHash).toBe(beforeHash);
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   // ── XSS safety ──
 
   test('renders XSS source content as inert text', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture();
+    const repoDir = fixture.repoPath;
     try {
-      createGitRepo(repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
       fs.mkdirSync(path.join(repoDir, 'src'), { recursive: true });
       fs.writeFileSync(path.join(repoDir, 'src', 'xss.ts'), '<script>alert(1)</script>');
-      execSync('git add .', { cwd: repoDir, stdio: 'pipe' });
+      fixture.runGit(['add', '.']);
 
       await registerAndSelectWorkspace(page, repoDir, `DV-XSS-${Date.now()}`, 'git');
-      await page.reload();
-      await page.waitForLoadState('networkidle');
-      await selectRailTab(page, 'git');
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
       const fileRow = fileList.locator('.file-row').filter({ hasText: 'src/xss.ts' });
-      await fileRow.click();
+      await clickAndWaitForDiff(page, fileRow);
 
       const diffViewer = page.locator('.diff-viewer');
       await expect(diffViewer).toBeVisible({ timeout: 8000 });
+
+      // Wait for the rendered diff content to appear before reading innerHTML.
+      // The /file-diff response barrier (clickAndWaitForDiff) synchronises the
+      // HTTP response but not the DOM rendering of diff lines.  Without this
+      // guard, innerHTML may capture a loading/skeleton state or an empty
+      // placeholder, making the escaped-text assertion racey.
+      await expect(diffViewer.locator('.diff-line-added').first()).toBeVisible({ timeout: 10000 });
 
       // Check that no <script> element exists (content rendered as text)
       const pageContent = await diffViewer.innerHTML();
@@ -491,7 +489,7 @@ test.describe('Diff Viewer (E2E)', () => {
       // The text should be visible in escaped form
       await expect(diffViewer).toContainText('<script>alert(1)</script>');
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 });

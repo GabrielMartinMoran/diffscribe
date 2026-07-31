@@ -1,10 +1,9 @@
-import { execSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 
-import { expect, test } from '@playwright/test';
-
+import { expect, test } from './fixtures';
+import { createGitFixture } from './helpers/git-fixture';
+import { waitForHydration } from './helpers/hydration';
 import {
   registerAndSelectWorkspace,
   selectRailTab,
@@ -12,21 +11,10 @@ import {
 } from './helpers/register-workspace';
 import { resetDb } from './helpers/reset-db';
 
-function mkTempDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'diffscribe-e2e-rv-'));
-}
-
-function createGitRepo(dir: string): void {
-  fs.mkdirSync(dir, { recursive: true });
-  execSync('git init', { cwd: dir, stdio: 'pipe' });
-  execSync('git config user.email "e2e@test.com"', { cwd: dir, stdio: 'pipe' });
-  execSync('git config user.name "E2E Test"', { cwd: dir, stdio: 'pipe' });
-  fs.writeFileSync(path.join(dir, 'README.md'), '# e2e');
-  execSync('git add . && git commit -m "init"', { cwd: dir, stdio: 'pipe' });
-}
-
-function rmDir(dir: string): void {
-  if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
+function initRepo(fixture: { repoPath: string; runGit(args: readonly string[]): void }): void {
+  fs.writeFileSync(path.join(fixture.repoPath, 'README.md'), '# e2e');
+  fixture.runGit(['add', '.']);
+  fixture.runGit(['commit', '-m', 'init']);
 }
 
 test.describe('Review Lifecycle (E2E)', () => {
@@ -37,15 +25,15 @@ test.describe('Review Lifecycle (E2E)', () => {
   });
 
   test('shows New Review button when no active review', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture('diffscribe-e2e-rv-');
     try {
-      createGitRepo(repoDir);
-      fs.appendFileSync(path.join(repoDir, 'README.md'), '\nchanged');
+      initRepo(fixture);
+      fs.appendFileSync(path.join(fixture.repoPath, 'README.md'), '\nchanged');
 
-      await registerAndSelectWorkspace(page, repoDir, `RV-New-${Date.now()}`, 'git');
+      await registerAndSelectWorkspace(page, fixture.repoPath, `RV-New-${Date.now()}`, 'git');
       await page.reload();
-      await page.waitForLoadState('networkidle');
+      // Re-verify Svelte 5 hydration after reload before any delegated-handler clicks
+      await waitForHydration(page);
       // Right panel resets to Comments on reload; select Review to see #review-panel
       await selectRightPanelTab(page, 'review');
 
@@ -56,23 +44,24 @@ test.describe('Review Lifecycle (E2E)', () => {
       const newBtn = reviewPanel.getByRole('button', { name: /new review/i });
       await expect(newBtn).toBeVisible({ timeout: 3000 });
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('creates a review draft and shows it active', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture('diffscribe-e2e-rv-');
     try {
-      createGitRepo(repoDir);
-      fs.writeFileSync(path.join(repoDir, 'a.ts'), 'a');
-      fs.writeFileSync(path.join(repoDir, 'b.ts'), 'b');
-      execSync('git add . && git commit -m "add files"', { cwd: repoDir, stdio: 'pipe' });
-      fs.appendFileSync(path.join(repoDir, 'a.ts'), '\nmod');
+      initRepo(fixture);
+      fs.writeFileSync(path.join(fixture.repoPath, 'a.ts'), 'a');
+      fs.writeFileSync(path.join(fixture.repoPath, 'b.ts'), 'b');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'add files']);
+      fs.appendFileSync(path.join(fixture.repoPath, 'a.ts'), '\nmod');
 
-      await registerAndSelectWorkspace(page, repoDir, `RV-Create-${Date.now()}`, 'git');
+      await registerAndSelectWorkspace(page, fixture.repoPath, `RV-Create-${Date.now()}`, 'git');
       await page.reload();
-      await page.waitForLoadState('networkidle');
+      // Re-verify Svelte 5 hydration after reload before any delegated-handler clicks
+      await waitForHydration(page);
       // Right panel resets to Comments on reload; select Review to see #review-panel
       await selectRightPanelTab(page, 'review');
 
@@ -82,30 +71,29 @@ test.describe('Review Lifecycle (E2E)', () => {
       const newBtn = reviewPanel.getByRole('button', { name: /new review/i });
       await newBtn.click();
       // Wait for page reload after creation
-      await page.waitForLoadState('networkidle');
-
       // After reload, select Review tab again and verify active review
       await selectRightPanelTab(page, 'review');
       await expect(reviewPanel.locator('.review-active')).toBeVisible({ timeout: 8000 });
       await expect(reviewPanel).toContainText(/draft/i);
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('completes a review and shows completed in list after reload', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture('diffscribe-e2e-rv-');
     try {
-      createGitRepo(repoDir);
-      fs.writeFileSync(path.join(repoDir, 'a.ts'), 'a');
-      execSync('git add . && git commit -m "add"', { cwd: repoDir, stdio: 'pipe' });
-      fs.appendFileSync(path.join(repoDir, 'a.ts'), '\nmod');
+      initRepo(fixture);
+      fs.writeFileSync(path.join(fixture.repoPath, 'a.ts'), 'a');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'add']);
+      fs.appendFileSync(path.join(fixture.repoPath, 'a.ts'), '\nmod');
 
-      await registerAndSelectWorkspace(page, repoDir, `RV-Complete-${Date.now()}`, 'git');
+      await registerAndSelectWorkspace(page, fixture.repoPath, `RV-Complete-${Date.now()}`, 'git');
       // Verify workspace is loaded — use goto instead of reload to ensure clean state
       await page.goto('/');
-      await page.waitForLoadState('networkidle');
+      // Re-verify Svelte 5 hydration after goto before any delegated-handler clicks
+      await waitForHydration(page);
       // Right panel resets to Comments on goto; select Review to see #review-panel
       await selectRightPanelTab(page, 'review');
 
@@ -114,7 +102,6 @@ test.describe('Review Lifecycle (E2E)', () => {
         .locator('#review-panel')
         .getByRole('button', { name: /new review/i })
         .click();
-      await page.waitForLoadState('networkidle');
       // After creation the page reloads; select Review tab again
       await selectRightPanelTab(page, 'review');
       await page
@@ -137,8 +124,7 @@ test.describe('Review Lifecycle (E2E)', () => {
         .getByRole('button', { name: /yes, complete/i })
         .click();
 
-      // Page reloads automatically via onReviewChange. Wait for fresh page.
-      await page.waitForLoadState('networkidle');
+      // Page reloads automatically via onReviewChange.
       // After completion reload, select Review tab again
       await selectRightPanelTab(page, 'review');
       // Confirm Svelte hydration by waiting for recognizable text
@@ -163,23 +149,24 @@ test.describe('Review Lifecycle (E2E)', () => {
         { timeout: 3000 },
       );
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('shows reviewed markers in file list for active review', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture('diffscribe-e2e-rv-');
     try {
-      createGitRepo(repoDir);
-      fs.writeFileSync(path.join(repoDir, 'a.ts'), 'a');
-      fs.writeFileSync(path.join(repoDir, 'b.ts'), 'b');
-      execSync('git add . && git commit -m "add"', { cwd: repoDir, stdio: 'pipe' });
-      fs.appendFileSync(path.join(repoDir, 'a.ts'), '\nmod');
+      initRepo(fixture);
+      fs.writeFileSync(path.join(fixture.repoPath, 'a.ts'), 'a');
+      fs.writeFileSync(path.join(fixture.repoPath, 'b.ts'), 'b');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'add']);
+      fs.appendFileSync(path.join(fixture.repoPath, 'a.ts'), '\nmod');
 
-      await registerAndSelectWorkspace(page, repoDir, `RV-Marker-${Date.now()}`, 'git');
+      await registerAndSelectWorkspace(page, fixture.repoPath, `RV-Marker-${Date.now()}`, 'git');
       await page.reload();
-      await page.waitForLoadState('networkidle');
+      // Re-verify Svelte 5 hydration after reload before any delegated-handler clicks
+      await waitForHydration(page);
       await selectRailTab(page, 'git');
       // Right panel resets to Comments on reload; select Review to see #review-panel
       await selectRightPanelTab(page, 'review');
@@ -187,7 +174,6 @@ test.describe('Review Lifecycle (E2E)', () => {
       const reviewPanel = page.locator('#review-panel');
       await expect(reviewPanel).toBeVisible({ timeout: 10000 });
       await reviewPanel.getByRole('button', { name: /new review/i }).click();
-      await page.waitForLoadState('networkidle');
 
       // After page reload, select Review tab again and verify active review
       await selectRightPanelTab(page, 'review');
@@ -206,20 +192,20 @@ test.describe('Review Lifecycle (E2E)', () => {
       const count = await unreviewedMarkers.count();
       expect(count).toBeGreaterThanOrEqual(1);
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('no active review hides review markers in file list', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture('diffscribe-e2e-rv-');
     try {
-      createGitRepo(repoDir);
-      fs.appendFileSync(path.join(repoDir, 'README.md'), '\nchanged');
+      initRepo(fixture);
+      fs.appendFileSync(path.join(fixture.repoPath, 'README.md'), '\nchanged');
 
-      await registerAndSelectWorkspace(page, repoDir, `RV-NoMarker-${Date.now()}`, 'git');
+      await registerAndSelectWorkspace(page, fixture.repoPath, `RV-NoMarker-${Date.now()}`, 'git');
       await page.reload();
-      await page.waitForLoadState('networkidle');
+      // Re-verify Svelte 5 hydration after reload before any delegated-handler clicks
+      await waitForHydration(page);
       await selectRailTab(page, 'git');
 
       const fileList = page.locator('#file-list-panel');
@@ -229,20 +215,20 @@ test.describe('Review Lifecycle (E2E)', () => {
       const reviewCells = fileList.locator('.review-cell');
       await expect(reviewCells).toHaveCount(0);
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('shows review list with completed reviews', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture('diffscribe-e2e-rv-');
     try {
-      createGitRepo(repoDir);
-      fs.appendFileSync(path.join(repoDir, 'README.md'), '\nchanged');
+      initRepo(fixture);
+      fs.appendFileSync(path.join(fixture.repoPath, 'README.md'), '\nchanged');
 
-      await registerAndSelectWorkspace(page, repoDir, `RV-List-${Date.now()}`, 'git');
+      await registerAndSelectWorkspace(page, fixture.repoPath, `RV-List-${Date.now()}`, 'git');
       await page.reload();
-      await page.waitForLoadState('networkidle');
+      // Re-verify Svelte 5 hydration after reload before any delegated-handler clicks
+      await waitForHydration(page);
       // Right panel resets to Comments on reload; select Review to see #review-panel
       await selectRightPanelTab(page, 'review');
 
@@ -251,7 +237,6 @@ test.describe('Review Lifecycle (E2E)', () => {
         .locator('#review-panel')
         .getByRole('button', { name: /new review/i })
         .click();
-      await page.waitForLoadState('networkidle');
       // After creation the page reloads; select Review tab again
       await selectRightPanelTab(page, 'review');
 
@@ -274,9 +259,7 @@ test.describe('Review Lifecycle (E2E)', () => {
         .getByRole('button', { name: /yes, complete/i })
         .click();
 
-      // Page reloads. Wait for it to settle and hydrate.
-      await page.waitForLoadState('networkidle');
-      // After completion reload, select Review tab again
+      // Page reloads. After completion reload, select Review tab again
       await selectRightPanelTab(page, 'review');
       await page.locator('#review-panel').waitFor({ state: 'visible', timeout: 8000 });
       await expect(page.locator('#review-panel')).toContainText(
@@ -294,7 +277,7 @@ test.describe('Review Lifecycle (E2E)', () => {
         { timeout: 3000 },
       );
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 });
@@ -307,22 +290,21 @@ test.describe('Review Cascade and Reset (E2E)', () => {
   });
 
   test('reset removes all reviews', async ({ page, request }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture('diffscribe-e2e-rv-');
     try {
-      createGitRepo(repoDir);
-      fs.appendFileSync(path.join(repoDir, 'README.md'), '\nchanged');
+      initRepo(fixture);
+      fs.appendFileSync(path.join(fixture.repoPath, 'README.md'), '\nchanged');
 
-      await registerAndSelectWorkspace(page, repoDir, `RV-Reset-${Date.now()}`, 'git');
+      await registerAndSelectWorkspace(page, fixture.repoPath, `RV-Reset-${Date.now()}`, 'git');
       await page.reload();
-      await page.waitForLoadState('networkidle');
+      // Re-verify Svelte 5 hydration after reload before any delegated-handler clicks
+      await waitForHydration(page);
       // Right panel resets to Comments on reload; select Review to see #review-panel
       await selectRightPanelTab(page, 'review');
 
       const reviewPanel = page.locator('#review-panel');
       await expect(reviewPanel).toBeVisible({ timeout: 10000 });
       await reviewPanel.getByRole('button', { name: /new review/i }).click();
-      await page.waitForLoadState('networkidle');
       // After creation the page reloads; select Review tab again
       await selectRightPanelTab(page, 'review');
 
@@ -331,14 +313,15 @@ test.describe('Review Cascade and Reset (E2E)', () => {
       // Reset DB
       await resetDb(request);
       await page.reload();
-      await page.waitForLoadState('networkidle');
+      // Re-verify Svelte 5 hydration after reload before any delegated-handler clicks
+      await waitForHydration(page);
       // After reset + reload, select Review tab again
       await selectRightPanelTab(page, 'review');
 
       // After reset, no active review should be shown
       await expect(reviewPanel.locator('.review-placeholder')).toBeVisible({ timeout: 10000 });
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 });

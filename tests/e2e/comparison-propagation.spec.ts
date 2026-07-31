@@ -1,28 +1,15 @@
-import { execSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 
-import { expect, test } from '@playwright/test';
-
+import { expect, test } from './fixtures';
+import { createGitFixture } from './helpers/git-fixture';
 import { registerAndSelectWorkspace, selectRailTab } from './helpers/register-workspace';
 import { resetDb } from './helpers/reset-db';
 
-function mkTempDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'diffscribe-e2e-cp-'));
-}
-
-function createGitRepo(dir: string): void {
-  fs.mkdirSync(dir, { recursive: true });
-  execSync('git init', { cwd: dir, stdio: 'pipe' });
-  execSync('git config user.email "e2e@test.com"', { cwd: dir, stdio: 'pipe' });
-  execSync('git config user.name "E2E Test"', { cwd: dir, stdio: 'pipe' });
-  fs.writeFileSync(path.join(dir, 'README.md'), '# e2e');
-  execSync('git add . && git commit -m "init"', { cwd: dir, stdio: 'pipe' });
-}
-
-function rmDir(dir: string): void {
-  if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
+function initRepo(fixture: { repoPath: string; runGit(args: readonly string[]): void }): void {
+  fs.writeFileSync(path.join(fixture.repoPath, 'README.md'), '# e2e');
+  fixture.runGit(['add', '.']);
+  fixture.runGit(['commit', '-m', 'init']);
 }
 
 test.describe('Comparison Propagation (E2E)', () => {
@@ -33,13 +20,12 @@ test.describe('Comparison Propagation (E2E)', () => {
   });
 
   test('file list and diff viewer share the same default comparison', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture('diffscribe-e2e-cp-');
     try {
-      createGitRepo(repoDir);
-      fs.appendFileSync(path.join(repoDir, 'README.md'), '\n# changed');
+      initRepo(fixture);
+      fs.appendFileSync(path.join(fixture.repoPath, 'README.md'), '\n# changed');
 
-      await registerAndSelectWorkspace(page, repoDir, `CP-Default-${Date.now()}`, 'git');
+      await registerAndSelectWorkspace(page, fixture.repoPath, `CP-Default-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
       await selectRailTab(page, 'git');
@@ -74,25 +60,25 @@ test.describe('Comparison Propagation (E2E)', () => {
       await expect(fileList).toBeVisible();
       await expect(diffViewer).toBeVisible();
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 
   test('changing base updates both panels and persists comparison', async ({ page }) => {
-    const fixtureDir = mkTempDir();
-    const repoDir = path.join(fixtureDir, 'repo');
+    const fixture = createGitFixture('diffscribe-e2e-cp-');
     try {
-      createGitRepo(repoDir);
+      initRepo(fixture);
       // Create another branch with committed content
-      execSync('git checkout -b feature-branch', { cwd: repoDir, stdio: 'pipe' });
-      fs.writeFileSync(path.join(repoDir, 'feature.txt'), 'feature content');
-      execSync('git add . && git commit -m "feature"', { cwd: repoDir, stdio: 'pipe' });
-      execSync('git checkout master', { cwd: repoDir, stdio: 'pipe' });
+      fixture.runGit(['checkout', '-b', 'feature-branch']);
+      fs.writeFileSync(path.join(fixture.repoPath, 'feature.txt'), 'feature content');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'feature']);
+      fixture.runGit(['checkout', 'master']);
 
       // Modify working tree for visibility
-      fs.appendFileSync(path.join(repoDir, 'README.md'), '\n# modified');
+      fs.appendFileSync(path.join(fixture.repoPath, 'README.md'), '\n# modified');
 
-      await registerAndSelectWorkspace(page, repoDir, `CP-Change-${Date.now()}`, 'git');
+      await registerAndSelectWorkspace(page, fixture.repoPath, `CP-Change-${Date.now()}`, 'git');
       await page.reload();
       await page.waitForLoadState('networkidle');
       await selectRailTab(page, 'git');
@@ -132,7 +118,7 @@ test.describe('Comparison Propagation (E2E)', () => {
       const rowCount = await rows.count();
       expect(rowCount).toBeGreaterThanOrEqual(0);
     } finally {
-      rmDir(fixtureDir);
+      fixture.cleanup();
     }
   });
 });

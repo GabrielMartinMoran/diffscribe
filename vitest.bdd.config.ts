@@ -39,6 +39,7 @@ export default defineConfig({
       'tests/steps/a11y-observation-card.steps.ts',
       'tests/steps/test-db-isolation.steps.ts',
       'tests/steps/ui-redesign.steps.ts',
+      'tests/steps/e2e-helper-timing.steps.ts',
     ],
   },
 });

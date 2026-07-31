@@ -1,28 +1,17 @@
-import { execSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 
 import type { Page } from '@playwright/test';
-import { expect, test } from '@playwright/test';
 
+import { expect, test } from './fixtures';
+import { createGitFixture } from './helpers/git-fixture';
 import { waitForHydration } from './helpers/hydration';
 import { resetDb } from './helpers/reset-db';
 
-function createGitRepo(dir: string): void {
-  fs.mkdirSync(dir, { recursive: true });
-  execSync('git init', { cwd: dir, stdio: 'pipe' });
-  execSync('git config user.email "e2e@test.com"', { cwd: dir, stdio: 'pipe' });
-  execSync('git config user.name "E2E Test"', { cwd: dir, stdio: 'pipe' });
-  fs.writeFileSync(path.join(dir, 'README.md'), '# e2e');
-  execSync('git add .', { cwd: dir, stdio: 'pipe' });
-  execSync('git commit -m "init"', { cwd: dir, stdio: 'pipe' });
-}
-
-function rmDir(dir: string): void {
-  if (fs.existsSync(dir)) {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
+function initRepo(fixture: { repoPath: string; runGit(args: readonly string[]): void }): void {
+  fs.writeFileSync(path.join(fixture.repoPath, 'README.md'), '# e2e');
+  fixture.runGit(['add', '.']);
+  fixture.runGit(['commit', '-m', 'init']);
 }
 
 async function openWorkspaceForm(page: Page): Promise<void> {
@@ -98,16 +87,15 @@ test.describe('Workspace Registration UI (E2E)', () => {
   });
 
   test('open, invalidate, repair, and validate a workspace', async ({ page }) => {
-    const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'diffscribe-e2e-'));
-    const repoA = path.join(fixtureRoot, 'repo-a');
-    const repoB = path.join(fixtureRoot, 'repo-b');
+    const fixtureA = createGitFixture('diffscribe-e2e-');
+    const fixtureB = createGitFixture('diffscribe-e2e-');
     const uniqueName = `E2E-${Date.now()}`;
 
     try {
       // 1. Create initial repo and register via the form
-      createGitRepo(repoA);
+      initRepo(fixtureA);
       await openWorkspaceForm(page);
-      await page.fill('#ws-path', repoA);
+      await page.fill('#ws-path', fixtureA.repoPath);
       await page.fill('#ws-name', uniqueName);
       await page.click('#open-workspace-form button[type="submit"]');
       await page.waitForLoadState('networkidle');
@@ -118,13 +106,13 @@ test.describe('Workspace Registration UI (E2E)', () => {
       await expect(wsItem.locator('.status-dot.status-valid')).toBeVisible();
 
       // 3. Invalidate by removing the repo
-      rmDir(repoA);
+      fixtureA.cleanup();
       await page.reload();
       await page.waitForLoadState('networkidle');
       await expect(wsItem.locator('.invalid-badge')).toBeVisible();
 
       // 4. Repair: create new repo and use the in-UI Repair action
-      createGitRepo(repoB);
+      initRepo(fixtureB);
 
       // Click the Repair button (only visible for invalid workspaces)
       const repairBtn = wsItem.getByRole('button', { name: /Repair/ });
@@ -136,7 +124,7 @@ test.describe('Workspace Registration UI (E2E)', () => {
         state: 'visible',
         timeout: 10000,
       });
-      await page.fill('[data-repair-form] input[name="newPath"]', repoB);
+      await page.fill('[data-repair-form] input[name="newPath"]', fixtureB.repoPath);
       await page.click('[data-repair-form] .save-btn');
 
       // Wait for repair form to close and sidebar to update
@@ -148,24 +136,24 @@ test.describe('Workspace Registration UI (E2E)', () => {
       await expect(wsItem.locator('.status-dot.status-valid')).toBeVisible();
       await expect(wsItem.locator('.invalid-badge')).toHaveCount(0);
     } finally {
-      rmDir(fixtureRoot);
+      fixtureA.cleanup();
+      fixtureB.cleanup();
     }
   });
 
   test('form closes after successful workspace registration', async ({ page }) => {
-    const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'diffscribe-e2e-'));
-    const repo = path.join(fixtureRoot, 'repo');
+    const fixture = createGitFixture('diffscribe-e2e-');
     const uniqueName = `E2E-Close-${Date.now()}`;
 
     try {
-      createGitRepo(repo);
+      initRepo(fixture);
 
       // Open the form
       await openWorkspaceForm(page);
       await expect(page.locator('[data-testid="open-workspace-form"]')).toBeVisible();
 
       // Fill and submit
-      await page.fill('#ws-path', repo);
+      await page.fill('#ws-path', fixture.repoPath);
       await page.fill('#ws-name', uniqueName);
       await page.click('#open-workspace-form button[type="submit"]');
 
@@ -179,22 +167,21 @@ test.describe('Workspace Registration UI (E2E)', () => {
       await expect(toggle).toBeVisible();
       await expect(toggle).toHaveText(/Open Workspace/i);
     } finally {
-      rmDir(fixtureRoot);
+      fixture.cleanup();
     }
   });
 
   test('sequential workspace registrations open fresh forms', async ({ page }) => {
-    const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'diffscribe-e2e-'));
-    const repo1 = path.join(fixtureRoot, 'ws-1');
-    const repo2 = path.join(fixtureRoot, 'ws-2');
+    const fixture1 = createGitFixture('diffscribe-e2e-');
+    const fixture2 = createGitFixture('diffscribe-e2e-');
     const name1 = `E2E-Seq1-${Date.now()}`;
     const name2 = `E2E-Seq2-${Date.now()}`;
 
     try {
       // First registration
-      createGitRepo(repo1);
+      initRepo(fixture1);
       await openWorkspaceForm(page);
-      await page.fill('#ws-path', repo1);
+      await page.fill('#ws-path', fixture1.repoPath);
       await page.fill('#ws-name', name1);
       await page.click('#open-workspace-form button[type="submit"]');
       await expect(page.locator('[data-testid="open-workspace-form"]')).toBeHidden({
@@ -202,7 +189,7 @@ test.describe('Workspace Registration UI (E2E)', () => {
       });
 
       // Second registration — form must be fresh (empty inputs)
-      createGitRepo(repo2);
+      initRepo(fixture2);
       await openWorkspaceForm(page);
       await expect(page.locator('[data-testid="open-workspace-form"]')).toBeVisible();
 
@@ -213,7 +200,7 @@ test.describe('Workspace Registration UI (E2E)', () => {
       await expect(nameInput).toHaveValue('');
 
       // Fill and submit second
-      await pathInput.fill(repo2);
+      await pathInput.fill(fixture2.repoPath);
       await nameInput.fill(name2);
       await page.click('#open-workspace-form button[type="submit"]');
       await expect(page.locator('[data-testid="open-workspace-form"]')).toBeHidden({
@@ -224,7 +211,8 @@ test.describe('Workspace Registration UI (E2E)', () => {
       await expect(page.locator(`#workspace-sidebar li:has-text("${name1}")`)).toBeVisible();
       await expect(page.locator(`#workspace-sidebar li:has-text("${name2}")`)).toBeVisible();
     } finally {
-      rmDir(fixtureRoot);
+      fixture1.cleanup();
+      fixture2.cleanup();
     }
   });
 });
