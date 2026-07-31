@@ -1,53 +1,53 @@
 # DiffScribe — AGENTS.md
 
-Todo agente que trabaje en este repositorio debe leer este documento antes de
-tocar código. Define las reglas del proyecto, los documentos fuente de verdad y
-las skills requeridas.
+Every agent working on this repository must read this document before touching
+code. It defines the project rules, the source-of-truth documents, and the
+required skills.
 
 ---
 
-## Documentación fuente
+## Source documentation
 
-Estos documentos contienen la verdad actual del proyecto. Cualquier agente debe
-consultarlos antes de implementar, revisar o planificar:
+These documents contain the current truth of the project. Every agent must
+consult them before implementing, reviewing, or planning:
 
-- [Product Requirements Document](docs/PRD.md) — requisitos de producto,
-  conceptos centrales, etapas y decisiones tomadas
-- [Arquitectura](docs/architecture.md) — stack, capas, flujo de datos,
-  decisiones arquitectónicas y CI/QA
-- [Guía de diseño](docs/design.md) — tokens CSS, layout, breakpoints,
-  responsive, accesibilidad y validación visual
-- [Modelo de dominio](docs/domain.md) — lenguaje ubicuo, entidades, value
-  objects, aggregates, repositorios y decisiones abiertas
-- [Versionado](docs/versioning.md) — SemVer, Conventional Commits, releases
-  y migraciones
-- [Changelog](docs/changelog.md) — registro de cambios según Keep a Changelog
-
----
-
-## Documentación viva
-
-Cada tipo de cambio tiene un documento canónico que debe actualizarse:
-
-| Cambio                                   | Documento a actualizar   |
-| ---------------------------------------- | ------------------------ |
-| Nueva decisión de producto o etapa       | `docs/PRD.md`            |
-| Cambio en stack, capas, CI o límites     | `docs/architecture.md`   |
-| Nuevo token, breakpoint o regla visual   | `docs/design.md`         |
-| Nueva entidad, agregado o invariante     | `docs/domain.md`         |
-| Release, breaking change o nueva versión | `docs/versioning.md`     |
-| Cambio liberado en una versión           | `docs/changelog.md`      |
-| Nueva skill, regla o proceso de agente   | `AGENTS.md`              |
-
-La documentación se mantiene en español. Los términos técnicos se escriben en
-inglés.
+- [Product Requirements Document](docs/PRD.md) — product requirements,
+  core concepts, stages, and decisions made
+- [Architecture](docs/architecture.md) — stack, layers, data flow,
+  architectural decisions, and CI/QA
+- [Design guide](docs/design.md) — CSS tokens, layout, breakpoints,
+  responsive, accessibility, and visual validation
+- [Domain model](docs/domain.md) — ubiquitous language, entities, value
+  objects, aggregates, repositories, and open decisions
+- [Versioning](docs/versioning.md) — SemVer, Conventional Commits, releases,
+  and migrations
+- [Changelog](docs/changelog.md) — change log following Keep a Changelog
 
 ---
 
-## Skills locales obligatorias
+## Living documentation
 
-Todo agente debe cargar las siguientes skills del repositorio antes de tocar
-código. La ruta de cada skill es relativa a la raíz del proyecto:
+Every type of change has a canonical document that must be updated:
+
+| Change                                    | Document to update        |
+| ----------------------------------------- | ------------------------- |
+| New product decision or stage             | `docs/PRD.md`             |
+| Change in stack, layers, CI, or boundaries| `docs/architecture.md`    |
+| New token, breakpoint, or visual rule     | `docs/design.md`          |
+| New entity, aggregate, or invariant       | `docs/domain.md`          |
+| Release, breaking change, or new version  | `docs/versioning.md`      |
+| Change released in a version              | `docs/changelog.md`       |
+| New skill, rule, or agent process         | `AGENTS.md`               |
+
+Documentation is maintained in English. Technical terms, commands, paths,
+script names, and APIs are written in English as is standard in the project.
+
+---
+
+## Required local skills
+
+Every agent must load the following skills from the repository before touching
+code. The path of each skill is relative to the project root:
 
 1. [clean-backend-architecture](.agents/skills/clean-backend-architecture/SKILL.md)
 2. [clean-code](.agents/skills/clean-code/SKILL.md)
@@ -55,175 +55,172 @@ código. La ruta de cada skill es relativa a la raíz del proyecto:
 4. [frontend-design](.agents/skills/frontend-design/SKILL.md)
 5. [svelte-code-writer](.agents/skills/svelte-code-writer/SKILL.md)
 
-El agente debe cargar únicamente las skills aplicables a su tarea. Las skills
-no aplicables pueden omitirse, pero las que apliquen son obligatorias.
+The agent must load only the skills applicable to its task. Non-applicable
+skills can be omitted, but those that apply are mandatory.
 
 ---
 
-## Proceso NAS (IADEV)
+## NAS process (IADEV)
 
-DiffScribe usa el pipeline NAS con subagentes IADEV. Las skills globales
-relevantes describen cada fase del proceso. Estas skills no se convierten en
-skills locales del repositorio; se cargan desde la configuración global del
-entorno:
+DiffScribe uses the NAS pipeline with IADEV subagents. The relevant global
+skills describe each phase of the process. These skills do not become local
+repository skills; they are loaded from the global environment configuration:
 
 ### BDD-first
 
-Todo comportamiento nuevo debe especificarse en Gherkin antes de implementarse.
-Los archivos `.feature` se almacenan en `specs/features/`. El runner de BDD es
-quickpickle, que lee `.feature` directamente y los ejecuta con Vitest.
+All new behavior must be specified in Gherkin before implementation. `.feature`
+files are stored in `specs/features/`. The BDD runner is quickpickle, which
+reads `.feature` files directly and runs them with Vitest.
 
-La skill `IADEV-bdd-implementation` define cómo consumir las especificaciones
-`.feature` y convertirlas en pruebas ejecutables. La skill
-`IADEV-writing-gherkin` establece las reglas de sintaxis y buenas prácticas
-para escribir escenarios.
+The `IADEV-bdd-implementation` skill defines how to consume `.feature`
+specifications and turn them into executable tests. The
+`IADEV-writing-gherkin` skill establishes syntax rules and best practices for
+writing scenarios.
 
-El planner y el developer consumen las features como contrato de aceptación.
-Ningún código de producción se escribe sin un escenario Gherkin que lo
-especifique.
+The planner and developer consume the features as the acceptance contract. No
+production code is written without a Gherkin scenario that specifies it.
 
-### Convención de idioma para BDD
+### BDD language convention
 
-Todos los archivos `.feature` bajo `specs/features/` y las step definitions
-bajo `tests/steps/` se escriben en inglés. Esta regla aplica tanto a los
-escenarios existentes como a cualquier escenario nuevo. El guard estático
-`check:bdd-language` (definido en `scripts/check-bdd-language.mjs`) se
-ejecuta como parte de la cadena de QA y detecta texto en español (diacríticos
-y wordlist curada) en patrones Gherkin y comentarios de step definitions.
+All `.feature` files under `specs/features/` and step definitions under
+`tests/steps/` are written in English. This rule applies to both existing
+scenarios and any new scenarios. The static guard `check:bdd-language`
+(defined in `scripts/check-bdd-language.mjs`) runs as part of the QA chain
+and detects Spanish text (diacritics and curated wordlist) in Gherkin patterns
+and step definition comments.
 
-La documentación general (`docs/`, `AGENTS.md`) se mantiene en español.
-Los términos técnicos, comandos, paths, nombres de scripts y APIs se
-escriben en inglés como es habitual en el proyecto.
+The general documentation (`docs/`, `AGENTS.md`) is maintained in English.
+Technical terms, commands, paths, script names, and APIs are written in
+English as is standard in the project.
 
 ### TDD (Red → Green → Refactor)
 
-Todo código de producción debe estar respaldado por pruebas escritas antes de
-la implementación. El ciclo es estricto:
+All production code must be backed by tests written before implementation. The
+cycle is strict:
 
-1. **Red:** escribir una prueba que falle.
-2. **Green:** escribir el código mínimo para que pase.
-3. **Refactor:** mejorar el código sin cambiar el comportamiento.
+1. **Red:** write a failing test.
+2. **Green:** write the minimum code to make it pass.
+3. **Refactor:** improve the code without changing behavior.
 
-La skill `IADEV-test-driven-development` define la disciplina TDD que todo
-developer debe seguir. No se considera terminado ningún cambio sin una
-verificación fresca de que todas las pruebas pasan.
+The `IADEV-test-driven-development` skill defines the TDD discipline that every
+developer must follow. No change is considered complete without a fresh
+verification that all tests pass.
 
-### Validación y QA
+### Validation and QA
 
-La skill `IADEV-validating-implementation` define el protocolo del Tester para
-auditar el trabajo del Developer contra los artefactos OpenSpec, re-ejecutar
-pruebas y emitir `validation-results.md` con hallazgos PASS/FAIL.
+The `IADEV-validating-implementation` skill defines the Tester's protocol to
+audit the Developer's work against the OpenSpec artifacts, re-run tests, and
+emit `validation-results.md` with PASS/FAIL findings.
 
-La skill `IADEV-applying-feedback` define cómo el Developer consume ese reporte
-y convierte cada FAIL en una corrección concreta respaldada por una prueba.
+The `IADEV-applying-feedback` skill defines how the Developer consumes that
+report and turns each FAIL into a concrete fix backed by a test.
 
 ---
 
 ## QA hard gate
 
-Ningún cambio se considera completo si alguna de estas verificaciones falla.
-Cualquier fallo implica `FAIL`. El comando `npm run qa` ejecuta todas las
-verificaciones en orden. Si una etapa falla, las siguientes no se ejecutan.
+No change is considered complete if any of these verifications fail. Any
+failure means `FAIL`. The `npm run qa` command runs all verifications in
+order. If one stage fails, the following stages do not run.
 
-| Etapa       | Comando                        | Criterio                  |
-| ----------- | ------------------------------ | ------------------------- |
-| Formato     | `npm run format`               | Sin diferencias           |
-| Lint        | `npm run lint`                 | `--max-warnings=0`        |
-| Tipos       | `npm run check` o equivalente  | Sin errores de tipo       |
-| Unit        | `npm run test:unit`            | 100% pasando              |
-| Integ.      | `npm run test:integration`     | 100% pasando              |
-| Idioma BDD  | `npm run check:bdd-language`   | Sin español en BDD        |
-| BDD         | `npm run test:bdd`             | 100% pasando              |
-| E2E         | `npm run test:e2e`             | 100% pasando              |
-| Build       | `npm run build`                | Build exitoso sin errores |
+| Stage        | Command                        | Criterion                 |
+| ------------ | ------------------------------ | ------------------------- |
+| Format       | `npm run format`               | No differences            |
+| Lint         | `npm run lint`                 | `--max-warnings=0`        |
+| Types        | `npm run check` or equivalent  | No type errors            |
+| Unit         | `npm run test:unit`            | 100% passing              |
+| Integ.       | `npm run test:integration`     | 100% passing              |
+| BDD language | `npm run check:bdd-language`   | No Spanish in BDD         |
+| BDD          | `npm run test:bdd`             | 100% passing              |
+| E2E          | `npm run test:e2e`             | 100% passing              |
+| Build        | `npm run build`                | Successful build, no errors |
 
-Prettier se encarga del formato. ESLint con flat config gestiona el linting,
-orden de imports (`simple-import-sort`), estructura (`import-x`) y limpieza de
-imports no usados (`eslint-plugin-unused-imports`). Prettier y ESLint se
-mantienen separados mediante `eslint-config-prettier/flat`. El developer puede
-usar `npm run format:fix` y `npm run lint:fix` localmente; QA solo verifica sin
+Prettier handles formatting. ESLint with flat config manages linting, import
+order (`simple-import-sort`), structure (`import-x`), and unused import
+cleanup (`eslint-plugin-unused-imports`). Prettier and ESLint are kept
+separate via `eslint-config-prettier/flat`. The developer can use
+`npm run format:fix` and `npm run lint:fix` locally; QA only verifies without
 `--fix`.
 
-### Protocolo ante fallo de formato
+### Format failure protocol
 
-Si `npm run format` falla —ya sea durante el pre-commit hook, QA manual, o CI—,
-el primer paso obligatorio es ejecutar el autofix:
+If `npm run format` fails — whether during the pre-commit hook, manual QA, or
+CI —, the first mandatory step is to run the autofix:
 
 ```bash
 npm run format:fix
 ```
 
-Después del autofix, el agente debe:
+After the autofix, the agent must:
 
-1. Revisar el diff generado (`git diff`) para confirmar que los cambios son solo
-   de formato y no alteran lógica.
-2. Volver a ejecutar `npm run format`. Debe pasar con cero diferencias.
-3. Stagear de nuevo los archivos modificados (`git add <archivos>`).
-4. Continuar con `npm run lint` y el resto de la verificación QA.
+1. Review the generated diff (`git diff`) to confirm that the changes are
+   formatting-only and do not alter logic.
+2. Re-run `npm run format`. It must pass with zero differences.
+3. Re-stage the modified files (`git add <files>`).
+4. Continue with `npm run lint` and the rest of the QA verification.
 
-El hook pre-commit **nunca** debe modificarse para que ejecute `format:fix` ni
-`--fix`. El hook es y seguirá siendo check-only: `npm run format && npm run lint`.
+The pre-commit hook must **never** be modified to run `format:fix` or `--fix`.
+The hook is and will remain check-only: `npm run format && npm run lint`.
 
 ---
 
 ## Clean Architecture
 
-El proyecto sigue Clean Architecture combinando Clean Backend Architecture y
-Clean Svelte Architecture. Los límites entre capas son estrictos:
+The project follows Clean Architecture combining Clean Backend Architecture and
+Clean Svelte Architecture. Layer boundaries are strict:
 
-| Capa              | Propio                                                                    | Prohibido                                |
-| ----------------- | ------------------------------------------------------------------------- | ---------------------------------------- |
-| `domain`          | Entidades, value objects, interfaces de repositorios, errores de dominio  | Frameworks, HTTP, DB, vendor SDKs        |
-| `application`     | Casos de uso, commands, queries, DTOs, resultados                         | Transporte, persistencia, componentes UI |
-| `infrastructure`  | Implementaciones de repositorios, mappers, SQL, clientes Git, gateways    | Lógica de negocio, decisión de producto  |
-| `web` (o routes)  | Componentes Svelte, stores, endpoints, handlers HTTP                      | Reglas de negocio, acceso directo a DB   |
+| Layer              | Own                                                                       | Forbidden                               |
+| ------------------ | ------------------------------------------------------------------------- | --------------------------------------- |
+| `domain`           | Entities, value objects, repository interfaces, domain errors             | Frameworks, HTTP, DB, vendor SDKs       |
+| `application`      | Use cases, commands, queries, DTOs, results                               | Transport, persistence, UI components   |
+| `infrastructure`   | Repository implementations, mappers, SQL, Git clients, gateways           | Business logic, product decisions       |
+| `web` (or routes)  | Svelte components, stores, endpoints, HTTP handlers                       | Business rules, direct DB access        |
 
-Las dependencias apuntan hacia adentro: `web → infrastructure → application →
-domain`. El dominio no importa nada de capas externas. Las interfaces de
-repositorios se definen en `domain/repositories/`. Las implementaciones
-concretas y los mappers viven en `infrastructure/repositories/`.
+Dependencies point inward: `web → infrastructure → application → domain`. The
+domain imports nothing from outer layers. Repository interfaces are defined in
+`domain/repositories/`. Concrete implementations and mappers live in
+`infrastructure/repositories/`.
 
 ---
 
-## Límites de Etapa 1
+## Stage 1 boundaries
 
-La Etapa 1 entrega el workbench de revisión sin IA. El alcance está definido
-en `docs/PRD.md` §18. Todo agente debe respetar estos límites:
+Stage 1 delivers the review workbench without AI. The scope is defined in
+`docs/PRD.md` §18. Every agent must respect these boundaries:
 
-- No implementar features de Etapa 2, 3 o 4.
-- No anticipar integraciones con proveedores de IA.
-- No agregar capacidades colaborativas, multi-usuario o de red.
-- No implementar auto-fix, modificación de código ni creación de commits.
+- Do not implement Stage 2, 3, or 4 features.
+- Do not anticipate integrations with AI providers.
+- Do not add collaborative, multi-user, or network capabilities.
+- Do not implement auto-fix, code modification, or commit creation.
 
 ### Scope creep
 
-Si una tarea, sugerencia o descubrimiento implica funcionalidad fuera de la
-Etapa 1 actual, el agente debe:
+If a task, suggestion, or discovery involves functionality outside the current
+Stage 1, the agent must:
 
-1. Registrar el hallazgo sin implementarlo.
-2. Reportarlo al Orchestrator.
-3. No modificar código ni documentación para acomodarlo.
+1. Log the finding without implementing it.
+2. Report it to the Orchestrator.
+3. Not modify code or documentation to accommodate it.
 
-Está prohibido inventar decisiones de arquitectura, producto, diseño o dominio
-que no estén respaldadas por los documentos fuente o por una memoria aprobada.
-Las preguntas abiertas del PRD §21 deben tratarse como `[PENDIENTE]`.
+It is forbidden to invent architecture, product, design, or domain decisions
+not backed by source documents or an approved memory. Open questions from
+PRD §21 must be treated as `[PENDIENTE]`.
 
 ---
 
-## Versionado y commits
+## Versioning and commits
 
-El proyecto sigue:
+The project follows:
 
-- **SemVer 2.0.0** — versionado semántico para la API pública (CLI, export
-  JSON/Markdown, esquema DB, HTTP local).
-- **Conventional Commits 1.0.0** — mensajes de commit estructurados con tipos
-  `feat`, `fix`, `breaking`, y scope opcional.
-- **Keep a Changelog 1.1.0** — changelog mantenido por humanos en
+- **SemVer 2.0.0** — semantic versioning for the public API (CLI, export
+  JSON/Markdown, DB schema, local HTTP).
+- **Conventional Commits 1.0.0** — structured commit messages with types
+  `feat`, `fix`, `breaking`, and optional scope.
+- **Keep a Changelog 1.1.0** — human-maintained changelog in
   `docs/changelog.md`.
 
-La versión inicial es `0.x`. Los releases se crean con tags Git. Las
-migraciones de SQLite deben mantener compatibilidad hacia atrás dentro de una
-misma versión mayor.
+The initial version is `0.x`. Releases are created with Git tags. SQLite
+migrations must maintain backward compatibility within the same major version.
 
-Consulta `docs/versioning.md` para la política completa y
-`docs/changelog.md` para el registro de cambios.
+See `docs/versioning.md` for the full policy and `docs/changelog.md` for the
+change log.

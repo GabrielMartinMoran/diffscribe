@@ -1,43 +1,43 @@
-# DiffScribe — Versionado
+# DiffScribe — Versioning
 
-**Estado:** Borrador inicial
+**Status:** Initial draft
 
-Este documento define la política de versionado de DiffScribe: numeración de
-versiones, API pública, mensajes de commit, releases y migraciones.
+This document defines DiffScribe's versioning policy: version numbering, public
+API, commit messages, releases, and migrations.
 
 ---
 
-## Estándares adoptados
+## Adopted standards
 
-| Estándar               | Versión | Aplica a                                         |
+| Standard               | Version | Applies to                                       |
 | ---------------------- | ------- | ------------------------------------------------ |
-| SemVer                 | 2.0.0   | Numeración de releases                           |
-| Conventional Commits   | 1.0.0   | Mensajes de commit                               |
-| Keep a Changelog       | 1.1.0   | Registro de cambios (`docs/changelog.md`)        |
+| SemVer                 | 2.0.0   | Release numbering                                |
+| Conventional Commits   | 1.0.0   | Commit messages                                  |
+| Keep a Changelog       | 1.1.0   | Change log (`docs/changelog.md`)                 |
 
 ---
 
 ## Semantic Versioning 2.0.0
 
-DiffScribe sigue SemVer 2.0.0. Dada una versión `MAJOR.MINOR.PATCH`:
+DiffScribe follows SemVer 2.0.0. Given a version `MAJOR.MINOR.PATCH`:
 
-- **MAJOR:** cambios incompatibles con la API pública.
-- **MINOR:** funcionalidad nueva compatible hacia atrás.
-- **PATCH:** correcciones de bugs compatibles hacia atrás.
+- **MAJOR:** incompatible changes to the public API.
+- **MINOR:** new backward-compatible functionality.
+- **PATCH:** backward-compatible bug fixes.
 
-### Versión inicial
+### Initial version
 
-El proyecto comienza en `0.x`:
+The project starts at `0.x`:
 
-- `0.1.0` — primer release funcional (workbench de revisión, Etapa 1).
-- `0.x.y` — iteraciones posteriores dentro de la fase pre-1.0.
-- Durante `0.x`, MINOR puede incluir breaking changes. PATCH solo incluye
-  correcciones compatibles.
-- `1.0.0` — primera versión estable con API pública congelada.
+- `0.1.0` — first functional release (review workbench, Stage 1).
+- `0.x.y` — subsequent iterations within the pre-1.0 phase.
+- During `0.x`, MINOR may include breaking changes. PATCH only includes
+  compatible fixes.
+- `1.0.0` — first stable version with frozen public API.
 
 ### Pre-releases
 
-Se usa el sufijo SemVer para pre-releases:
+The SemVer suffix is used for pre-releases:
 
 ```text
 0.1.0-alpha.1
@@ -45,47 +45,47 @@ Se usa el sufijo SemVer para pre-releases:
 0.1.0-rc.1
 ```
 
-Los sufijos `alpha`, `beta` y `rc` indican madurez creciente. No se usan
-metadatos de build (`+`) a menos que una herramienta de CI lo requiera.
+The `alpha`, `beta`, and `rc` suffixes indicate increasing maturity. Build
+metadata (`+`) is not used unless a CI tool requires it.
 
 ---
 
-## API pública
+## Public API
 
-La API pública de DiffScribe incluye todo aquello cuyo cambio rompería la
-compatibilidad hacia atrás para los usuarios:
+DiffScribe's public API includes everything whose change would break backward
+compatibility for users:
 
-### Interfaz de línea de comandos (CLI)
+### Command-line interface (CLI)
 
-- Comando `diffscribe` y sus flags (`--port`, `--host`, `--open`, path).
-- Cambiar, remover o renombrar un flag existente es breaking.
-- Agregar un flag nuevo es MINOR.
+- The `diffscribe` command and its flags (`--port`, `--host`, `--open`, path).
+- Changing, removing, or renaming an existing flag is breaking.
+- Adding a new flag is MINOR.
 
-### Formatos de exportación
+### Export formats
 
-- **Markdown:** estructura del review package en Markdown. Cambios que rompan
-  herramientas que parsean este formato son breaking.
-- **JSON:** esquema del review package en JSON. Cambios en el esquema que
-  eliminen campos, cambien tipos o modifiquen la estructura de arrays/objetos
-  son breaking. Agregar campos nuevos es MINOR.
+- **Markdown:** review package structure in Markdown. Changes that break tools
+  that parse this format are breaking.
+- **JSON:** review package schema in JSON. Schema changes that remove fields,
+  change types, or modify array/object structure are breaking. Adding new
+  fields is MINOR.
 
-### Esquema de base de datos
+### Database schema
 
-- El esquema de SQLite (`~/.diffscribe/diffscribe.db`) es parte de la API
-  pública interna. Las migraciones deben mantener compatibilidad hacia atrás
-  dentro de una misma versión mayor.
-- Ver sección "Migraciones de SQLite" más abajo.
+- The SQLite schema (`~/.diffscribe/diffscribe.db`) is part of the internal
+  public API. Migrations must maintain backward compatibility within the same
+  major version.
+- See "SQLite migrations" section below.
 
-### HTTP local (cuando aplique)
+### Local HTTP (when applicable)
 
-- Endpoints, métodos y formatos de request/response del servidor local.
-  Actualmente no expuestos como API estable; se documentarán cuando corresponda.
+- Endpoints, methods, and request/response formats of the local server.
+  Currently not exposed as a stable API; will be documented when applicable.
 
 ---
 
 ## Conventional Commits 1.0.0
 
-Todo commit debe seguir Conventional Commits 1.0.0:
+Every commit must follow Conventional Commits 1.0.0:
 
 ```text
 <type>[optional scope]: <description>
@@ -95,32 +95,32 @@ Todo commit debe seguir Conventional Commits 1.0.0:
 [optional footer(s)]
 ```
 
-### Tipos
+### Types
 
-| Tipo        | Uso                                                       | Impacto SemVer       |
+| Type        | Use                                                       | SemVer impact        |
 | ----------- | --------------------------------------------------------- | -------------------- |
-| `feat`      | Nueva funcionalidad                                       | MINOR (0.x)          |
-| `fix`       | Corrección de bug                                         | PATCH                |
-| `breaking`  | Breaking change (usar `!` después del type/scope)         | MAJOR (0.x: MINOR)   |
-| `docs`      | Documentación                                             | Ninguno              |
-| `style`     | Formato, whitespace (sin cambios de lógica)               | Ninguno              |
-| `refactor`  | Refactor sin cambio de comportamiento ni fix              | Ninguno              |
-| `perf`      | Mejora de performance                                     | PATCH (si es fix)    |
-| `test`      | Agregar o corregir tests                                  | Ninguno              |
-| `chore`     | Tareas de build, CI, dependencias                         | Ninguno              |
-| `ci`        | Cambios en configuración de CI/CD                         | Ninguno              |
-| `build`     | Cambios en sistema de build o dependencias externas       | Ninguno              |
-| `revert`    | Revertir un commit anterior                               | Variable             |
+| `feat`      | New functionality                                         | MINOR (0.x)          |
+| `fix`       | Bug fix                                                   | PATCH                |
+| `breaking`  | Breaking change (use `!` after type/scope)                | MAJOR (0.x: MINOR)   |
+| `docs`      | Documentation                                             | None                 |
+| `style`     | Format, whitespace (no logic changes)                     | None                 |
+| `refactor`  | Refactor without behavior change or fix                   | None                 |
+| `perf`      | Performance improvement                                   | PATCH (if it is a fix) |
+| `test`      | Add or fix tests                                          | None                 |
+| `chore`     | Build tasks, CI, dependencies                             | None                 |
+| `ci`        | CI/CD configuration changes                               | None                 |
+| `build`     | Build system or external dependency changes               | None                 |
+| `revert`    | Revert a previous commit                                  | Variable             |
 
 ### Breaking changes
 
-Un breaking change se indica de dos formas equivalentes:
+A breaking change is indicated in two equivalent ways:
 
 ```text
 feat!: remove deprecated export flag
 ```
 
-o
+or
 
 ```text
 feat: remove deprecated export flag
@@ -128,12 +128,11 @@ feat: remove deprecated export flag
 BREAKING CHANGE: The --export flag has been removed. Use --output instead.
 ```
 
-El footer `BREAKING CHANGE` debe describir qué se rompió y cómo migrar.
+The `BREAKING CHANGE` footer must describe what broke and how to migrate.
 
 ### Scope
 
-El scope es opcional. Cuando se usa, debe referirse a un módulo o área del
-proyecto:
+The scope is optional. When used, it must refer to a project module or area:
 
 ```text
 feat(git): support commit-range comparison
@@ -141,7 +140,7 @@ fix(export): handle empty observation list
 chore(deps): bump better-sqlite3 to v11
 ```
 
-### Ejemplos
+### Examples
 
 ```text
 feat: add workspace selector sidebar
@@ -157,46 +156,48 @@ docs: document comparison types in domain model
 
 ### Tags
 
-Cada release se marca con un tag Git anotado:
+Each release is marked with an annotated Git tag:
 
 ```bash
 git tag -a v0.1.0 -m "v0.1.0"
 ```
 
-El tag sigue el formato `v<MAJOR>.<MINOR>.<PATCH>` sin prefijos adicionales.
+The tag follows the format `v<MAJOR>.<MINOR>.<PATCH>` without additional
+prefixes.
 
-### Proceso
+### Process
 
-1. Actualizar `docs/changelog.md` moviendo cambios de `[Unreleased]` a la
-   nueva versión.
-2. Actualizar `package.json` con la nueva versión.
-3. Crear commit: `chore(release): v0.1.0`.
-4. Crear tag: `git tag -a v0.1.0 -m "v0.1.0"`.
+1. Update `docs/changelog.md` by moving changes from `[Unreleased]` to the
+   new version.
+2. Update `package.json` with the new version.
+3. Create commit: `chore(release): v0.1.0`.
+4. Create tag: `git tag -a v0.1.0 -m "v0.1.0"`.
 5. Push: `git push --follow-tags`.
-6. Publicar en npm: `npm publish`.
+6. Publish to npm: `npm publish`.
 
-### Frecuencia
+### Frequency
 
-No se define una cadencia fija. Los releases se crean cuando hay cambios
-suficientes para justificar una versión nueva. Durante `0.x`, se prefiere
-liberar frecuentemente para obtener feedback temprano.
+No fixed cadence is defined. Releases are created when there are enough changes
+to justify a new version. During `0.x`, frequent releases are preferred to get
+early feedback.
 
 ---
 
-## Migraciones de SQLite
+## SQLite migrations
 
-### Principios
+### Principles
 
-- Las migraciones son incrementales y numeradas secuencialmente.
-- Cada migración se aplica exactamente una vez.
-- Las migraciones deben ser compatibles hacia atrás dentro de una misma versión
-  mayor.
-- Durante `0.x`, las migraciones pueden ser breaking entre versiones MINOR
-  (consistente con SemVer para fase `0.x`). Se debe documentar en el changelog.
+- Migrations are incremental and sequentially numbered.
+- Each migration is applied exactly once.
+- Migrations must be backward compatible within the same major version.
+- During `0.x`, migrations may be breaking between MINOR versions (consistent
+  with SemVer for the `0.x` phase). This must be documented in the changelog.
 
-### Estrategia
+### Strategy
 
-Las migraciones se almacenan como archivos SQL en `src/lib/server/infrastructure/database/migrations/`. Cada archivo sigue el patrón:
+Migrations are stored as SQL files in
+`src/lib/server/infrastructure/database/migrations/`. Each file follows the
+pattern:
 
 ```text
 001_create_workspaces.sql
@@ -205,7 +206,10 @@ Las migraciones se almacenan como archivos SQL en `src/lib/server/infrastructure
 004_create_review_files.sql
 ```
 
-El loader (`connection.ts`) usa `import.meta.glob('./migrations/*.sql', { eager: true, query: '?raw', import: 'default' })` para cargar y ordenar los archivos. Cada migración se ejecuta dentro de `db.transaction()` para garantizar atomicidad. La tabla `_migrations` registra las migraciones aplicadas:
+The loader (`connection.ts`) uses
+`import.meta.glob('./migrations/*.sql', { eager: true, query: '?raw', import: 'default' })`
+to load and sort the files. Each migration runs inside `db.transaction()` to
+guarantee atomicity. The `_migrations` table records applied migrations:
 
 ```sql
 CREATE TABLE IF NOT EXISTS _migrations (
@@ -214,31 +218,32 @@ CREATE TABLE IF NOT EXISTS _migrations (
 );
 ```
 
-Se activa `PRAGMA foreign_keys = ON` en conexiones de producción y test para que los FK CASCADE sean efectivos.
+`PRAGMA foreign_keys = ON` is activated in production and test connections so
+that FK CASCADE is effective.
 
-### Compatibilidad
+### Compatibility
 
-El contrato de compatibilidad es:
+The compatibility contract is:
 
-- **Misma MAJOR:** la aplicación nueva puede abrir una base de datos creada por
-  una versión anterior de la misma MAJOR.
-- **MAJOR distinta:** puede requerir migración manual, exportación/importación
-  de datos, o una herramienta de migración explícita.
+- **Same MAJOR:** the new application can open a database created by a previous
+  version of the same MAJOR.
+- **Different MAJOR:** may require manual migration, data export/import, or an
+  explicit migration tool.
 
-Durante `0.x`, dado que MINOR puede incluir breaking changes, se recomienda
-respaldar los datos antes de actualizar entre versiones MINOR.
+During `0.x`, since MINOR may include breaking changes, it is recommended to
+back up data before upgrading between MINOR versions.
 
 ### Rollback
 
-No se soporta rollback automático de migraciones. Si una migración falla, la
-aplicación no inicia y reporta el error. El usuario debe resolver el problema
-manualmente o restaurar un backup.
+Automatic migration rollback is not supported. If a migration fails, the
+application does not start and reports the error. The user must resolve the
+problem manually or restore a backup.
 
 ---
 
-## Referencias
+## References
 
 - [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html)
 - [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/)
 - [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/)
-- [Changelog](changelog.md) — registro de cambios
+- [Changelog](changelog.md) — change log

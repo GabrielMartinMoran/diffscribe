@@ -1,85 +1,85 @@
-# DiffScribe — Modelo de dominio
+# DiffScribe — Domain model
 
-**Estado:** Borrador inicial — derivado de PRD §9 y §16.
+**Status:** Initial draft — derived from PRD §9 and §16.
 
-Esta guía define el lenguaje ubicuo, las entidades, value objects, aggregates,
-invariantes, estados, servicios de dominio e interfaces de repositorios del
-proyecto. Sigue principios de Domain-Driven Design y Clean Architecture.
-
----
-
-## Lenguaje ubicuo
-
-| Término          | Definición                                                                          |
-| ---------------- | ----------------------------------------------------------------------------------- |
-| Workspace        | Repositorio Git local registrado en DiffScribe. Conserva revisiones, contexto y preferencias. |
-| Review           | Sesión persistente de análisis sobre una comparación Git. Contiene observaciones.   |
-| Comparison       | Dos estados Git (base y target) usados para construir un diff.                      |
-| Observation      | Conclusión registrada por el reviewer, vinculada a código, archivo o revisión.      |
-| Occurrence       | Ubicación potencialmente relacionada con una observación existente.                 |
-| ReviewContext    | Conjunto explícito de reglas y documentación usado para asistir al usuario.          |
-| ContextSource    | Fuente individual de contexto: archivo, directorio, patrón o texto manual.          |
-| ReviewPackage    | Artefacto final exportable: resumen, observaciones, ocurrencias e instrucciones.    |
+This guide defines the ubiquitous language, entities, value objects, aggregates,
+invariants, states, domain services, and repository interfaces of the project.
+It follows Domain-Driven Design and Clean Architecture principles.
 
 ---
 
-## Entidades
+## Ubiquitous language
+
+| Term             | Definition                                                                             |
+| ---------------- | -------------------------------------------------------------------------------------- |
+| Workspace        | Local Git repository registered in DiffScribe. Stores reviews, context, and preferences. |
+| Review           | Persistent analysis session over a Git comparison. Contains observations.              |
+| Comparison       | Two Git states (base and target) used to build a diff.                                 |
+| Observation      | Conclusion recorded by the reviewer, linked to code, file, or review.                  |
+| Occurrence       | Location potentially related to an existing observation.                               |
+| ReviewContext    | Explicit set of rules and documentation used to assist the user.                       |
+| ContextSource    | Individual context source: file, directory, pattern, or manual text.                   |
+| ReviewPackage    | Exportable final artifact: summary, observations, occurrences, and instructions.       |
+
+---
+
+## Entities
 
 ### Workspace
 
-Representa un repositorio Git registrado en la aplicación.
+Represents a Git repository registered in the application.
 
 ```text
 id:            WorkspaceId (UUID)
-displayName:   string (1-200 caracteres)
-repositoryPath:string (ruta absoluta válida)
+displayName:   string (1-200 characters)
+repositoryPath:string (valid absolute path)
 createdAt:     DateTime
 lastOpenedAt:  DateTime
 contextConfig: ContextConfiguration
 preferences:   WorkspacePreferences
 ```
 
-**Invariantes:**
+**Invariants:**
 
-- `repositoryPath` debe ser una ruta absoluta a un directorio que contenga un
-  repositorio Git válido al momento del registro.
-- `displayName` no puede estar vacío y debe tener entre 1 y 200 caracteres.
-- Dos workspaces no pueden compartir el mismo `repositoryPath` dentro de la
-  misma instalación.
+- `repositoryPath` must be an absolute path to a directory containing a valid
+  Git repository at registration time.
+- `displayName` must not be empty and must be between 1 and 200 characters.
+- Two workspaces cannot share the same `repositoryPath` within the same
+  installation.
 
-**Aggregate root:** Workspace es aggregate root de su configuración de contexto
-y preferencias. No contiene revisions directamente (las revisions referencian
-al workspace por ID).
+**Aggregate root:** Workspace is the aggregate root of its context configuration
+and preferences. It does not contain reviews directly (reviews reference the
+workspace by ID).
 
 ### Review
 
-Sesión persistente de análisis sobre una comparación Git. En Etapa 1 implementada sin Observation ni contextSnapshot.
+Persistent analysis session over a Git comparison. In Stage 1 implemented without Observation or contextSnapshot.
 
 ```text
 id:             ReviewId (UUID v4)
 workspaceId:    WorkspaceId
-title:          string | null (opcional)
-status:         ReviewStatus (draft → completed; in_progress/archived en DB CHECK)
-comparison:     Comparison (capturada al crear; persistida como JSON + comparison_type)
+title:          string | null (optional)
+status:         ReviewStatus (draft → completed; in_progress/archived in DB CHECK)
+comparison:     Comparison (captured at creation; persisted as JSON + comparison_type)
 createdAt:      DateTime
 updatedAt:      DateTime
 completedAt:    DateTime | null
 ```
 
-**Invariantes implementadas (Etapa 1):**
+**Implemented invariants (Stage 1):**
 
-- Una review siempre pertenece a un workspace existente (FK CASCADE).
-- El `status` solo transiciona de `draft` a `completed`. La completación asigna `completedAt`.
-- Review completada es read‑only: `mark` y `unmark` devuelven 409.
-- Reabrir una review completada la mantiene `completed` (read‑only) pero la activa para el workspace.
-- `comparison` se captura del draft activo al crear la review y se persiste como JSON validado (`json_valid`).
-- No hay `reviewedFiles` estático ni inventario total. Las marcas son dinámicas: `reviewedCount` = marcas que intersectan con el file list actual; `totalCount` = tamaño del file list actual.
-- La review activa se guarda en `app_state` con clave `active_review:<workspaceId>`. Crear la activa, completar la limpia, eliminar workspace la borra por cascade.
-- Sin Observation, snapshots, stale detection, export ni portable en Etapa 1.
+- A review always belongs to an existing workspace (FK CASCADE).
+- `status` only transitions from `draft` to `completed`. Completion assigns `completedAt`.
+- Completed review is read‑only: `mark` and `unmark` return 409.
+- Reopening a completed review keeps it `completed` (read‑only) but activates it for the workspace.
+- `comparison` is captured from the active draft at review creation and persisted as validated JSON (`json_valid`).
+- There is no static `reviewedFiles` or total inventory. Marks are dynamic: `reviewedCount` = marks intersecting the current file list; `totalCount` = current file list size.
+- The active review is saved in `app_state` with key `active_review:<workspaceId>`. Creating sets it active, completing clears it, deleting workspace removes it by cascade.
+- No Observation, snapshots, stale detection, export, or portable in Stage 1.
 
 ### Observation
 
-Conclusión registrada por el reviewer. Implementada en Inc-7 con snapshot híbrido.
+Conclusion recorded by the reviewer. Implemented in Inc-7 with hybrid snapshot.
 
 ```text
 id:                   ObservationId (UUID v4)
@@ -87,65 +87,65 @@ reviewId:             ReviewId
 type:                 ObservationType (issue|risk|suggestion|question|praise|note)
 severity:             ObservationSeverity | null (critical|major|minor|nitpick)
 status:               ObservationStatus (open|resolved|dismissed|pending)
-title:                string (1-200 caracteres)
-body:                 string (≤5000 caracteres)
-agentInstruction:     string (≤2000 caracteres, opcional)
-filePath:             string | null (repo-relative, requerido para file/range)
+title:                string (1-200 characters)
+body:                 string (≤5000 characters)
+agentInstruction:     string (≤2000 characters, optional)
+filePath:             string | null (repo-relative, required for file/range)
 lineRange:            LineRange | null (start≥1, end≥start)
-side:                 string ("new" default, "old" explícito)
-comparisonSnapshotJson: string (JSON del Comparison al crear; siempre presente)
-diffSnapshot:         string | null (raw unified diff con prefijos +/-\space; file/range)
-contentHash:           string | null (SHA-256 canónico; file/range)
+side:                 string ("new" default, "old" explicit)
+comparisonSnapshotJson: string (JSON of the Comparison at creation; always present)
+diffSnapshot:         string | null (raw unified diff with +/-\space prefixes; file/range)
+contentHash:          string | null (canonical SHA-256; file/range)
 createdAt:            DateTime
 updatedAt:            DateTime
-origin:               ObservationOrigin (human en Etapa 1; DB forward-compatible ai-generated)
+origin:               ObservationOrigin (human in Stage 1; DB forward-compatible ai-generated)
 ```
 
-**Invariantes:**
+**Invariants:**
 
-- `title` no puede estar vacío, máximo 200 caracteres.
-- `body` máximo 5000 caracteres; `agentInstruction` máximo 2000.
-- `severity` es obligatorio para `Issue` y `Risk`. Es `null` para `Praise` y `Note`. Opcional para `Suggestion` y `Question`.
-- `filePath` y `lineRange` son opcionales (observaciones review-level no los tienen).
-- Si `lineRange` está presente, `filePath` también debe estarlo. Si `filePath` está presente, `diffSnapshot` y `contentHash` son obligatorios.
+- `title` must not be empty, max 200 characters.
+- `body` max 5000 characters; `agentInstruction` max 2000.
+- `severity` is required for `Issue` and `Risk`. Is `null` for `Praise` and `Note`. Optional for `Suggestion` and `Question`.
+- `filePath` and `lineRange` are optional (review-level observations do not have them).
+- If `lineRange` is present, `filePath` must also be present. If `filePath` is present, `diffSnapshot` and `contentHash` are required.
 - Review-level: `filePath=null`, `lineRange=null`, `diffSnapshot=null`, `contentHash=null`.
-- `comparisonSnapshotJson` siempre presente (JSON válido del Comparison al crear).
-- Range sobre binary → rechazado (422). File-level binary → permitido con diff/hash null.
-- `side` solo "new" o "old". Default "new".
-- `origin` indica `human` (Etapa 1); DB CHECK acepta `ai-generated` para forward-compatibilidad.
+- `comparisonSnapshotJson` always present (valid JSON of the Comparison at creation).
+- Range over binary → rejected (422). File-level binary → allowed with diff/hash null.
+- `side` only "new" or "old". Default "new".
+- `origin` indicates `human` (Stage 1); DB CHECK accepts `ai-generated` for forward compatibility.
 
-**Hash canónico:** `SHA-256(filePath + ":" + side + ":" + String(startLine) + ":" + LF-normalized content)` via `node:crypto`. Sin dependencias externas.
+**Canonical hash:** `SHA-256(filePath + ":" + side + ":" + String(startLine) + ":" + LF-normalized content)` via `node:crypto`. No external dependencies.
 
-**Snapshot híbrido:** `comparison_snapshot_json` (siempre) + `diff_snapshot`/`content_hash` (solo file/range). El snapshot preserva los prefijos `+`/`-/` ` ` del unified diff original.
+**Hybrid snapshot:** `comparison_snapshot_json` (always) + `diff_snapshot`/`content_hash` (only file/range). The snapshot preserves the `+`/`-`/` ` prefixes from the original unified diff.
 
-**Transiciones de estado:**
+**State transitions:**
 ```
 open → resolved | dismissed | pending
 resolved → open
 dismissed → open
 pending → open
 ```
-Mutación en review completed/archived → rechazada (409).
+Mutation on completed/archived review → rejected (409).
 
-**StaleStatus (derivado, no persistido):**
+**StaleStatus (derived, not persisted):**
 
-| Status | Condición |
+| Status | Condition |
 |--------|----------|
-| `current` | Sin cambios detectados |
-| `stale-content-changed` | Hash del contenido difiere del almacenado |
-| `stale-range-missing` | Las líneas referenciadas ya no existen |
-| `stale-file-deleted` | El archivo referenciado fue eliminado |
-| `stale-file-renamed` | El archivo fue renombrado |
-| `stale-binary` | El archivo es binario (solo si comparison cambió) |
-| `stale-truncated` | El contenido está truncado |
-| `stale-comparison-changed` | El Comparison activo difiere del almacenado |
-| `stale-unknown` | No se pudo determinar |
+| `current` | No changes detected |
+| `stale-content-changed` | Content hash differs from stored |
+| `stale-range-missing` | Referenced lines no longer exist |
+| `stale-file-deleted` | Referenced file was deleted |
+| `stale-file-renamed` | File was renamed |
+| `stale-binary` | File is binary (only if comparison changed) |
+| `stale-truncated` | Content is truncated |
+| `stale-comparison-changed` | Active Comparison differs from stored |
+| `stale-unknown` | Could not be determined |
 
-Se recalcula bajo demanda al abrir ObservationPanel, cambiar Comparison o refrescar diff. Sin polling. Commit-vs-commit siempre current para file/range. Binary devuelve CURRENT si comparison no cambió. Rename detectado antes que file-deleted.
+Recalculated on demand when opening ObservationPanel, changing Comparison, or refreshing diff. No polling. Commit-vs-commit always current for file/range. Binary returns CURRENT if comparison did not change. Rename detected before file-deleted.
 
 ### Occurrence
 
-Ubicación potencialmente relacionada con una observación.
+Location potentially related to an observation.
 
 ```text
 id:               OccurrenceId (UUID)
@@ -159,13 +159,13 @@ status:           OccurrenceStatus
 source:           OccurrenceSource
 ```
 
-**Invariantes:**
+**Invariants:**
 
-- Una occurrence siempre pertenece a una observation existente.
-- `filePath` y `lineRange` son obligatorios.
-- `status` parte como `suggested`. Solo puede cambiar a `confirmed` o
-  `dismissed` mediante acción explícita del usuario.
-- `relevance` es estimado: `high`, `medium` o `low`.
+- An occurrence always belongs to an existing observation.
+- `filePath` and `lineRange` are required.
+- `status` starts as `suggested`. Can only change to `confirmed` or `dismissed`
+  through explicit user action.
+- `relevance` is estimated: `high`, `medium`, or `low`.
 
 ---
 
@@ -173,7 +173,7 @@ source:           OccurrenceSource
 
 ### Comparison
 
-Describe los dos estados Git usados para construir un diff.
+Describes the two Git states used to build a diff.
 
 ```text
 base:              GitRef
@@ -182,59 +182,58 @@ comparisonType:    ComparisonType
 createdAt:         DateTime
 ```
 
-**Tipos de comparación (`ComparisonType`):**
+**Comparison types (`ComparisonType`):**
 
-- `working-tree-vs-head` — working tree contra HEAD
-- `staged-vs-head` — cambios staged contra HEAD
-- `unstaged` — cambios unstaged solamente
-- `branch-vs-branch` — rama contra rama
-- `commit-vs-commit` — commit contra commit
-- `commit-vs-working-tree` — commit contra working tree
-- `branch-vs-working-tree` — rama contra working tree
-- `commit-range` — rango de commits
+- `working-tree-vs-head` — working tree vs HEAD
+- `staged-vs-head` — staged changes vs HEAD
+- `unstaged` — unstaged changes only
+- `branch-vs-branch` — branch vs branch
+- `commit-vs-commit` — commit vs commit
+- `commit-vs-working-tree` — commit vs working tree
+- `branch-vs-working-tree` — branch vs working tree
+- `commit-range` — commit range
 
-**Igualdad:** Dos comparisons son iguales si `base`, `target` y
-`comparisonType` coinciden. `createdAt` es informativo.
+**Equality:** Two comparisons are equal if `base`, `target`, and
+`comparisonType` match. `createdAt` is informational.
 
-**Serialización:** `ComparisonSerialized` provee una representación plana
-(`base`, `target`, `comparisonType`, `createdAt`) usada como input del
-endpoint `GET /api/workspaces/[id]/file-list?comparison=<encoded>`.
+**Serialization:** `ComparisonSerialized` provides a flat representation
+(`base`, `target`, `comparisonType`, `createdAt`) used as input for the
+`GET /api/workspaces/[id]/file-list?comparison=<encoded>` endpoint.
 
 ### GitRef
 
-Referencia a un estado Git.
+Reference to a Git state.
 
 ```text
 type:  GitRefType  (branch | commit | head | working-tree | index)
-value: string      (nombre de rama, hash de commit, o identificador reservado)
+value: string      (branch name, commit hash, or reserved identifier)
 ```
 
-**Estado de implementación:** GitRef y Comparison están implementados como value objects
-en `src/lib/server/domain/value-objects/git-ref.ts` y
-`src/lib/server/domain/value-objects/comparison.ts`. El Comparison draft es
-efímero (no persistido en base de datos). La comparación por defecto es HEAD
-vs working tree. La selección de Base/Target es local y no ejecuta checkout ni
-mutación del repositorio. Los tipos ComparisonSerialized y GitRefSerialized
-proveen representaciones serializables para el transporte al cliente sin
-exponer instancias de clase.
+**Implementation status:** GitRef and Comparison are implemented as value objects
+in `src/lib/server/domain/value-objects/git-ref.ts` and
+`src/lib/server/domain/value-objects/comparison.ts`. The Comparison draft is
+ephemeral (not persisted in database). The default comparison is HEAD vs
+working tree. Base/Target selection is local and does not execute checkout or
+repository mutation. The `ComparisonSerialized` and `GitRefSerialized` types
+provide serializable representations for client transport without exposing
+class instances.
 
 ### FileChangeStatus
 
-Enum que representa el estado de cambio de un archivo en una comparación Git.
+Enum representing the change state of a file in a Git comparison.
 
 ```text
 added, modified, deleted, renamed, copied, type-changed, unmerged,
 untracked, unknown
 ```
 
-**Valores:** 9 estados posibles. `binary` es un booleano separado en
-`FileListEntry`, nunca un valor de `FileChangeStatus`. Implementado en
+**Values:** 9 possible states. `binary` is a separate boolean in
+`FileListEntry`, never a `FileChangeStatus` value. Implemented in
 `src/lib/server/domain/value-objects/file-change-status.ts`.
 
 ### FileListEntry / FileListResult
 
-DTOs de aplicación que representan una entrada de la lista de archivos y el
-resultado agregado:
+Application DTOs representing a file list entry and the aggregated result:
 
 ```text
 FileListEntry:
@@ -243,8 +242,8 @@ FileListEntry:
   binary:     boolean
   additions?: number
   deletions?: number
-  oldPath?:   string        (solo para rename/copy)
-  error?:     string        (solo para archivos no legibles)
+  oldPath?:   string        (only for rename/copy)
+  error?:     string        (only for unreadable files)
 
 FileListResult:
   entries:    FileListEntry[]
@@ -252,11 +251,11 @@ FileListResult:
   error?:     { message: string; errorCode: string }
 ```
 
-Implementados en `src/lib/server/application/dto/results/file-list-results.ts`.
+Implemented in `src/lib/server/application/dto/results/file-list-results.ts`.
 
 ### LineRange
 
-Rango de líneas en un archivo.
+Line range in a file.
 
 ```text
 filePath: FilePath
@@ -264,11 +263,11 @@ startLine:positive integer
 endLine:  positive integer
 ```
 
-**Invariante:** `endLine >= startLine`.
+**Invariant:** `endLine >= startLine`.
 
 ### ContextConfiguration
 
-Configuración de contexto de un workspace.
+Context configuration of a workspace.
 
 ```text
 autoDetectAgentsMd: boolean
@@ -277,14 +276,14 @@ sources:            ContextSource[]
 
 ### ContextSource
 
-Fuente individual de contexto.
+Individual context source.
 
 ```text
 id:            ContextSourceId (UUID)
 workspaceId:   WorkspaceId
 type:          ContextSourceType (file | directory | pattern | manual)
 pathOrPattern: string
-content:       string (solo para type=manual)
+content:       string (only for type=manual)
 enabled:       boolean
 autoDetected:  boolean
 priority:      number
@@ -292,80 +291,79 @@ priority:      number
 
 ### WorkspacePreferences
 
-Preferencias de visualización y comportamiento por workspace.
+Display and behavior preferences per workspace.
 
 ```text
 defaultDiffMode:   DiffMode (unified | side-by-side)
-fileListWidth:     number (px, solo si es configurable por el usuario)
-observationPanelWidth: number (px, solo si es configurable por el usuario)
+fileListWidth:     number (px, only if user-configurable)
+observationPanelWidth: number (px, only if user-configurable)
 ```
 
-Nota: el tema activo (`ThemeKey: dark | synthwave-84`) es una preferencia
-global del navegador almacenada en `localStorage`, no una preferencia por
-workspace. La preferencia de tema no viaja al servidor ni se persiste en SQLite.
+Note: the active theme (`ThemeKey: dark | synthwave-84`) is a global browser
+preference stored in `localStorage`, not a per-workspace preference. The theme
+preference does not travel to the server and is not persisted in SQLite.
 
 ### ThemeKey
 
-Preferencia global de tema, almacenada exclusivamente en `localStorage` del
-navegador. No es una entidad de dominio ni se persiste en servidor.
+Global theme preference, stored exclusively in browser `localStorage`. It is
+not a domain entity and is not persisted on the server.
 
 ```text
 ThemeKey: "dark" | "synthwave-84"
 ```
 
-- `dark` es el tema Dark Deep (predeterminado).
-- `synthwave-84` es el tema alternativo Synthwave '84'.
-- El valor se resuelve en el cliente y se aplica mediante el atributo
-  `data-theme` en el elemento `<html>`.
+- `dark` is the Dark Deep theme (default).
+- `synthwave-84` is the alternate Synthwave '84 theme.
+- The value is resolved on the client and applied via the `data-theme`
+  attribute on the `<html>` element.
 
 ### WorkspaceTreeNode
 
-Representación read‑only de una entrada en el árbol del proyecto. Se obtiene
-desde el endpoint `GET /api/workspaces/[id]/tree`.
+Read‑only representation of an entry in the project tree. Retrieved from
+the `GET /api/workspaces/[id]/tree` endpoint.
 
 ```text
-path:       string (ruta relativa al repositorio)
+path:       string (repo-relative path)
 kind:       "file" | "directory"
-name:       string (nombre del archivo o directorio)
-children?:  WorkspaceTreeNode[] (solo si kind = "directory")
-changeType?: FileChangeStatus | null (si el archivo tiene cambios Git)
+name:       string (file or directory name)
+children?:  WorkspaceTreeNode[] (only if kind = "directory")
+changeType?: FileChangeStatus | null (if the file has Git changes)
 ```
 
-**Contrato read‑only:** el árbol es exclusivamente de lectura. No admite
-operaciones de creación, renombre, eliminación, edición ni mutación desde la
-interfaz.
+**Read‑only contract:** the tree is exclusively read‑only. It does not support
+create, rename, delete, edit, or mutation operations from the UI.
 
 ### FileSource
 
-Representación read‑only del contenido fuente de un archivo del repositorio. Se
-obtiene desde el endpoint `GET /api/workspaces/[id]/source`.
+Read‑only representation of the source content of a repository file. Retrieved
+from the `GET /api/workspaces/[id]/source` endpoint.
 
 ```text
-path:      string (ruta relativa al repositorio)
-language:  string (lenguaje detectado, o "text")
+path:      string (repo-relative path)
+language:  string (detected language, or "text")
 lines:     FileSourceLine[]
 ```
 
-Cada línea contiene:
+Each line contains:
 
 ```text
 lineNumber: number (1‑based)
-content:    string (texto de la línea)
+content:    string (line text)
 changeType: "added" | "removed" | "modified" | "unchanged" | null
 ```
 
-El `changeType` se deriva de la comparación Git activa y sirve como marcador
-visual en el gutter. No representa un diff ni reemplaza al Diff Viewer del tab
-Git.
+`changeType` is derived from the active Git comparison and serves as a visual
+marker in the gutter. It does not represent a diff nor replace the Diff Viewer
+in the Git tab.
 
-**Contrato read‑only:** el source view es exclusivamente de lectura. No se
-permite edición, auto‑fix ni mutación del archivo desde la interfaz.
+**Read‑only contract:** the source view is exclusively read‑only. Editing,
+auto‑fix, and file mutation from the UI are not allowed.
 
 ---
 
 ### ReviewContextSnapshot
 
-Copia del contexto activo al momento de crear o actualizar una review.
+Copy of the active context at the time of creating or updating a review.
 
 ```text
 sources:       ContextSource[]
@@ -379,77 +377,77 @@ reviewId:      ReviewId
 
 ### ReviewStatus
 
-| Valor       | Descripción                              |
-| ----------- | ---------------------------------------- |
-| `draft`     | Creada, no iniciada formalmente          |
-| `in_progress` | En revisión activa                     |
-| `completed` | Revisión finalizada                      |
-| `archived`  | Archivada, no aparece en vistas activas  |
+| Value        | Description                             |
+| ------------ | --------------------------------------- |
+| `draft`      | Created, not formally started           |
+| `in_progress`| In active review                        |
+| `completed`  | Review finished                         |
+| `archived`   | Archived, not shown in active views     |
 
 ### ObservationType
 
-| Valor        | Descripción                                  |
-| ------------ | -------------------------------------------- |
-| `issue`      | Problema que debe corregirse                 |
-| `risk`       | Riesgo potencial que requiere evaluación     |
-| `suggestion` | Mejora propuesta, no obligatoria             |
-| `question`   | Duda o aspecto que requiere clarificación    |
-| `praise`     | Reconocimiento positivo                      |
-| `note`       | Comentario informativo sin juicio de valor   |
+| Value        | Description                                   |
+| ------------ | --------------------------------------------- |
+| `issue`      | Problem that must be fixed                    |
+| `risk`       | Potential risk requiring evaluation           |
+| `suggestion` | Proposed improvement, not mandatory           |
+| `question`   | Doubt or aspect requiring clarification       |
+| `praise`     | Positive recognition                          |
+| `note`       | Informational comment without value judgment  |
 
 ### Severity
 
-| Valor           | Descripción                          |
-| --------------- | ------------------------------------ |
-| `critical`      | Bloquea la aceptación del cambio     |
-| `major`         | Debe resolverse antes de completar   |
-| `minor`         | Puede resolverse en iteración futura |
-| `informational` | Sin impacto en la decisión           |
+| Value           | Description                         |
+| --------------- | ----------------------------------- |
+| `critical`      | Blocks acceptance of the change     |
+| `major`         | Must be resolved before completing  |
+| `minor`         | Can be resolved in a future iteration |
+| `informational` | No impact on the decision           |
 
 ### ObservationStatus
 
-| Valor       | Descripción                               |
-| ----------- | ----------------------------------------- |
-| `open`      | Activa, requiere atención                 |
-| `resolved`  | El reviewer considera que fue atendida    |
-| `dismissed` | Descartada (no aplica, duplicada, etc.)   |
-| `pending`   | En espera de información o decisión       |
+| Value       | Description                                    |
+| ----------- | ---------------------------------------------- |
+| `open`      | Active, requires attention                     |
+| `resolved`  | The reviewer considers it addressed            |
+| `dismissed` | Discarded (not applicable, duplicate, etc.)    |
+| `pending`   | Awaiting information or decision               |
 
 ### ObservationOrigin
 
-| Valor          | Descripción                          |
-| -------------- | ------------------------------------ |
-| `human`        | Escrita manualmente por el usuario   |
-| `ai-generated` | Generada por IA, pendiente de revisión |
+| Value          | Description                              |
+| -------------- | ---------------------------------------- |
+| `human`        | Written manually by the user             |
+| `ai-generated` | AI-generated, pending human review       |
 
 ### OccurrenceStatus
 
-| Valor       | Descripción                        |
-| ----------- | ---------------------------------- |
-| `suggested` | Candidata, no confirmada           |
-| `confirmed` | Aceptada por el usuario            |
-| `dismissed` | Rechazada por el usuario           |
+| Value       | Description                      |
+| ----------- | -------------------------------- |
+| `suggested` | Candidate, not confirmed         |
+| `confirmed` | Accepted by the user             |
+| `dismissed` | Rejected by the user             |
 
 ### OccurrenceSource
 
-| Valor       | Descripción                                  |
-| ----------- | -------------------------------------------- |
-| `manual`    | Seleccionada manualmente por el usuario      |
-| `text-search` | Sugerida por búsqueda textual             |
-| `structural`  | Sugerida por búsqueda estructural          |
-| `ai`        | Sugerida por IA                              |
+| Value         | Description                               |
+| ------------- | ----------------------------------------- |
+| `manual`      | Manually selected by the user             |
+| `text-search` | Suggested by text search                  |
+| `structural`  | Suggested by structural search            |
+| `ai`          | AI-suggested                              |
 
 ### RelevanceLevel
 
-| Valor    | Descripción                     |
-| -------- | ------------------------------- |
-| `high`   | Alta probabilidad de relación   |
-| `medium` | Relación posible                |
-| `low`    | Relación débil o incierta       |
+| Value    | Description                  |
+| -------- | ---------------------------- |
+| `high`   | High probability of relation |
+| `medium` | Possible relation            |
+| `low`    | Weak or uncertain relation   |
 
 ---
 
-## Estados y transiciones
+## States and transitions
 
 ### Review
 
@@ -457,14 +455,14 @@ reviewId:      ReviewId
 [draft] ──→ in_progress ──→ completed ──→ archived
   │              │                │            │
   └──────────────└────────────────└────────────┘
-         (puede pasar a archived desde cualquier estado)
+         (can transition to archived from any state)
 ```
 
-- `draft → in_progress`: el usuario inicia la revisión.
-- `in_progress → completed`: el usuario finaliza la revisión.
-- `completed → archived`: el usuario archiva.
-- Cualquier estado → `archived`: archivado manual.
-- No hay transición automática entre estados.
+- `draft → in_progress`: user starts the review.
+- `in_progress → completed`: user finishes the review.
+- `completed → archived`: user archives.
+- Any state → `archived`: manual archive.
+- No automatic transition between states.
 
 ### Observation
 
@@ -472,13 +470,13 @@ reviewId:      ReviewId
 [open] ──→ resolved
   │  ──→ dismissed
   │  ──→ pending
-  └── (puede volver a open desde cualquier estado)
+  └── (can return to open from any state)
 ```
 
-- `open → resolved`: el reviewer marca como atendida.
-- `open → dismissed`: el reviewer descarta.
-- `open → pending`: el reviewer pospone.
-- Cualquier estado → `open`: reapertura.
+- `open → resolved`: reviewer marks as addressed.
+- `open → dismissed`: reviewer discards.
+- `open → pending`: reviewer postpones.
+- Any state → `open`: reopen.
 
 ### Occurrence
 
@@ -487,23 +485,22 @@ reviewId:      ReviewId
             ──→ dismissed
 ```
 
-- `suggested → confirmed`: el usuario acepta.
-- `suggested → dismissed`: el usuario rechaza.
-- No se permite transición inversa (una vez confirmada o descartada, no vuelve
-  a `suggested`).
+- `suggested → confirmed`: user accepts.
+- `suggested → dismissed`: user rejects.
+- Reverse transition not allowed (once confirmed or dismissed, does not return
+  to `suggested`).
 
 ---
 
-## Servicios de dominio
+## Domain services
 
-Los servicios de dominio contienen lógica que no pertenece naturalmente a una
-entidad o value object individual. Se implementan en la capa de aplicación
-como casos de uso, pero su contrato semántico se define aquí.
+Domain services contain logic that does not naturally belong to a single entity
+or value object. They are implemented in the application layer as use cases,
+but their semantic contract is defined here.
 
 ### DiffService
 
-Responsabilidad: construir la representación del diff a partir de una
-`Comparison`.
+Responsibility: build the diff representation from a `Comparison`.
 
 - `getDiff(comparison: Comparison): DiffResult`
 - `getFileList(comparison: Comparison): FileList`
@@ -511,15 +508,15 @@ Responsabilidad: construir la representación del diff a partir de una
 
 ### ObservationService
 
-Responsabilidad: operaciones que involucran múltiples observaciones o
-relaciones entre observaciones y otros agregados.
+Responsibility: operations involving multiple observations or relationships
+between observations and other aggregates.
 
 - `groupObservations(review: Review, criteria: GroupCriteria): ObservationGroup[]`
 - `findRelatedObservations(observation: Observation, review: Review): Observation[]`
 
 ### OccurrenceService
 
-Responsabilidad: búsqueda y gestión de ocurrencias.
+Responsibility: searching and managing occurrences.
 
 - `searchSimilar(observation: Observation, scope: SearchScope): OccurrenceCandidate[]`
 - `confirmOccurrence(occurrence: Occurrence): void`
@@ -527,7 +524,7 @@ Responsabilidad: búsqueda y gestión de ocurrencias.
 
 ### ExportService
 
-Responsabilidad: transformar una review en un review package exportable.
+Responsibility: transforming a review into an exportable review package.
 
 - `exportToMarkdown(review: Review): string`
 - `exportToJson(review: Review): ReviewPackageJson`
@@ -535,12 +532,12 @@ Responsabilidad: transformar una review en un review package exportable.
 
 ---
 
-## Interfaces de repositorios
+## Repository interfaces
 
-Las interfaces de repositorios se definen en `domain/repositories/`. Son
-puertos que el dominio expone y que la capa de infraestructura implementa.
+Repository interfaces are defined in `domain/repositories/`. They are ports
+exposed by the domain and implemented by the infrastructure layer.
 
-Las implementaciones concretas y los mappers viven en
+Concrete implementations and mappers live in
 `infrastructure/repositories/`.
 
 ### WorkspaceRepository
@@ -601,37 +598,37 @@ interface ContextSourceRepository {
 
 ---
 
-## Decisiones abiertas
+## Open decisions
 
-Las siguientes preguntas del PRD §21 afectan al modelo de dominio. Se registran
-como `[PENDIENTE]` sin inventar respuestas:
+The following questions from PRD §21 affect the domain model. They are recorded
+as `[PENDIENTE]` without inventing answers:
 
-1. `[PENDIENTE]` ¿Las revisiones se almacenan dentro del repositorio, fuera de
-   él o mediante una opción configurable? — afecta a `ReviewRepository` y
-   posiblemente a la ubicación de snapshots.
+1. `[PENDIENTE]` Should reviews be stored inside the repository, outside it, or
+   via a configurable option? — affects `ReviewRepository` and possibly
+   snapshot location.
 
-2. `[PENDIENTE]` ¿Debe existir un archivo portable de revisión que pueda
-   versionarse? — afecta a `ReviewPackage` y `ExportService`.
+2. `[PENDIENTE]` Should there be a portable review file that can be versioned? —
+   affects `ReviewPackage` and `ExportService`.
 
-3. `[PENDIENTE]` ¿Cómo se identificará una línea cuando el archivo cambie
-   después de crear la observación? — afecta a `LineRange`, `diffSnapshot` y la
-   estrategia de stale detection.
+3. `[PENDIENTE]` How will a line be identified when the file changes after the
+   observation is created? — affects `LineRange`, `diffSnapshot`, and the
+   stale detection strategy.
 
-4. `[PENDIENTE]` ¿Las observaciones tendrán etiquetas personalizadas desde el
-   inicio? — afecta a `Observation` (campo `tags` opcional).
+4. `[PENDIENTE]` Will observations have custom tags from the start? — affects
+   `Observation` (optional `tags` field).
 
-5. `[PENDIENTE]` ¿Conviene persistir un snapshot completo del diff o solo
-   referencias y fragmentos? — el modelo actual asume snapshot del fragmento
-   (`diffSnapshot` en `Observation`), pero la decisión final está abierta.
+5. `[PENDIENTE]` Is it better to persist a full diff snapshot or only references
+   and fragments? — the current model assumes a fragment snapshot
+   (`diffSnapshot` in `Observation`), but the final decision is open.
 
-6. `[PENDIENTE]` ¿Cómo se resolverá la precedencia de varios archivos
-   `AGENTS.md`? — afecta a `ContextConfiguration` y la detección automática.
+6. `[PENDIENTE]` How will the precedence of multiple `AGENTS.md` files be
+   resolved? — affects `ContextConfiguration` and auto-detection.
 
 ---
 
-## Referencias
+## References
 
-- [Product Requirements Document](PRD.md) §9 (conceptos centrales) y §16
-  (modelo conceptual inicial)
-- [Arquitectura](architecture.md) — capas y estructura de directorios
-- [Versionado](versioning.md) — migraciones y compatibilidad de esquema
+- [Product Requirements Document](PRD.md) §9 (core concepts) and §16
+  (initial conceptual model)
+- [Architecture](architecture.md) — layers and directory structure
+- [Versioning](versioning.md) — migrations and schema compatibility

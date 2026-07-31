@@ -1,86 +1,85 @@
-# DiffScribe — Guía de diseño
+# DiffScribe — Design guide
 
-**Estado:** Actualizado para UI redesign v1. El icon set (Lucide), sistema de
-temas (Dark Deep + Synthwave '84'), layout de rail izquierdo con panel
-contextual, panel derecho con Comments/Review, y resize/colapso de paneles están
-resueltos. Branding visual y tipografía definitiva permanecen `[PENDIENTE]`.
+**Status:** Updated for UI redesign v1. The icon set (Lucide), theme system
+(Dark Deep + Synthwave '84), left rail layout with contextual panel, right
+panel with Comments/Review, and panel resize/collapse are resolved. Final
+visual branding and typography remain `[PENDIENTE]`.
 
-Esta guía define el sistema visual de DiffScribe: principios, tokens CSS,
-layout, comportamiento responsive, estados de componentes, accesibilidad y
-validación. Es la fuente única de verdad para toda decisión visual.
-
----
-
-## Principios visuales
-
-### Jerarquía
-
-La interfaz debe comunicar prioridad sin ambigüedad. El diff es el elemento
-central; las observaciones y la navegación lo rodean sin competir. La jerarquía
-se construye con tamaño, peso, color y posición, no con decoración.
-
-### Foco
-
-Cada vista tiene un propósito claro. El usuario debe poder identificar en menos
-de un segundo qué puede hacer en cada zona. Los elementos accionables se
-distinguen del contenido estático por contraste y affordance, no solo por color.
-
-### Densidad para lectura de código
-
-El diff viewer requiere densidad controlada: suficiente contexto visible sin
-abrumar. El espaciado, el line-height y el tamaño de fuente están calibrados
-para lectura prolongada de código, no para consumo rápido de texto.
-
-### Claridad
-
-La interfaz evita ambigüedad. Los estados de diff (added, removed, modified),
-las severidades de observación y los tipos de contenido se distinguen por
-múltiples canales: color, icono, posición y texto.
-
-### Diseño intencional
-
-Ningún elemento visual existe por defecto. Cada color, espaciado, borde y
-sombra tiene una razón vinculada a la experiencia del reviewer. Se evita la
-decoración genérica.
-
-### Accesibilidad cognitiva
-
-La interfaz reduce la carga cognitiva mediante:
-
-- estructura predecible y consistente entre vistas;
-- etiquetas visibles y descriptivas;
-- feedback inmediato ante cada acción;
-- atajos de teclado documentados y descubribles;
-- ausencia de animaciones innecesarias o distractoras.
+This guide defines DiffScribe's visual system: principles, CSS tokens, layout,
+responsive behavior, component states, accessibility, and validation. It is
+the single source of truth for all visual decisions.
 
 ---
 
-## Jerarquía de tokens
+## Visual principles
 
-Los tokens se organizan en tres tiers. Cada tier hereda o restringe al
-anterior:
+### Hierarchy
+
+The interface must communicate priority without ambiguity. The diff is the
+central element; observations and navigation surround it without competing.
+Hierarchy is built with size, weight, color, and position, not decoration.
+
+### Focus
+
+Each view has a clear purpose. The user must be able to identify in under a
+second what they can do in each zone. Actionable elements are distinguished
+from static content by contrast and affordance, not just color.
+
+### Density for code reading
+
+The diff viewer requires controlled density: enough visible context without
+overwhelming. Spacing, line-height, and font size are calibrated for prolonged
+code reading, not for quick text consumption.
+
+### Clarity
+
+The interface avoids ambiguity. Diff states (added, removed, modified),
+observation severities, and content types are distinguished by multiple
+channels: color, icon, position, and text.
+
+### Intentional design
+
+No visual element exists by default. Every color, spacing, border, and shadow
+has a reason tied to the reviewer's experience. Generic decoration is avoided.
+
+### Cognitive accessibility
+
+The interface reduces cognitive load through:
+
+- predictable and consistent structure across views;
+- visible and descriptive labels;
+- immediate feedback on every action;
+- documented and discoverable keyboard shortcuts;
+- absence of unnecessary or distracting animations.
+
+---
+
+## Token hierarchy
+
+Tokens are organized in three tiers. Each tier inherits from or constrains the
+previous one:
 
 ```text
 primitives → semantics → component
 ```
 
-- **Primitives:** valores atómicos (colores base, escalas de spacing, radios).
-  No tienen significado semántico por sí mismos.
-- **Semantics:** tokens con significado funcional (superficie primaria, texto
-  de alto contraste, borde sutil). Mapean primitives a roles.
-- **Component:** tokens específicos de componentes (file-list-item-hover,
-  diff-added-bg). Restringen los tokens semánticos a un contexto concreto.
+- **Primitives:** atomic values (base colors, spacing scales, radii). They have
+  no semantic meaning by themselves.
+- **Semantics:** tokens with functional meaning (primary surface, high-contrast
+  text, subtle border). They map primitives to roles.
+- **Component:** component-specific tokens (file-list-item-hover,
+  diff-added-bg). They constrain semantic tokens to a concrete context.
 
-Los componentes consumen tokens component-level. Solo se crea un token de
-componente cuando el valor difiere del token semántico que hereda.
+Components consume component-level tokens. A component token is only created
+when the value differs from the semantic token it inherits.
 
 ---
 
-## Tokens de color
+## Color tokens
 
-### Superficies
+### Surfaces
 
-| Token                     | Claro              | Oscuro             |
+| Token                     | Light              | Dark               |
 | ------------------------- | ------------------ | ------------------ |
 | `--surface-primary`       | `#FFFFFF`          | `#1A1A2E`         |
 | `--surface-secondary`     | `#F8F9FA`          | `#16213E`         |
@@ -88,9 +87,9 @@ componente cuando el valor difiere del token semántico que hereda.
 | `--surface-elevated`      | `#FFFFFF`          | `#1A1A2E`         |
 | `--surface-overlay`       | `rgba(0,0,0,0.04)` | `rgba(0,0,0,0.30)` |
 
-### Texto
+### Text
 
-| Token                     | Claro              | Oscuro             |
+| Token                     | Light              | Dark               |
 | ------------------------- | ------------------ | ------------------ |
 | `--text-primary`          | `#1A1A2E`          | `#E4E6EB`         |
 | `--text-secondary`        | `#495057`          | `#B0B3B8`         |
@@ -98,36 +97,35 @@ componente cuando el valor difiere del token semántico que hereda.
 | `--text-inverse`          | `#FFFFFF`          | `#1A1A2E`         |
 | `--text-link`             | `#2563EB`          | `#60A5FA`         |
 
-### Bordes
+### Borders
 
-| Token                     | Claro              | Oscuro             |
+| Token                     | Light              | Dark               |
 | ------------------------- | ------------------ | ------------------ |
 | `--border-subtle`         | `#E9ECEF`          | `#2D2D44`         |
 | `--border-default`        | `#DEE2E6`          | `#3D3D5C`         |
 | `--border-strong`         | `#ADB5BD`          | `#5A5A7A`         |
 
-### Acento
+### Accent
 
-| Token                     | Claro              | Oscuro             |
+| Token                     | Light              | Dark               |
 | ------------------------- | ------------------ | ------------------ |
 | `--accent`                | `#2563EB`          | `#3B82F6`         |
 | `--accent-hover`          | `#1D4ED8`          | `#60A5FA`         |
 | `--accent-muted`          | `#EFF6FF`          | `#1E3A5F`         |
 
-El color de acento `#2563EB` es inicial y `[PENDIENTE]` de validación
-definitiva. El valor en dark mode se ajusta automáticamente para mantener
-contraste equivalente.
+The accent color `#2563EB` is initial and `[PENDIENTE]` for final validation.
+The value in dark mode adjusts automatically to maintain equivalent contrast.
 
 ### Focus
 
-| Token                     | Valor              |
+| Token                     | Value              |
 | ------------------------- | ------------------ |
 | `--focus-ring`            | `#2563EB`          |
 | `--focus-ring-offset`     | `2px`               |
 
-### Estados de diff
+### Diff states
 
-| Token                     | Claro              | Oscuro             |
+| Token                     | Light              | Dark               |
 | ------------------------- | ------------------ | ------------------ |
 | `--diff-added-bg`         | `#E6FFEC`          | `#0D3320`         |
 | `--diff-added-border`     | `#ABF2C2`          | `#196F3D`         |
@@ -140,9 +138,9 @@ contraste equivalente.
 | `--diff-hunk-header-bg`   | `#F0F4FF`          | `#1A2744`         |
 | `--diff-line-number`      | `#6C757D`          | `#6C757D`         |
 
-### Estados de archivo (file list)
+### File states (file list)
 
-| Token                           | Claro              | Oscuro             |
+| Token                           | Light              | Dark               |
 | ------------------------------- | ------------------ | ------------------ |
 | `--file-list-row-hover`         | `rgba(0,0,0,0.04)` | `rgba(255,255,255,0.06)` |
 | `--file-list-row-active`        | `#EFF6FF`          | `#1E3A5F`         |
@@ -159,34 +157,34 @@ contraste equivalente.
 | `--file-list-binary-badge-bg`   | `#6C757D`          | `#9CA3AF`         |
 | `--file-list-binary-badge-text` | `#FFFFFF`          | `#1A1A2E`         |
 
-Los estados `untracked` se tratan visualmente de forma neutra (escala de
-grises) para indicar que el archivo no está bajo control de versiones. El
-indicador binary se aplica mediante un badge compacto junto al status badge;
-el indicador no depende del color como canal único.
+`untracked` states are visually treated neutrally (grayscale) to indicate the
+file is not under version control. The binary indicator is applied via a
+compact badge next to the status badge; the indicator does not rely on color
+as the sole channel.
 
-### Severidades de observación
+### Observation severities
 
-| Token                     | Claro              | Oscuro             |
+| Token                     | Light              | Dark               |
 | ------------------------- | ------------------ | ------------------ |
 | `--severity-critical`     | `#DC2626`          | `#EF4444`         |
 | `--severity-major`        | `#EA580C`          | `#F97316`         |
 | `--severity-minor`        | `#CA8A04`          | `#EAB308`         |
 | `--severity-info`         | `#2563EB`          | `#3B82F6`         |
 
-### Tipos de observación
+### Observation types
 
-| Tipo           | Color claro   | Color oscuro  |
-| -------------- | ------------- | ------------- |
-| Issue          | `#DC2626`     | `#EF4444`     |
-| Risk           | `#EA580C`     | `#F97316`     |
-| Suggestion     | `#2563EB`     | `#3B82F6`     |
-| Question       | `#8B5CF6`     | `#A78BFA`     |
-| Praise         | `#16A34A`     | `#22C55E`     |
-| Note           | `#6C757D`     | `#9CA3AF`     |
+| Type           | Light color    | Dark color     |
+| -------------- | -------------- | -------------- |
+| Issue          | `#DC2626`      | `#EF4444`      |
+| Risk           | `#EA580C`      | `#F97316`      |
+| Suggestion     | `#2563EB`      | `#3B82F6`      |
+| Question       | `#8B5CF6`      | `#A78BFA`      |
+| Praise         | `#16A34A`      | `#22C55E`      |
+| Note           | `#6C757D`      | `#9CA3AF`      |
 
-### Estados de componentes
+### Component states
 
-| Token                     | Claro              | Oscuro             |
+| Token                     | Light              | Dark               |
 | ------------------------- | ------------------ | ------------------ |
 | `--state-hover`           | `rgba(0,0,0,0.04)` | `rgba(255,255,255,0.06)` |
 | `--state-active`          | `rgba(0,0,0,0.08)` | `rgba(255,255,255,0.10)` |
@@ -200,143 +198,143 @@ el indicador no depende del color como canal único.
 
 ---
 
-## Tipografía
+## Typography
 
-La tipografía definitiva es `[PENDIENTE]`. Se usará una familia de sistema como
-fallback inicial:
+Final typography is `[PENDIENTE]`. A system font family will be used as the
+initial fallback:
 
 ```css
 font-family: ui-monospace, SFMono-Regular, 'Cascadia Code', 'Fira Code',
   Menlo, Consolas, monospace;
 ```
 
-### Escala
+### Scale
 
-| Token             | Size / Line-height | Uso                                |
+| Token             | Size / Line-height | Use                                |
 | ----------------- | ------------------ | ---------------------------------- |
 | `--text-xs`       | `0.75rem / 1rem`   | Line numbers, badges, timestamps   |
-| `--text-sm`       | `0.8125rem / 1.25rem` | Código en diff, file list        |
-| `--text-base`     | `0.875rem / 1.5rem` | Texto de UI, observaciones        |
-| `--text-lg`       | `1rem / 1.5rem`    | Títulos de sección                 |
-| `--text-xl`       | `1.125rem / 1.5rem` | Encabezados de panel              |
-| `--text-2xl`      | `1.5rem / 1.75rem`  | Título de revisión                |
+| `--text-sm`       | `0.8125rem / 1.25rem` | Diff code, file list            |
+| `--text-base`     | `0.875rem / 1.5rem` | UI text, observations             |
+| `--text-lg`       | `1rem / 1.5rem`    | Section titles                     |
+| `--text-xl`       | `1.125rem / 1.5rem` | Panel headings                   |
+| `--text-2xl`      | `1.5rem / 1.75rem`  | Review title                      |
 
-### Pesos
+### Weights
 
-| Token                    | Valor | Uso                          |
+| Token                    | Value | Use                          |
 | ------------------------ | ----- | ---------------------------- |
-| `--font-weight-normal`   | 400   | Texto general                |
-| `--font-weight-medium`   | 500   | Énfasis sutil, labels        |
-| `--font-weight-semibold` | 600   | Títulos, navegación activa   |
-| `--font-weight-bold`     | 700   | Severidades, contadores      |
+| `--font-weight-normal`   | 400   | General text                 |
+| `--font-weight-medium`   | 500   | Subtle emphasis, labels      |
+| `--font-weight-semibold` | 600   | Titles, active navigation    |
+| `--font-weight-bold`     | 700   | Severities, counters         |
 
-### Altos de línea
+### Line heights
 
-| Token                 | Valor   | Uso                                     |
-| --------------------- | ------- | --------------------------------------- |
-| `--line-height-tight` | `1rem`  | Badges, line numbers, elementos densos  |
-| `--line-height-code`  | `1.25rem` | Código en diff, file list             |
-| `--line-height-normal` | `1.5rem` | Texto de UI, observaciones, títulos   |
-| `--line-height-relaxed` | `1.75rem` | Títulos de revisión                |
+| Token                 | Value   | Use                                      |
+| --------------------- | ------- | ---------------------------------------- |
+| `--line-height-tight` | `1rem`  | Badges, line numbers, dense elements     |
+| `--line-height-code`  | `1.25rem` | Diff code, file list                  |
+| `--line-height-normal` | `1.5rem` | UI text, observations, titles         |
+| `--line-height-relaxed` | `1.75rem` | Review titles                       |
 
 ---
 
 ## Spacing
 
-Escala base de 4px.
+4px base scale.
 
-| Token         | Valor | Uso                                  |
-| ------------- | ----- | ------------------------------------ |
-| `--space-0`   | 0     | Sin espacio                          |
-| `--space-1`   | 4px   | Gap mínimo, iconos pegados a texto   |
-| `--space-2`   | 8px   | Padding interno reducido             |
-| `--space-3`   | 12px  | Padding de componente                |
-| `--space-4`   | 16px  | Padding de panel, gap entre secciones|
-| `--space-5`   | 20px  | Separación entre grupos              |
-| `--space-6`   | 24px  | Margen de layout                     |
-| `--space-8`   | 32px  | Separación de zonas                  |
-| `--space-10`  | 40px  | Margen de página                     |
-| `--space-12`  | 48px  | Separación mayor                     |
-
----
-
-## Radios
-
-| Token            | Valor | Uso                         |
-| ---------------- | ----- | --------------------------- |
-| `--radius-none`  | 0     | Paneles, diff lines         |
-| `--radius-sm`    | 4px   | Botones, inputs, badges     |
-| `--radius-md`    | 6px   | Cards, modales              |
-| `--radius-lg`    | 8px   | Paneles principales         |
-| `--radius-full`  | 9999px | Pills, tags               |
+| Token         | Value | Use                                   |
+| ------------- | ----- | ------------------------------------- |
+| `--space-0`   | 0     | No space                              |
+| `--space-1`   | 4px   | Minimum gap, icons next to text       |
+| `--space-2`   | 8px   | Reduced internal padding              |
+| `--space-3`   | 12px  | Component padding                     |
+| `--space-4`   | 16px  | Panel padding, gap between sections   |
+| `--space-5`   | 20px  | Separation between groups             |
+| `--space-6`   | 24px  | Layout margin                         |
+| `--space-8`   | 32px  | Zone separation                       |
+| `--space-10`  | 40px  | Page margin                           |
+| `--space-12`  | 48px  | Major separation                      |
 
 ---
 
-## Sombras
+## Radii
 
-| Token             | Valor                                                  | Uso                    |
-| ----------------- | ------------------------------------------------------ | ---------------------- |
-| `--shadow-none`   | none                                                   | Default                |
-| `--shadow-sm`     | `0 1px 2px rgba(0,0,0,0.06)`                          | File list hover        |
-| `--shadow-md`     | `0 2px 8px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)` | Dropdowns, tooltips |
-| `--shadow-lg`     | `0 4px 16px rgba(0,0,0,0.12)`                         | Modales                |
+| Token            | Value | Use                          |
+| ---------------- | ----- | ---------------------------- |
+| `--radius-none`  | 0     | Panels, diff lines           |
+| `--radius-sm`    | 4px   | Buttons, inputs, badges      |
+| `--radius-md`    | 6px   | Cards, modals                |
+| `--radius-lg`    | 8px   | Main panels                  |
+| `--radius-full`  | 9999px | Pills, tags                |
+
+---
+
+## Shadows
+
+| Token             | Value                                                  | Use                     |
+| ----------------- | ------------------------------------------------------ | ----------------------- |
+| `--shadow-none`   | none                                                   | Default                 |
+| `--shadow-sm`     | `0 1px 2px rgba(0,0,0,0.06)`                          | File list hover         |
+| `--shadow-md`     | `0 2px 8px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)` | Dropdowns, tooltips  |
+| `--shadow-lg`     | `0 4px 16px rgba(0,0,0,0.12)`                         | Modals                  |
 
 ---
 
 ## Z-index
 
-| Token                  | Valor | Uso                          |
-| ---------------------- | ----- | ---------------------------- |
-| `--z-base`             | 0     | Contenido                    |
-| `--z-dropdown`         | 100   | Dropdowns, selects           |
-| `--z-sticky`           | 200   | Headers fijos                |
-| `--z-overlay`          | 300   | Overlays, backdrops          |
-| `--z-modal`            | 400   | Modales                      |
-| `--z-toast`            | 500   | Notificaciones               |
-| `--z-tooltip`          | 600   | Tooltips                     |
+| Token                  | Value | Use                           |
+| ---------------------- | ----- | ----------------------------- |
+| `--z-base`             | 0     | Content                       |
+| `--z-dropdown`         | 100   | Dropdowns, selects            |
+| `--z-sticky`           | 200   | Fixed headers                 |
+| `--z-overlay`          | 300   | Overlays, backdrops           |
+| `--z-modal`            | 400   | Modals                        |
+| `--z-toast`            | 500   | Notifications                 |
+| `--z-tooltip`          | 600   | Tooltips                      |
 
 ---
 
 ## Motion
 
-| Token                  | Valor  | Uso                              |
-| ---------------------- | ------ | -------------------------------- |
-| `--duration-instant`   | 0ms    | Cambios sin animación            |
-| `--duration-fast`      | 150ms  | Hover, focus, toggle             |
-| `--duration-normal`    | 250ms  | Transiciones de panel, expandir  |
-| `--duration-slow`      | 350ms  | Entrada de modal, reveal         |
-| `--ease-default`       | `cubic-bezier(0.16, 1, 0.3, 1)` | Curva estándar         |
-| `--ease-out`           | `cubic-bezier(0, 0, 0.2, 1)`    | Entrada                |
-| `--ease-in`            | `cubic-bezier(0.4, 0, 1, 1)`    | Salida                 |
+| Token                  | Value  | Use                                |
+| ---------------------- | ------ | ---------------------------------- |
+| `--duration-instant`   | 0ms    | Changes without animation          |
+| `--duration-fast`      | 150ms  | Hover, focus, toggle               |
+| `--duration-normal`    | 250ms  | Panel transitions, expand          |
+| `--duration-slow`      | 350ms  | Modal entrance, reveal             |
+| `--ease-default`       | `cubic-bezier(0.16, 1, 0.3, 1)` | Standard curve          |
+| `--ease-out`           | `cubic-bezier(0, 0, 0.2, 1)`    | Entrance               |
+| `--ease-in`            | `cubic-bezier(0.4, 0, 1, 1)`    | Exit                   |
 
 ---
 
-## CSS de referencia
+## Reference CSS
 
-### `:root` — tema claro
+### `:root` — light theme
 
 ```css
 :root {
-  /* Superficies */
+  /* Surfaces */
   --surface-primary: #FFFFFF;
   --surface-secondary: #F8F9FA;
   --surface-tertiary: #F1F3F5;
   --surface-elevated: #FFFFFF;
   --surface-overlay: rgba(0, 0, 0, 0.04);
 
-  /* Texto */
+  /* Text */
   --text-primary: #1A1A2E;
   --text-secondary: #495057;
   --text-tertiary: #868E96;
   --text-inverse: #FFFFFF;
   --text-link: #2563EB;
 
-  /* Bordes */
+  /* Borders */
   --border-subtle: #E9ECEF;
   --border-default: #DEE2E6;
   --border-strong: #ADB5BD;
 
-  /* Acento */
+  /* Accent */
   --accent: #2563EB;
   --accent-hover: #1D4ED8;
   --accent-muted: #EFF6FF;
@@ -357,13 +355,13 @@ Escala base de 4px.
   --diff-hunk-header-bg: #F0F4FF;
   --diff-line-number: #6C757D;
 
-  /* Severidades */
+  /* Severities */
   --severity-critical: #DC2626;
   --severity-major: #EA580C;
   --severity-minor: #CA8A04;
   --severity-info: #2563EB;
 
-  /* Estados */
+  /* States */
   --state-hover: rgba(0, 0, 0, 0.04);
   --state-active: rgba(0, 0, 0, 0.08);
   --state-disabled-bg: #F1F3F5;
@@ -374,7 +372,7 @@ Escala base de 4px.
   --state-success-border: #BBF7D0;
   --state-loading: #E9ECEF;
 
-  /* Tipografía */
+  /* Typography */
   --font-family-mono: ui-monospace, SFMono-Regular, 'Cascadia Code',
     'Fira Code', Menlo, Consolas, monospace;
   --font-weight-normal: 400;
@@ -404,14 +402,14 @@ Escala base de 4px.
   --space-10: 40px;
   --space-12: 48px;
 
-  /* Radios */
+  /* Radii */
   --radius-none: 0;
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 8px;
   --radius-full: 9999px;
 
-  /* Sombras */
+  /* Shadows */
   --shadow-none: none;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
   --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.08),
@@ -510,36 +508,36 @@ Escala base de 4px.
 
 ---
 
-## Temas
+## Themes
 
-DiffScribe incluye dos temas globales seleccionables por el usuario. La
-preferencia se almacena en `localStorage` del navegador (client‑only, no se
-persiste en servidor). La clave de tema es `ThemeKey: dark | synthwave-84`.
+DiffScribe includes two global user-selectable themes. The preference is stored
+in browser `localStorage` (client‑only, not persisted on server). The theme key
+is `ThemeKey: dark | synthwave-84`.
 
-### Dark Deep (predeterminado)
+### Dark Deep (default)
 
-El tema oscuro definido en `[data-theme="dark"]` es el tema Dark Deep. Sus
-valores están documentados en la tabla de la sección Tokens de color y en el
-bloque CSS correspondiente. Es el tema por defecto de la aplicación.
+The dark theme defined in `[data-theme="dark"]` is the Dark Deep theme. Its
+values are documented in the Color tokens section table and in the
+corresponding CSS block. It is the default theme of the application.
 
 ### Synthwave '84'
 
-Tema alternativo inspirado en la paleta retro‑futurista Synthwave '84. La
-paleta proviene de https://www.color-hex.com/color-palette/114197:
+Alternative theme inspired by the retro‑futuristic Synthwave '84 palette. The
+palette comes from https://www.color-hex.com/color-palette/114197:
 
-| Rol           | Hex       | Uso                                        |
-| ------------- | --------- | ------------------------------------------ |
-| Fondo profundo| `#0d0221` | Superficies primarias                      |
-| Fondo medio   | `#2e2157` | Superficies secundarias, bordes            |
-| Acento        | `#920075` | Acento principal, hover activo             |
-| Acento claro  | `#540d6e` | Acento secundario, muted                   |
-| Neón          | `#2de2e6` | Texto de alto contraste, focus, selección  |
+| Role           | Hex       | Use                                        |
+| -------------- | --------- | ------------------------------------------ |
+| Deep background| `#0d0221` | Primary surfaces                           |
+| Mid background | `#2e2157` | Secondary surfaces, borders                |
+| Accent         | `#920075` | Primary accent, active hover               |
+| Light accent   | `#540d6e` | Secondary accent, muted                    |
+| Neon           | `#2de2e6` | High-contrast text, focus, selection       |
 
-El glow (sombra exterior brillante) se aplica exclusivamente a estados de
-foco (`focus-visible`), selección activa y elementos con estado `active`. No se
-aplica glow a elementos en estado default, hover simple ni elementos estáticos.
-El glow se implementa con `box-shadow` y el color neón `#2de2e6` con opacidad
-controlada.
+The glow (bright outer shadow) is applied exclusively to focus states
+(`focus-visible`), active selection, and elements with `active` state. No glow
+is applied to elements in default state, simple hover, or static elements. The
+glow is implemented with `box-shadow` and the neon color `#2de2e6` with
+controlled opacity.
 
 ```css
 [data-theme="synthwave-84"] {
@@ -598,94 +596,91 @@ controlada.
 }
 ```
 
-Los tokens de diff en Synthwave usan los colores neón y acento con opacidad
-controlada para mantener legibilidad sin saturar el fondo oscuro.
+Diff tokens in Synthwave use neon and accent colors with controlled opacity to
+maintain legibility without saturating the dark background.
 
 ---
 
 ## Breakpoints
 
-| Breakpoint  | Rango                    | Uso                                     |
-| ----------- | ------------------------ | --------------------------------------- |
-| `compact`   | `max-width: 768px`       | Móvil, panel único, drawers superpuestos|
-| `tablet`    | `769px – 1024px`         | Rail + panel contextual colapsable      |
-| `desktop`   | `min-width: 1025px`      | Rail + panel contextual + panel derecho |
-| `wide`      | `min-width: 1440px`      | Máximo espacio, paneles expandidos      |
+| Breakpoint  | Range                    | Use                                      |
+| ----------- | ------------------------ | ---------------------------------------- |
+| `compact`   | `max-width: 768px`       | Mobile, single panel, overlay drawers    |
+| `tablet`    | `769px – 1024px`         | Rail + collapsible contextual panel      |
+| `desktop`   | `min-width: 1025px`      | Rail + contextual panel + right panel    |
+| `wide`      | `min-width: 1440px`      | Maximum space, expanded panels           |
 
-El diseño adopta mobile-first: la interfaz es funcional desde el primer momento
-en compact, y las capacidades se expanden progresivamente en tablet, desktop y
-wide. No hay una versión "solo desktop" que se adapte después a móvil.
+The layout adopts mobile-first: the interface is functional from the start on
+compact, and capabilities expand progressively on tablet, desktop, and wide.
+There is no "desktop-only" version that later adapts to mobile.
 
 ---
 
-## Comportamiento responsive
+## Responsive behavior
 
-### Rail y panel contextual
+### Rail and contextual panel
 
-- **Compact (móvil):** el rail izquierdo se reduce a íconos sin labels visibles.
-  El panel contextual y el panel derecho se presentan como drawers superpuestos
-  o bottom sheets, nunca permanentes. Solo una zona visible a la vez.
-- **Tablet:** rail con íconos; panel contextual colapsable. El panel derecho se
-  muestra como overlay al activar un tab.
-- **Desktop y wide:** rail + panel contextual visible. El panel derecho es
-  visible cuando hay una revisión activa.
+- **Compact (mobile):** the left rail shrinks to icons without visible labels.
+  The contextual panel and right panel appear as overlay drawers or bottom
+  sheets, never permanent. Only one zone visible at a time.
+- **Tablet:** rail with icons; contextual panel is collapsible. The right panel
+  appears as an overlay when activating a tab.
+- **Desktop and wide:** rail + contextual panel visible. The right panel is
+  visible when there is an active review.
 
-### Project tree (tab Project)
+### Project tree (Project tab)
 
-- **Compact:** árbol colapsable que ocupa el ancho completo sobre la zona
-  central al activarse.
-- **Tablet:** panel lateral estrecho, colapsable.
-- **Desktop y wide:** panel contextual con el árbol visible (ancho
-  redimensionable).
+- **Compact:** collapsible tree occupying full width over the central area when
+  activated.
+- **Tablet:** narrow side panel, collapsible.
+- **Desktop and wide:** contextual panel with tree visible (resizable width).
 
-#### Marcador de revisado (Review marker)
+#### Review marker
 
-Cuando existe una review activa, cada fila del file list muestra un marcador
-visual de estado de revisión:
+When an active review exists, each file list row displays a visual review
+status marker:
 
-- **Revisado (✓):** verde (`--diff-added-fg`), negrita. Indica que el archivo fue marcado como revisado.
-- **No revisado (○):** gris terciario con opacidad 0.5. Indica que el archivo aún no fue marcado.
-- **Sin review activa:** la columna `.review-cell` no se renderiza (0 width).
+- **Reviewed (✓):** green (`--diff-added-fg`), bold. Indicates the file was marked as reviewed.
+- **Not reviewed (○):** tertiary gray with 0.5 opacity. Indicates the file was not yet marked.
+- **No active review:** the `.review-cell` column is not rendered (0 width).
 
-El marcador usa `aria-label="Reviewed"` / `aria-label="Not reviewed"` para
-accesibilidad. Se ubica a la derecha de la celda de estadísticas (±), con un
-ancho fijo de 32px.
+The marker uses `aria-label="Reviewed"` / `aria-label="Not reviewed"` for
+accessibility. It is positioned to the right of the stats cell (±), with a
+fixed width of 32px.
 
-#### Progreso de review
+#### Review progress
 
-El panel ReviewPanel muestra una barra de progreso `<progress>` con valor
-porcentual derivado de `reviewedCount / totalCount`. El texto acompaña en
-formato `N/M files reviewed`. La barra usa `--accent` como color de relleno y
-`--surface-tertiary` como fondo. Responde a `prefers-reduced-motion` eliminando
-transiciones.
+The ReviewPanel displays a `<progress>` bar with percentage derived from
+`reviewedCount / totalCount`. The text accompanies in `N/M files reviewed`
+format. The bar uses `--accent` as fill color and `--surface-tertiary` as
+background. It respects `prefers-reduced-motion` by removing transitions.
 
-**Selección de review en la lista:** Cada opción del listado de reviews
-(`role="listbox"`) usa `role="option"` con `aria-selected` que refleja si
-la review es la activa (`review.id === activeReview.id`).
+**Review selection in the list:** Each option in the review list
+(`role="listbox"`) uses `role="option"` with `aria-selected` reflecting whether
+the review is the active one (`review.id === activeReview.id`).
 
 ### Diff viewer
 
-- **Compact:** unified por defecto. Side-by-side no disponible.
-- **Tablet:** unified por defecto; side-by-side disponible si el viewport
-  supera aproximadamente 900px de ancho.
-- **Desktop:** unified o side-by-side según preferencia del usuario.
-- **Wide:** side-by-side cómodo con números de línea visibles.
+- **Compact:** unified by default. Side-by-side not available.
+- **Tablet:** unified by default; side-by-side available if the viewport
+  exceeds approximately 900px width.
+- **Desktop:** unified or side-by-side per user preference.
+- **Wide:** comfortable side-by-side with visible line numbers.
 
-### Panel derecho (Comments / Review)
+### Right panel (Comments / Review)
 
-El panel derecho contiene dos tabs: Comments (lista de observaciones) y Review
-(progreso y controles de la revisión activa).
+The right panel contains two tabs: Comments (observation list) and Review
+(progress and active review controls).
 
-- **Compact:** drawer inferior o superpuesto que cubre la zona central.
-- **Tablet:** overlay lateral al activar un tab; colapsable.
-- **Desktop y wide:** panel lateral derecho (~320px), colapsable y
-  redimensionable.
+- **Compact:** bottom or overlay drawer covering the central area.
+- **Tablet:** side overlay when activating a tab; collapsible.
+- **Desktop and wide:** right side panel (~320px), collapsible and resizable.
 
 ---
 
-## Layout rail + paneles
+## Rail + panels layout
 
-La interfaz principal se organiza en tres zonas más un rail izquierdo:
+The main interface is organized in three zones plus a left rail:
 
 ```text
 ┌───┬────────────────┬──────────────────────┬──────────────┐
@@ -699,412 +694,410 @@ La interfaz principal se organiza en tres zonas más un rail izquierdo:
 └───┴────────────────┴──────────────────────┴──────────────┘
 ```
 
-### Rail izquierdo
+### Left rail
 
-Rail compacto de íconos (Lucide) que permite alternar entre vistas globales:
-Workspaces, configuración y preferencias. Es fijo, no scrollea. Su ancho está
-diseñado para íconos sin labels en desktop compacto y se expande en wide.
+Compact rail of icons (Lucide) that allows toggling between global views:
+Workspaces, settings, and preferences. It is fixed, does not scroll. Its width
+is designed for icons without labels on compact desktop and expands on wide.
 
-### Panel contextual
+### Contextual panel
 
-Panel colapsable y redimensionable a la derecha del rail. Contiene tres tabs:
+Collapsible and resizable panel to the right of the rail. Contains three tabs:
 
-- **Workspaces:** lista de workspaces registrados, selector rápido y acceso a
-  historial.
-- **Project:** árbol read‑only completo del repositorio activo. Al abrir un
-  archivo, la zona central muestra la fuente normal con syntax highlighting y
-  marcadores de líneas afectadas por Git (change type), sin diff.
-- **Git:** comparación Git existente (estado, ramas, commits) y diff viewer
-  integrado.
+- **Workspaces:** registered workspaces list, quick selector, and history
+  access.
+- **Project:** full read‑only tree of the active repository. When opening a
+  file, the central area shows the normal source with syntax highlighting and
+  Git-affected line markers (change type), without diff.
+- **Git:** existing Git comparison (status, branches, commits) and integrated
+  diff viewer.
 
-El panel contextual scrollea su contenido de forma independiente según el tab
-activo.
+The contextual panel scrolls its content independently per the active tab.
 
-### Zona central
+### Central area
 
-Muestra el contenido principal:
+Shows the main content:
 
-- **Diff Viewer** (desde el tab Git): vista unificada o side‑by‑side del diff
-  entre dos estados Git.
-- **Source View** (desde el tab Project): fuente del archivo seleccionado con
-  syntax highlighting y marcadores de líneas afectadas.
+- **Diff Viewer** (from the Git tab): unified or side‑by‑side view of the diff
+  between two Git states.
+- **Source View** (from the Project tab): source of the selected file with
+  syntax highlighting and affected line markers.
 
-### Panel derecho
+### Right panel
 
-Panel colapsable y redimensionable con dos tabs:
+Collapsible and resizable panel with two tabs:
 
-- **Comments:** lista de observaciones/comentarios sobre la revisión activa.
-- **Review:** resumen, progreso y controles de la revisión activa.
+- **Comments:** list of observations/comments on the active review.
+- **Review:** summary, progress, and controls of the active review.
 
-Ambos paneles (contextual y derecho) pueden colapsarse y redimensionarse dentro
-de límites mínimos y máximos predefinidos.
+Both panels (contextual and right) can be collapsed and resized within
+predefined minimum and maximum limits.
 
 ### Scroll ownership
 
-Cada zona maneja su propio scroll de forma independiente:
+Each zone handles its own scroll independently:
 
-- El **rail izquierdo** es fijo (no scrollea).
-- El **panel contextual** scrollea verticalmente su contenido (árbol Project,
-  lista de workspaces, Git context). Cada tab tiene su propio scroll.
-- La **zona central** (Diff Viewer o Source View) scrollea vertical y
-  horizontalmente (para líneas largas en side-by-side o archivos fuente
-  extensos).
-- El **panel derecho** scrollea verticalmente su contenido (Comments y Review).
-- La **navegación global** (cabecera) es fija (no scrollea).
+- The **left rail** is fixed (does not scroll).
+- The **contextual panel** scrolls vertically its content (Project tree,
+  Workspaces list, Git context). Each tab has its own scroll.
+- The **central area** (Diff Viewer or Source View) scrolls vertically and
+  horizontally (for long lines in side-by-side or extensive source files).
+- The **right panel** scrolls vertically its content (Comments and Review).
+- The **global navigation** (header) is fixed (does not scroll).
 
-La barra de scroll del viewport principal es propiedad de la zona central. Los
-paneles laterales no empujan el contenido central.
+The main viewport scrollbar belongs to the central area. The side panels do
+not push the central content.
 
-### Side-by-side mínimo
+### Side-by-side minimum
 
-El modo side-by-side requiere un ancho mínimo aproximado de 900px en el
-viewport para ser usable. Por debajo de ese umbral, la interfaz fuerza unified
-independientemente de la preferencia del usuario.
+Side-by-side mode requires a minimum approximate width of 900px in the viewport
+to be usable. Below that threshold, the interface forces unified regardless of
+the user's preference.
 
 ---
 
-## Panel collapse y resize
+## Panel collapse and resize
 
-Los paneles contextual (izquierdo) y derecho pueden colapsarse y
-redimensionarse mediante drag handles:
+The contextual (left) and right panels can be collapsed and resized via drag
+handles:
 
-### Colapso
+### Collapse
 
-- Cada panel tiene un botón de toggle (icono Lucide `PanelLeftClose` /
-  `PanelLeftOpen` para el contextual; `PanelRightClose` / `PanelRightOpen` para
-  el derecho).
-- El estado colapsado oculta el contenido del panel pero mantiene visible el
-  rail de tabs o un indicador mínimo.
-- Al colapsar el panel contextual, la zona central ocupa el espacio liberado.
-- Al colapsar el panel derecho, la zona central se expande hasta el borde
-  derecho del viewport.
+- Each panel has a toggle button (Lucide icon `PanelLeftClose` /
+  `PanelLeftOpen` for contextual; `PanelRightClose` / `PanelRightOpen` for
+  the right one).
+- The collapsed state hides the panel content but keeps the tab rail or a
+  minimal indicator visible.
+- When collapsing the contextual panel, the central area occupies the freed
+  space.
+- When collapsing the right panel, the central area expands to the right edge
+  of the viewport.
 
 ### Resize
 
-- Cada panel tiene un drag handle (`cursor: col-resize`) en su borde compartido
-  con la zona central.
-- Límites: ancho mínimo 200px, ancho máximo 480px para el panel contextual;
-  ancho mínimo 240px, ancho máximo 480px para el panel derecho.
-- El ancho se persiste en `localStorage` (client‑only) para mantener la
-  preferencia entre sesiones.
-- En compact (móvil) los paneles no son redimensionables; se comportan como
-  drawers de ancho completo o predefinido.
+- Each panel has a drag handle (`cursor: col-resize`) on its shared border
+  with the central area.
+- Limits: minimum width 200px, maximum width 480px for the contextual panel;
+  minimum width 240px, maximum width 480px for the right panel.
+- The width is persisted in `localStorage` (client‑only) to keep the preference
+  between sessions.
+- On compact (mobile), panels are not resizable; they behave as full-width or
+  predefined-width drawers.
 
 ---
 
 ## Icon set
 
-DiffScribe usa **Lucide** como librería de íconos. Los componentes consumen
-íconos Lucide mediante import directo. No se usa sprite sheet ni carga remota.
+DiffScribe uses **Lucide** as the icon library. Components consume Lucide icons
+via direct import. No sprite sheet or remote loading is used.
 
-### Convenciones
+### Conventions
 
-- Los íconos decorativos (sin significado independiente) llevan
-  `aria-hidden="true"`.
-- Los íconos con función informativa (estados, alertas, badges) llevan
-  `aria-label` descriptivo.
-- El tamaño base es 16×16px (`--text-sm`). Íconos en rails y tabs usan
-  20×20px.
-- El color hereda del `currentColor` del contexto (texto, acento o estado).
+- Decorative icons (without independent meaning) carry `aria-hidden="true"`.
+- Icons with informational function (states, alerts, badges) carry a
+  descriptive `aria-label`.
+- The base size is 16×16px (`--text-sm`). Icons in rails and tabs use 20×20px.
+- Color inherits from `currentColor` of the context (text, accent, or state).
 
 ---
 
-## Source View (tab Project)
+## Source View (Project tab)
 
-Cuando el usuario selecciona un archivo en el árbol Project, la zona central
-muestra el **Source View**: el contenido completo del archivo con syntax
-highlighting y marcadores de líneas afectadas por Git.
+When the user selects a file in the Project tree, the central area shows the
+**Source View**: the full file content with syntax highlighting and
+Git-affected line markers.
 
-### Comportamiento
+### Behavior
 
-- **Read‑only:** no se permite edición, modificación, auto‑fix ni mutación del
-  archivo.
-- **Syntax highlighting:** se aplica resaltado Shiki según la extensión del
-  archivo. Lenguaje no reconocido → `text`.
-- **Git change markers:** cada línea afectada muestra un marcador en el gutter
-  (added, modified, deleted) según el diff entre working tree y HEAD u otra
-  comparación activa.
-- **Sin diff:** el Source View no muestra diff lado a lado ni unificado. Es la
-  fuente completa con anotaciones, no un diff.
-- **Archivos binarios o muy grandes:** se muestra un mensaje informativo en
-  lugar del contenido, idéntico al tratamiento del Diff Viewer.
+- **Read‑only:** editing, modification, auto‑fix, and file mutation are not
+  allowed.
+- **Syntax highlighting:** Shiki highlighting is applied based on the file
+  extension. Unrecognized language → `text`.
+- **Git change markers:** each affected line shows a gutter marker (added,
+  modified, deleted) based on the diff between working tree and HEAD or another
+  active comparison.
+- **No diff:** the Source View does not show a side-by-side or unified diff. It
+  is the full source with annotations, not a diff.
+- **Binary or very large files:** an informational message is shown instead of
+  content, identical to the Diff Viewer handling.
 
-### Estados
+### States
 
-| Estado       | Descripción                                      |
-| ------------ | ------------------------------------------------ |
-| `loading`    | Spinner + "Loading file..."                      |
-| `rendered`   | Contenido completo con highlighting y marcadores |
-| `binary`     | Mensaje "Binary file — preview not available"    |
-| `too-large`  | Mensaje "File too large to display"              |
-| `empty`      | Archivo vacío sin contenido                      |
-| `error`      | Mensaje de error con opción de retry             |
+| State        | Description                                       |
+| ------------ | ------------------------------------------------- |
+| `loading`    | Spinner + "Loading file..."                       |
+| `rendered`   | Full content with highlighting and markers        |
+| `binary`     | "Binary file — preview not available" message     |
+| `too-large`  | "File too large to display" message               |
+| `empty`      | Empty file with no content                        |
+| `error`      | Error message with retry option                   |
 
 ---
 
 ## Project tree
 
-El **Project tree** es la representación jerárquica read‑only del repositorio
-activo dentro del tab Project del panel contextual.
+The **Project tree** is the hierarchical read‑only representation of the active
+repository inside the Project tab of the contextual panel.
 
-### Comportamiento
+### Behavior
 
-- Árbol completo del repositorio (no solo archivos modificados).
-- Cada entrada muestra: nombre, tipo (archivo/directorio) y ChangeStatus tree
-  cuando el archivo tiene cambios Git.
-- Al hacer clic en un archivo, se abre en Source View en la zona central.
-- La selección activa se destaca visualmente.
-- Directorios colapsables/expandibles.
-- Archivos binarios y no legibles se muestran en el árbol pero no pueden
-  abrirse en Source View (se informa al usuario).
+- Full repository tree (not only modified files).
+- Each entry shows: name, type (file/directory), and tree ChangeStatus when
+  the file has Git changes.
+- Clicking a file opens it in Source View in the central area.
+- The active selection is visually highlighted.
+- Directories are collapsible/expandable.
+- Binary and unreadable files are shown in the tree but cannot be opened in
+  Source View (the user is informed).
 
-### Estados del árbol
+### Tree states
 
-| Estado       | Descripción                                      |
-| ------------ | ------------------------------------------------ |
-| `loading`    | Spinner + "Loading project tree..."              |
-| `rendered`   | Árbol completo con todos los nodos               |
-| `empty`      | Repositorio vacío sin archivos                   |
-| `error`      | Mensaje de error con retry                       |
-
----
-
-## Estados de componentes
-
-Cada componente interactivo debe contemplar los siguientes estados, aplicables
-según su naturaleza:
-
-| Estado          | Descripción                                      |
-| --------------- | ------------------------------------------------ |
-| `default`       | Estado inicial, sin interacción                  |
-| `hover`         | Cursor sobre el elemento                         |
-| `focus-visible` | Foco de teclado visible (anillo de focus)        |
-| `active`        | Elemento presionado o en uso                     |
-| `disabled`      | No interactivo, visualmente atenuado             |
-| `loading`       | Cargando datos o procesando acción               |
-| `empty`         | Sin datos que mostrar                            |
-| `error`         | Fallo en la carga o validación                   |
-| `stale`         | Datos potencialmente desactualizados             |
-| `success`       | Operación completada exitosamente                |
-
-No todos los componentes requieren los diez estados. La tabla siguiente lista
-el subset esperado por tipo de componente:
-
-| Componente         | Estados requeridos                                    |
-| ------------------ | ----------------------------------------------------- |
-| Botón              | default, hover, focus-visible, active, disabled, loading |
-| Input / Select     | default, focus-visible, disabled, error, success      |
-| File list item     | default, hover, focus-visible, active, disabled       |
-| Project tree item  | default, hover, focus-visible, active, disabled       |
-| Diff line          | default, hover, active (seleccionada)                 |
-| Source view        | loading, rendered, binary, too-large, empty, error    |
-| Observation card   | default, hover, focus-visible, active (seleccionada)  |
-| Panel              | default, loading, empty, error, stale, collapsed      |
-| Panel tab          | default, hover, focus-visible, active, disabled       |
-| Badge / Tag        | default (por tipo y severidad)                        |
-| Rail icon          | default, hover, focus-visible, active                 |
-| Drag handle        | default, hover, active                                |
+| State        | Description                                       |
+| ------------ | ------------------------------------------------- |
+| `loading`    | Spinner + "Loading project tree..."               |
+| `rendered`   | Full tree with all nodes                          |
+| `empty`      | Empty repository with no files                    |
+| `error`      | Error message with retry                          |
 
 ---
 
-## Accesibilidad
+## Component states
 
-DiffScribe apunta a **WCAG 2.2 Nivel AA** como objetivo de diseño.
+Each interactive component must contemplate the following states, applicable
+according to its nature:
 
-### Contraste
+| State           | Description                                       |
+| --------------- | ------------------------------------------------- |
+| `default`       | Initial state, no interaction                     |
+| `hover`         | Cursor over the element                           |
+| `focus-visible` | Visible keyboard focus (focus ring)               |
+| `active`        | Element pressed or in use                         |
+| `disabled`      | Non-interactive, visually dimmed                  |
+| `loading`       | Loading data or processing action                 |
+| `empty`         | No data to show                                   |
+| `error`         | Load or validation failure                        |
+| `stale`         | Potentially outdated data                         |
+| `success`       | Operation completed successfully                  |
 
-- Texto normal: relación mínima 4.5:1 contra el fondo.
-- Texto grande (≥18px bold o ≥24px): relación mínima 3:1.
-- Componentes de UI y objetos gráficos: relación mínima 3:1.
-- Los tokens de esta guía fueron seleccionados para cumplir estos ratios. La
-  validación definitiva requiere verificación con herramienta de contraste
-  (`[PENDIENTE]` automatizar en CI).
+Not all components require all ten states. The following table lists the
+expected subset per component type:
 
-### Navegación por teclado
+| Component          | States required                                        |
+| ------------------ | ------------------------------------------------------ |
+| Button             | default, hover, focus-visible, active, disabled, loading |
+| Input / Select     | default, focus-visible, disabled, error, success       |
+| File list item     | default, hover, focus-visible, active, disabled        |
+| Project tree item  | default, hover, focus-visible, active, disabled        |
+| Diff line          | default, hover, active (selected)                      |
+| Source view        | loading, rendered, binary, too-large, empty, error     |
+| Observation card   | default, hover, focus-visible, active (selected)       |
+| Panel              | default, loading, empty, error, stale, collapsed       |
+| Panel tab          | default, hover, focus-visible, active, disabled        |
+| Badge / Tag        | default (by type and severity)                         |
+| Rail icon          | default, hover, focus-visible, active                  |
+| Drag handle        | default, hover, active                                 |
 
-- Todas las acciones principales deben ser accesibles sin mouse.
-- El orden de tabulación debe seguir el flujo visual: nav → file list → diff →
+---
+
+## Accessibility
+
+DiffScribe targets **WCAG 2.2 Level AA** as a design goal.
+
+### Contrast
+
+- Normal text: minimum ratio 4.5:1 against background.
+- Large text (≥18px bold or ≥24px): minimum ratio 3:1.
+- UI components and graphical objects: minimum ratio 3:1.
+- The tokens in this guide were selected to meet these ratios. Final validation
+  requires verification with a contrast tool (`[PENDIENTE]` automate in CI).
+
+### Keyboard navigation
+
+- All main actions must be accessible without a mouse.
+- Tab order must follow the visual flow: nav → file list → diff →
   observation panel.
-- Los atajos de teclado no deben interferir con combinaciones del navegador o
-  del sistema operativo.
-- El foco debe ser visible en todo momento (`focus-visible`, no `focus`).
+- Keyboard shortcuts must not interfere with browser or operating system
+  combinations.
+- Focus must be visible at all times (`focus-visible`, not `focus`).
 
-#### Navegación por teclado en el sidebar de workspaces
+#### Keyboard navigation in the workspaces sidebar
 
-- Cada item del sidebar expone tres controles focusables: **Select**, **Rename**
-  y **Delete**. Los tres son stops de Tab naturales.
-- El botón **Select** de cada workspace incluye el atributo
-  `data-workspace-select` para targeting estable en tests.
-- El botón **Select** implementa navegación vertical por teclado:
-  - **ArrowDown:** mueve el foco al botón Select del workspace siguiente.
-  - **ArrowUp:** mueve el foco al botón Select del workspace anterior.
-  - **Home:** mueve el foco al primer botón Select del sidebar.
-  - **End:** mueve el foco al último botón Select del sidebar.
-- **Enter** y **Space** conservan el comportamiento nativo de submit del
-  formulario asociado.
-- Los botones **Rename** y **Delete** mantienen acceso directo por teclado
-  mediante Tab y activación nativa.
+- Each sidebar item exposes three focusable controls: **Select**, **Rename**,
+  and **Delete**. All three are natural Tab stops.
+- The **Select** button of each workspace includes the
+  `data-workspace-select` attribute for stable targeting in tests.
+- The **Select** button implements vertical keyboard navigation:
+  - **ArrowDown:** moves focus to the Select button of the next workspace.
+  - **ArrowUp:** moves focus to the Select button of the previous workspace.
+  - **Home:** moves focus to the first Select button in the sidebar.
+  - **End:** moves focus to the last Select button in the sidebar.
+- **Enter** and **Space** retain the native submit behavior of the associated
+  form.
+- The **Rename** and **Delete** buttons maintain direct keyboard access via Tab
+  and native activation.
 
 ### Focus
 
-- Anillo de focus visible de al menos 2px de grosor con contraste ≥3:1 contra
-  fondos adyacentes.
-- El anillo usa `--focus-ring` con un offset visible (`--focus-ring-offset` en
-  el tema correspondiente).
-- No se debe remover el outline sin reemplazarlo por un indicador igualmente
-  visible.
+- Visible focus ring of at least 2px thickness with contrast ≥3:1 against
+  adjacent backgrounds.
+- The ring uses `--focus-ring` with a visible offset (`--focus-ring-offset` in
+  the corresponding theme).
+- The outline must not be removed without replacing it with an equally visible
+  indicator.
 
-### ARIA y semántica
+### ARIA and semantics
 
-- Usar elementos HTML semánticos (landmarks, headings, lists).
-- Las regiones de la interfaz deben tener roles y labels accesibles.
-- Los componentes interactivos deben anunciar cambios de estado mediante
-  `aria-live` cuando sea relevante.
-- El diff viewer debe exponer su estructura de manera que lectores de pantalla
-  puedan navegar cambios.
+- Use semantic HTML elements (landmarks, headings, lists).
+- Interface regions must have accessible roles and labels.
+- Interactive components must announce state changes via `aria-live` when
+  relevant.
+- The diff viewer must expose its structure so that screen readers can navigate
+  changes.
 
-### No depender solo del color
+### Do not rely on color alone
 
-- Los estados de diff (added/removed/modified) deben distinguirse por algo más
-  que color: prefijos (`+`/`-`), posición o patrones.
-- Las severidades deben incluir íconos o texto, no solo color.
-- Los estados de componentes (error, success, loading) deben comunicarse con
-  texto o íconos además de color.
+- Diff states (added/removed/modified) must be distinguishable by more than
+  color: prefixes (`+`/`-`), position, or patterns.
+- Severities must include icons or text, not just color.
+- Component states (error, success, loading) must communicate with text or
+  icons in addition to color.
 
 ### Targets
 
-- Área mínima de toque: 24×24px para controles interactivos (WCAG 2.5.5).
-- Espaciado suficiente entre targets adyacentes para evitar activaciones
-  accidentales.
+- Minimum touch area: 24×24px for interactive controls (WCAG 2.5.5).
+- Sufficient spacing between adjacent targets to prevent accidental
+  activations.
 
 ### Zoom
 
-- La interfaz debe ser funcional con zoom del 200% sin pérdida de contenido ni
-  funcionalidad.
-- El layout debe adaptarse sin scroll horizontal forzado (excepto en el diff
-  viewer, donde líneas largas de código lo justifican).
+- The interface must be functional at 200% zoom without loss of content or
+  functionality.
+- The layout must adapt without forced horizontal scrolling (except in the diff
+  viewer, where long code lines justify it).
 
 ### Reduced motion
 
-- Respetar `prefers-reduced-motion: reduce` deshabilitando todas las
-  animaciones y transiciones no esenciales.
-- Las transiciones de duración `0ms` no deben causar cambios de layout
-  abruptos o pérdida de contexto.
+- Respect `prefers-reduced-motion: reduce` by disabling all non-essential
+  animations and transitions.
+- `0ms` duration transitions must not cause abrupt layout changes or context
+  loss.
 
 ---
 
-## Selección de líneas (Inc-7)
+## Line selection (Inc-7)
 
-La selección de líneas en el diff-viewer permite anclar observaciones a rangos específicos.
+Line selection in the diff-viewer allows anchoring observations to specific
+ranges.
 
-**Interacciones:**
-- **Click:** selecciona una sola línea
-- **Shift+click:** extiende la selección desde el ancla hasta la línea clickeada
-- **Shift+ArrowUp/Down:** extiende la selección línea por línea
-- **L key:** ancla la selección en la línea actual
-- **Escape:** limpia la selección
-- **Keyboard-only:** navegación con Arrow keys + L para anclar + Enter para confirmar
+**Interactions:**
+- **Click:** selects a single line
+- **Shift+click:** extends selection from anchor to clicked line
+- **Shift+ArrowUp/Down:** extends selection line by line
+- **L key:** anchors selection on the current line
+- **Escape:** clears selection
+- **Keyboard-only:** navigation with Arrow keys + L to anchor + Enter to confirm
 
-**Estados visuales:**
-- Línea seleccionada: borde izquierdo azul (3px `#4285f4`) + fondo semitransparente (`rgba(66,133,244,0.2)`)
-- En líneas added: fondo `rgba(0,200,0,0.2)`
-- En líneas deleted: fondo `rgba(200,0,0,0.2)`
+**Visual states:**
+- Selected line: blue left border (3px `#4285f4`) + semi-transparent background (`rgba(66,133,244,0.2)`)
+- On added lines: background `rgba(0,200,0,0.2)`
+- On deleted lines: background `rgba(200,0,0,0.2)`
 - Focus-visible: outline 1px `var(--focus-ring)`
 - Hover: `var(--surface-hover)`
 
-**Atributos accesibles:**
-- `role="checkbox"` + `tabindex="0"` en cada línea seleccionable
-- `aria-checked` refleja estado de selección (`"true"` | `"false"`)
-- `data-line-num` y `data-side` para targeting en tests E2E
-- Región ARIA live (`role="status" aria-live="polite"`) anuncia selecciones
-- Side-by-side: columna old tiene `data-side="old"`, columna new `data-side="new"`
-- Atajos globales de teclado (j/k/Arrow y Shift+Arrow) se registran en `window`
-  mediante `$effect` reactivo que se activa solo cuando el diff está renderizado
-- Ctrl+Shift+D (atajo global persistente) recarga el diff sin navegar hunks
+**Accessible attributes:**
+- `role="checkbox"` + `tabindex="0"` on each selectable line
+- `aria-checked` reflects selection state (`"true"` | `"false"`)
+- `data-line-num` and `data-side` for E2E test targeting
+- ARIA live region (`role="status" aria-live="polite"`) announces selections
+- Side-by-side: old column has `data-side="old"`, new column `data-side="new"`
+- Global keyboard shortcuts (j/k/Arrow and Shift+Arrow) are registered on
+  `window` via reactive `$effect` that only activates when the diff is rendered
+- Ctrl+Shift+D (persistent global shortcut) reloads the diff without navigating
+  hunks
 
-## Panel de Observaciones (Inc-7)
+## Observation Panel (Inc-7)
 
-**Layout responsive:**
-- ≥1100px: right rail de 320px fijo a la derecha del diff
-- <1100px: drawer bottom (position:fixed, max-height 40vh, bottom:0, z-index:10)
+**Responsive layout:**
+- ≥1100px: fixed 320px right rail to the right of the diff
+- <1100px: bottom drawer (position:fixed, max-height 40vh, bottom:0, z-index:10)
 
 **ObservationCard:**
-- Badges de tipo coloreados: issue (rojo), risk (naranja), suggestion (verde), question (azul), praise (violeta), note (gris)
-- Badge de severidad: critical/major/minor/nitpick
-- Badge de Stale (amarillo) cuando `staleStatus` no es current
-- Status dot: open (verde), resolved (azul), dismissed (gris), pending (naranja)
-- Acciones (edit, delete, status) ocultas por defecto (`display: none`), visibles
-  con `.obs-card:hover .card-actions` y `.obs-card:focus-within .card-actions` —
-  sin handlers JavaScript de `mouseenter`/`focusin`
-- Snapshot original expandible con `<details>` cuando la observación es stale
-- En modo read-only (`readOnly=true`) los botones de acción no se renderizan en
-  el DOM
+- Colored type badges: issue (red), risk (orange), suggestion (green), question (blue), praise (violet), note (gray)
+- Severity badge: critical/major/minor/nitpick
+- Stale badge (yellow) when `staleStatus` is not current
+- Status dot: open (green), resolved (blue), dismissed (gray), pending (orange)
+- Actions (edit, delete, status) hidden by default (`display: none`), visible
+  with `.obs-card:hover .card-actions` and `.obs-card:focus-within .card-actions` —
+  no JavaScript `mouseenter`/`focusin` handlers
+- Original snapshot expandable with `<details>` when the observation is stale
+- In read-only mode (`readOnly=true`) the action buttons are not rendered in
+  the DOM
 
 **ObservationForm:**
-- Select de tipo, select de severidad (solo para issue/risk)
-- Input de título (requerido, 1-200 chars)
-- Textarea de body (≤5000 chars)
-- Info de scope (filePath, lines, side) cuando hay selección activa
-- Validación client-side antes del submit
-- SHA-256 computado via Web Crypto API con formato canónico
+- Type select, severity select (only for issue/risk)
+- Title input (required, 1-200 chars)
+- Body textarea (≤5000 chars)
+- Scope info (filePath, lines, side) when there is an active selection
+- Client-side validation before submit
+- SHA-256 computed via Web Crypto API with canonical format
 
-**Estados del panel:**
-- Loading: spinner + texto "Loading observations..."
-- Empty: mensaje contextual (con/sin review completada)
-- Error: fondo rojo claro con mensaje
-- Read-only: banner "This review is completed — read-only"
+**Panel states:**
+- Loading: spinner + "Loading observations..." text
+- Empty: contextual message (with/without completed review)
+- Error: light red background with message
+- Read-only: "This review is completed — read-only" banner
 
 **A11y:**
-- Form labels asociados a inputs
-- Focus-visible en todos los botones y selects
-- Estados disabled en botones durante submit
-- Mensajes de error con `role="alert"`
+- Form labels associated to inputs
+- Focus-visible on all buttons and selects
+- Disabled states on buttons during submit
+- Error messages with `role="alert"`
 
 ---
 
-### Svelte 5 + CSS propio
+### Svelte 5 + custom CSS
 
-DiffScribe no usa Tailwind ni frameworks de utilidades CSS. El enfoque es:
+DiffScribe does not use Tailwind or CSS utility frameworks. The approach is:
 
-- **Tokens globales** definidos en `:root` (tema claro), `[data-theme="dark"]`
-  (Dark Deep) y `[data-theme="synthwave-84"]` (Synthwave '84'), cargados como
-  CSS global desde un archivo `app.css` o equivalente.
-- **Estilos scoped** de Svelte para componentes individuales. Cada componente
-  consume tokens globales mediante variables CSS y define sus reglas locales.
-- **Sin preprocesador:** CSS nativo con variables. No se requiere Sass, Less ni
-  PostCSS más allá de lo que Vite ya procesa.
+- **Global tokens** defined in `:root` (light theme), `[data-theme="dark"]`
+  (Dark Deep), and `[data-theme="synthwave-84"]` (Synthwave '84'), loaded as
+  global CSS from an `app.css` file or equivalent.
+- **Scoped styles** from Svelte for individual components. Each component
+  consumes global tokens via CSS variables and defines its local rules.
+- **No preprocessor:** native CSS with variables. Sass, Less, or PostCSS beyond
+  what Vite already processes are not required.
 
-### Convenciones
+### Conventions
 
-- Los tokens globales se definen una sola vez en `src/lib/web/styles/tokens.css`.
-- Los componentes referencian tokens como `var(--token-name)`.
-- Los valores mágicos en componentes son error de linting (cuando se implemente
-  la regla correspondiente).
+- Global tokens are defined once in `src/lib/web/styles/tokens.css`.
+- Components reference tokens as `var(--token-name)`.
+- Magic values in components are a linting error (when the corresponding rule is
+  implemented).
 
 ---
 
-## Validación QA
+## QA validation
 
-La validación visual se realizará manualmente en Etapa 1, con intención de
-automatizar progresivamente:
+Visual validation will be performed manually in Stage 1, with intent to
+automate progressively:
 
-| Verificación              | Método Etapa 1                     | Automatización futura       |
+| Verification              | Stage 1 method                     | Future automation           |
 | ------------------------- | ---------------------------------- | --------------------------- |
-| Contraste                 | Herramienta manual (axe, browser)  | Lighthouse CI o axe-core    |
-| Breakpoints               | Inspección visual + DevTools       | Playwright snapshots        |
-| Focus visible             | Navegación manual por teclado      | Playwright `tab` assertions |
-| Reduced motion            | Toggle del SO + inspección visual  | Playwright con emulación    |
-| Tokens aplicados          | Inspección de computed styles      | Snapshot testing de tokens  |
-| Regresión visual          | `[PENDIENTE]`                      | `[PENDIENTE]`               |
+| Contrast                  | Manual tool (axe, browser)         | Lighthouse CI or axe-core   |
+| Breakpoints               | Visual inspection + DevTools       | Playwright snapshots        |
+| Visible focus             | Manual keyboard navigation         | Playwright `tab` assertions |
+| Reduced motion            | OS toggle + visual inspection      | Playwright with emulation   |
+| Applied tokens            | Computed style inspection          | Token snapshot testing      |
+| Visual regression         | `[PENDIENTE]`                      | `[PENDIENTE]`               |
 
 ---
 
-## Pendientes
+## Pending
 
-Estos aspectos del diseño quedan marcados como `[PENDIENTE]` y serán resueltos
-antes o durante la implementación de componentes:
+These design aspects remain marked as `[PENDIENTE]` and will be resolved
+before or during component implementation:
 
-- **Branding:** nombre visual, logotipo, paleta complementaria al acento.
-- **Tipografía definitiva:** selección de fuente mono para código y fuente sans
-  para UI. Evaluar fuentes web auto-hospedadas vs. sistema.
-- **Regresión visual automatizada:** herramienta y flujo de snapshot testing.
+- **Branding:** visual name, logo, complementary accent palette.
+- **Final typography:** mono font selection for code and sans font for UI.
+  Evaluate self-hosted web fonts vs. system.
+- **Automated visual regression:** tool and snapshot testing flow.
