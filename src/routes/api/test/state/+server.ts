@@ -4,6 +4,8 @@ import path from 'node:path';
 
 import Database from 'better-sqlite3';
 
+import { isE2eInMemoryMode, resetInMemoryDb } from '$lib/server/infrastructure/database/connection';
+
 import type { RequestHandler } from './$types';
 
 /**
@@ -67,6 +69,19 @@ export const DELETE: RequestHandler = async ({ request }) => {
   const header = request.headers.get('x-reset-secret');
   if (header !== secret) {
     return new Response(null, { status: 404 });
+  }
+
+  // In-memory mode: reset the singleton directly, skip filesystem validation
+  if (isE2eInMemoryMode()) {
+    try {
+      resetInMemoryDb();
+      return new Response(JSON.stringify({ status: 'ok' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    } catch {
+      return new Response(null, { status: 500 });
+    }
   }
 
   const validation = validateDbDir(process.env.DIFFSCRIBE_DB_DIR);

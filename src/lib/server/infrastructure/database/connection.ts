@@ -22,8 +22,20 @@ function resolveDbPath(): string {
   return path.join(resolveDbDir(), 'diffscribe.db');
 }
 
+export function isE2eInMemoryMode(): boolean {
+  return process.env.DIFFSCRIBE_E2E_IN_MEMORY_DB === '1';
+}
+
 export function getDb(): Database.Database {
   if (_db) return _db;
+
+  if (isE2eInMemoryMode()) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('DIFFSCRIBE_E2E_IN_MEMORY_DB=1 is not allowed in production');
+    }
+    _db = createTestDb();
+    return _db;
+  }
 
   const dbDir = resolveDbDir();
   const dbPath = resolveDbPath();
@@ -78,4 +90,45 @@ export function runMigrations(db: Database.Database): void {
     });
     runInTx();
   }
+}
+
+/**
+ * Resets the in-memory database singleton by clearing all data rows
+ * while preserving the _migrations table and schema.
+ *
+ * Requires DIFFSCRIBE_E2E_IN_MEMORY_DB=1 (fails safely otherwise).
+ *
+ * If no singleton exists yet (_db is null), lazy-initializes it via
+ * memory-mode getDb() — creating an :memory: connection and running
+ * migrations — then proceeds with the reset. This supports the E2E
+ * pattern where resetDb() runs before the first application request
+ * triggers getDb().
+ *
+ * Does NOT close the singleton or call createTestDb() directly.
+ */
+export function resetInMemoryDb(): void {
+  // Fail safely unless in-memory mode is explicitly requested
+  if (!isE2eInMemoryMode()) {
+    throw new Error('resetInMemoryDb requires DIFFSCRIBE_E2E_IN_MEMORY_DB=1');
+  }
+
+  // Lazy-init: if no singleton exists, create it via memory-mode getDb()
+  if (!_db) {
+    getDb();
+  }
+
+  // Non-nullable local reference for type narrowing inside callbacks
+  const db: Database.Database = _db!;
+
+  // Ensure migrations exist (idempotent — no-op if already applied)
+  runMigrations(db);
+
+  // Clear data tables inside a transaction, preserving _migrations
+  const reset = db.transaction(() => {
+    db.exec('DELETE FROM review_files');
+    db.exec('DELETE FROM reviews');
+    db.exec('DELETE FROM app_state');
+    db.exec('DELETE FROM workspaces');
+  });
+  reset();
 }

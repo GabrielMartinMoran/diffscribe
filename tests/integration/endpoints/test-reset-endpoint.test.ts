@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import Database from 'better-sqlite3';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { runMigrations } from '../../../src/lib/server/infrastructure/database/connection';
 
@@ -304,6 +304,153 @@ describe('E2E reset endpoint — guard matrix', () => {
       // Simulate missing env: secret is falsy → reject
       const secret = undefined;
       expect(Boolean(secret)).toBe(false);
+    });
+  });
+
+  describe('in-memory mode reset', () => {
+    beforeEach(() => {
+      process.env.DIFFSCRIBE_E2E_IN_MEMORY_DB = '1';
+      process.env.DIFFSCRIBE_E2E_RESET_SECRET = RESET_SECRET;
+    });
+
+    afterEach(() => {
+      delete process.env.DIFFSCRIBE_E2E_IN_MEMORY_DB;
+      delete process.env.DIFFSCRIBE_E2E_RESET_SECRET;
+    });
+
+    it('resetInMemoryDb clears singleton data and preserves schema', async () => {
+      vi.resetModules();
+      const mod =
+        (await import('../../../src/lib/server/infrastructure/database/connection')) as typeof import('$lib/server/infrastructure/database/connection');
+      const db = mod.getDb();
+      mod.runMigrations(db);
+
+      // Insert test data
+      db.prepare("INSERT INTO app_state (key, value) VALUES ('e2e-key', 'e2e-val')").run();
+      db.prepare(
+        "INSERT INTO workspaces (id, display_name, repository_path, created_at, last_opened_at) VALUES ('reset-ws', 'Reset WS', '/tmp/reset', '2024-01-01', '2024-01-01')",
+      ).run();
+
+      // Verify data present before reset
+      expect(
+        (db.prepare('SELECT COUNT(*) as cnt FROM app_state').get() as { cnt: number }).cnt,
+      ).toBe(1);
+      expect(
+        (db.prepare('SELECT COUNT(*) as cnt FROM workspaces').get() as { cnt: number }).cnt,
+      ).toBe(1);
+
+      // Reset
+      mod.resetInMemoryDb();
+
+      // Data cleared
+      expect(
+        (db.prepare('SELECT COUNT(*) as cnt FROM app_state').get() as { cnt: number }).cnt,
+      ).toBe(0);
+      expect(
+        (db.prepare('SELECT COUNT(*) as cnt FROM workspaces').get() as { cnt: number }).cnt,
+      ).toBe(0);
+
+      // _migrations preserved
+      const migrationCount = (
+        db.prepare('SELECT COUNT(*) as cnt FROM _migrations').get() as { cnt: number }
+      ).cnt;
+      expect(migrationCount).toBeGreaterThan(0);
+
+      // Schema intact: re-insert works
+      db.prepare("INSERT INTO app_state (key, value) VALUES ('post-reset', 'yes')").run();
+      expect(
+        (
+          db.prepare("SELECT value FROM app_state WHERE key = 'post-reset'").get() as {
+            value: string;
+          }
+        ).value,
+      ).toBe('yes');
+    });
+
+    it('resetInMemoryDb without prior getDb lazy-initializes the singleton', async () => {
+      vi.resetModules();
+      const mod =
+        (await import('../../../src/lib/server/infrastructure/database/connection')) as typeof import('$lib/server/infrastructure/database/connection');
+
+      // Do NOT call getDb() — singleton should be null initially
+      // resetInMemoryDb should lazy-init via getDb() and succeed
+      expect(() => mod.resetInMemoryDb()).not.toThrow();
+
+      // Verify the singleton was created (in-memory)
+      const db = mod.getDb(); // should return the same lazy-initialized instance
+      expect(db.name).toBe(':memory:');
+
+      // Verify migrations ran (tables exist, _migrations has records)
+      const migrationCount = (
+        db.prepare('SELECT COUNT(*) as cnt FROM _migrations').get() as { cnt: number }
+      ).cnt;
+      expect(migrationCount).toBeGreaterThan(0);
+
+      // Verify data tables are empty after reset
+      expect(
+        (db.prepare('SELECT COUNT(*) as cnt FROM app_state').get() as { cnt: number }).cnt,
+      ).toBe(0);
+      expect(
+        (db.prepare('SELECT COUNT(*) as cnt FROM workspaces').get() as { cnt: number }).cnt,
+      ).toBe(0);
+
+      // Schema is intact: can re-insert
+      db.prepare("INSERT INTO app_state (key, value) VALUES ('post-reset', 'yes')").run();
+      expect(
+        (
+          db.prepare("SELECT value FROM app_state WHERE key = 'post-reset'").get() as {
+            value: string;
+          }
+        ).value,
+      ).toBe('yes');
+    });
+
+    it('reset preserves review_files, reviews constraints if data exists', async () => {
+      vi.resetModules();
+      const mod =
+        (await import('../../../src/lib/server/infrastructure/database/connection')) as typeof import('$lib/server/infrastructure/database/connection');
+      const db = mod.getDb();
+      mod.runMigrations(db);
+
+      // Insert workspace + review + review_file
+      db.prepare(
+        "INSERT INTO workspaces (id, display_name, repository_path, created_at, last_opened_at) VALUES ('ws-1', 'Test', '/tmp/t', '2024-01-01', '2024-01-01')",
+      ).run();
+      db.prepare(
+        "INSERT INTO reviews (id, workspace_id, title, status, comparison_json, comparison_type, created_at, updated_at) VALUES ('rev-1', 'ws-1', 'Test review', 'draft', '{}', 'working-tree-vs-head', '2024-01-01', '2024-01-01')",
+      ).run();
+      db.prepare(
+        "INSERT INTO review_files (review_id, file_path) VALUES ('rev-1', 'test.ts')",
+      ).run();
+
+      // Verify data before reset
+      expect((db.prepare('SELECT COUNT(*) as cnt FROM reviews').get() as { cnt: number }).cnt).toBe(
+        1,
+      );
+      expect(
+        (db.prepare('SELECT COUNT(*) as cnt FROM review_files').get() as { cnt: number }).cnt,
+      ).toBe(1);
+
+      mod.resetInMemoryDb();
+
+      // All tables cleared
+      expect(
+        (db.prepare('SELECT COUNT(*) as cnt FROM app_state').get() as { cnt: number }).cnt,
+      ).toBe(0);
+      expect(
+        (db.prepare('SELECT COUNT(*) as cnt FROM workspaces').get() as { cnt: number }).cnt,
+      ).toBe(0);
+      expect((db.prepare('SELECT COUNT(*) as cnt FROM reviews').get() as { cnt: number }).cnt).toBe(
+        0,
+      );
+      expect(
+        (db.prepare('SELECT COUNT(*) as cnt FROM review_files').get() as { cnt: number }).cnt,
+      ).toBe(0);
+
+      // _migrations preserved
+      expect(
+        (db.prepare('SELECT COUNT(*) as cnt FROM _migrations').get() as { cnt: number }).cnt,
+      ).toBeGreaterThan(0);
     });
   });
 });
