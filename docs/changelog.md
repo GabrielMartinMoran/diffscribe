@@ -11,6 +11,119 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Base UI kit in `src/lib/web/components/ui/`: Button, IconButton, TextInput,
+  Select, Checkbox, Switch, Menu, Popover, Dialog, Tabs, Tooltip, Badge, and
+  StatusBadge. Generic, stateless, token-driven primitives with native HTML
+  (`button`, `input`, `select`, `dialog`), label/error wiring
+  (`aria-invalid`/`aria-describedby`), keyboard contracts (roving tabindex,
+  arrows, Home/End, Escape with focus return), and a provisional control
+  scale sm=24 / md=32 / lg=40 px pending E2E target-size validation.
+- `ui/variants.ts` and `ui/ids.ts`: exported variant/size/tone lists and
+  deterministic id helpers used by the kit primitives.
+- BDD feature `base-ui-kit.feature` with contract scenarios (boundaries,
+  native HTML, ARIA, keyboard, tokens, import guard) and matching step
+  definitions.
+- Unit suite for the kit: variant lists, id invariants, import boundary
+  guard, and token audit over `components/ui/`.
+- E2E coverage for the kit through migrated consumers (forms, delete dialog,
+  rail/right tabs): DOM semantics, ARIA wiring, keyboard/focus,
+  target size, themes, and reduced motion.
+- Incremental migration of high-value consumers to the kit: workspace
+  forms, workspace delete dialog, and tab assemblies (rail, right panel).
+  `data-testid` attributes and behavior are preserved.
+- `docs/design.md`: Base UI kit contract section (purpose, boundaries,
+  location, catalog, control scale, keyboard/focus, ARIA, tokens, reduced
+  motion, validation, anti-patterns); WCAG target reference corrected from
+  2.5.5 to 2.5.8 (Target Size (Minimum)).
+- `docs/architecture.md`: formalized `web/components/ui/` boundary (flat
+  directory, stateless, native HTML, token-driven, import guard).
+
+### UI tranche
+
+- Workspace action overflow menu: sidebar workspace actions (Rename, Repair
+  for invalid workspaces, Delete) moved into the kit Menu primitive with
+  icon trigger (`aria-haspopup`/`aria-expanded`), full keyboard contract
+  (arrows, Home/End, Enter/Space, Escape with focus return), and accessible
+  names per action.
+- Settings panel (`settings-panel.svelte`) reachable from a new Settings
+  entry at the bottom of the rail (4-tab rail: Workspaces, Project, Git,
+  Settings). Sections: Appearance (theme switcher moved out of the panel
+  header) and Editor (line wrapping default).
+- `wrap-store.ts`: client-only line wrapping preference
+  (`diffscribe-line-wrap`, default `false`) following the theme-store
+  pattern, with unit tests.
+- Line wrapping (tranche): diff lines stay no-wrap by default
+  (`white-space: pre`), the diff viewer owns one horizontal scroll
+  container per file, per-line/column scrollbars removed, a contextual Wrap
+  toggle (aria-pressed) overrides the default per file, and the Settings
+  Editor default applies to newly opened diffs. Wrap mode uses
+  `white-space: pre-wrap` (no `overflow-wrap:anywhere`/`word-break:break-all`).
+- Semantic status badges: file-list status badges migrated to the kit
+  StatusBadge with a status→tone mapping (`file-status.ts`, unit-tested),
+  adding a non-color status dot channel while keeping theme tokens.
+- Viewport-bound scroll ownership: `html`/`body` `overflow: hidden`, fixed
+  `height: 100dvh` shell grid, `min-height: 0` on every grid item
+  (rail, contextual panel, center content, right panel), Project tree and
+  diff viewer scroll inside their zones instead of being clipped.
+- BDD features: `workspace-actions-overflow.feature`,
+  `settings-panel.feature`, `line-wrapping.feature`, plus new scenarios in
+  `rail-tabs.feature` (Settings entry, four tabs) and
+  `ui-root-foundation.feature` (viewport-bound, zone scroll ownership) with
+  matching step definitions.
+- E2E specs: `workspace-actions-overflow.spec.ts`, `settings-panel.spec.ts`,
+  `line-wrapping.spec.ts`, `viewport-scroll.spec.ts`, and the kit spec
+  `base-ui-kit.spec.ts` (labels, focus ring, target sizes, theme tokens,
+  reduced motion, Dialog focus return, Tabs roving tabindex).
+- `tests/e2e/helpers/open-workspace-menu.ts`: shared helper for opening the
+  workspace overflow menu.
+
+### Git file list tree view and branches (tranche)
+
+- File list list/tree views: the file list panel exposes List and Tree
+  toggles (aria-pressed); the tree groups changed files by directory with
+  expandable/collapsible directory nodes and per-node `data-testid`s. The
+  chosen view persists in localStorage (`diffscribe-file-list-view`,
+  default `list`) via the `file-list-view-store` following the
+  theme-store pattern.
+- `file-list-tree.ts`: pure `buildFileTree` helper (directories before
+  files, alphabetical siblings, recursive nesting) with unit tests.
+- `file-tree-branch.svelte`: recursive tree node component (product
+  composite, outside `ui/`) with `role="tree"`/`treeitem`, `aria-expanded`,
+  and selection wired to the diff viewer.
+- Cached remote branches: `BranchDto` extended additively with
+  `isRemote`/`remoteName`; `SimpleGitContextReader` reads
+  `refs/remotes/*` via `git for-each-ref` (read-only, no fetch, no tags,
+  remote HEAD pseudo-ref skipped); the Git panel lists local and cached
+  remote branches with a "remote" marker and an accessible label.
+- Base/Target inference: the panel no longer hardcodes
+  branch-vs-branch/commit-vs-commit. `inferComparisonType` (client-side
+  module with a parity test against the domain `ComparisonType` enum)
+  derives the type from the real base/target pair, and selecting a target
+  auto-activates the Base slot with the current branch when the draft
+  default (HEAD) is untouched. The inferred type renders as a readable
+  feedback label ("branch vs branch", "commit vs commit", ...).
+- BDD feature `git-branches.feature` (cached remotes, Base auto-activation,
+  inferred types, no-fetch guarantee) and `file-list-tree.feature`
+  (toggles, grouping, persistence, selection), plus rail-fit and
+  viewport-bound scenarios in `ui-root-foundation.feature`, with matching
+  step definitions.
+- E2E specs `file-list-tree.spec.ts` and `git-branches.spec.ts`, plus a
+  rail-fit check in `viewport-scroll.spec.ts`.
+
+### Changed
+
+- UI Polish Stage 1: global reset for `html`/`body` (zero margin, themed background, system-ui sans-serif font), explicit `background: var(--surface-primary)` on `.shell-layout`, `.center-content`, `.work-area`, `.diff-area` to prevent white rectangles during theme switching.
+- Complete CSS token contract: `--font-family-sans`, `--font-sans`/`--font-mono` aliases, `--surface-hover`, `--text-md`, `--radius-xs`, `--text-error`/`--surface-error`/`--border-error`, `--text-warning`/`--surface-warning`/`--border-warning`, `--color-success`/`--color-warning`/`--color-error`/`--color-info`, `--selection-border`/`--selection-bg`, `--diff-added-fg`/`--diff-deleted-fg`, observation type/severity/status tokens (`--obs-type-*`, `--obs-sev-*`, `--obs-status-*`), source viewer marker tokens (`--source-marker-*`, `--source-line-*-bg`), and project tree status dot tokens (`--tree-status-*`). All tokens declared in `:root`, `[data-theme="dark"]`, and `[data-theme="synthwave-84"]`.
+- Migration of hardcoded hex colors to CSS custom properties in `observation-card.svelte` (type badges, severity badges, status dots), `source-viewer.svelte` (change markers, line backgrounds, error color), `project-tree-node.svelte` (status dots), `project-tree.svelte`, `delete-confirm-dialog.svelte`, and removal of all fallback values from `var()` references in `git-context-panel.svelte`, `observation-panel.svelte`, `observation-form.svelte`, `diff-viewer.svelte`, `review-panel.svelte`, `file-list.svelte`.
+- Provisional "DS" favicon (`static/favicon.svg`) linked in `app.html` to eliminate 404.
+- BDD feature `ui-root-foundation.feature` (11 scenarios: root foundation, central area background, theme switching, favicon) and 18 additional token contract scenarios in `design-token-contract.feature` (error/warning, color semantic, diff foreground, surface-hover, auxiliary, observation type/severity/status, source viewer markers, project tree status dots, hardcoded hex prohibition).
+- BDD step definitions in `tests/steps/ui-redesign.steps.ts`: batch token assertion helpers, component CSS hex-check parsers, root foundation checks, and favicon verification.
+
+### Changed
+
+- `docs/design.md`: updated typography section with `--font-family-sans`/`--font-family-mono` stacks, added Global Reset, Auxiliary/Semantic Tokens, Observation Component Tokens, Source Viewer Marker Tokens, Project Tree Status Dot Tokens, and Favicon sections.
+- All Svelte components now reference CSS custom properties; most hardcoded hex fallbacks replaced with token declarations, though some components retain fallback values for graceful degradation.
+
 - Inc‑6 (Review Foundation): Review aggregate with ReviewId UUID, ReviewStatus (draft/in_progress/completed/archived) and ComparisonSerialized capture.
 - SQL migrations 001‑004 with `import.meta.glob` loader, per-migration transaction, and `PRAGMA foreign_keys = ON`.
 - `reviews` table (FK CASCADE to workspaces, CHECK status/comparison_type, json_valid) and `review_files` table (composite PK, FK CASCADE to reviews).
@@ -138,12 +251,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Rail hydration stability hardening: Svelte 5 `rail-tabs.svelte` icon pattern changed from destructuring (`{ key, label, icon: Icon }`) to explicit access (`tab.icon`) as defense-in-depth against cold-start hydration failures (`TypeError: undefined.call`, `Failed to hydrate`). Playwright `baseURL` aligned to port 56823 (Option A). Added readiness probe script (`scripts/wait-for-dev-server.sh`), stale process guard (`tests/e2e/helpers/stale-process-guard.ts`), and E2E hydration stability tests (`tests/e2e/rail-hydration.spec.ts`). Gherkin feature `rail-hydration-stability.feature` with 11 scenarios for readiness, guard, and hydration stability. New `rail-tabs.feature` hydration scenario. Documentation in `docs/e2e_performance_imorovements.md` with cold-start/readiness protocol, stale process cleanup, and browser hard reload guidance.
+  - Limitations: root cause is likely a cold-start/process/chunk race, not the dynamic icon pattern alone. The icon change is defense-in-depth. Stale process guard is Linux/macOS only. Kill flag is opt-in (`DIFFSCRIBE_E2E_KILL_ZOMBIES=true`). Foreign processes (different cwd) are never killed.
+  - No dependency or `package.json` changes. No changes to `vite.config.ts`, `optimizeDeps`, `allowedHosts`, wrappers, responsive breakpoints, `panel-layout-store`, or components outside `rail-tabs`. Stage 2+ features not implemented.
+
 - Keyboard navigation in workspaces sidebar: Select buttons now respond to
   ArrowDown, ArrowUp, Home, and End to navigate between workspaces. Rename and
   Delete buttons maintain direct keyboard access as natural Tab stops. Added
   `data-workspace-select` attribute to Select buttons. The E2E test `keyboard
   navigation in sidebar` was refactored to use `locator.focus()` and explicit
   focus assertions, removing the hardcoded Tab count.
+
+### Changed
+
+- SvelteKit body wrapper hardening: `%sveltekit.body%` is now wrapped in
+  `<div style="display: contents">…</div>` in `src/app.html` following the
+  official SvelteKit recommendation. This eliminates the `%sveltekit.body%`
+  console warning and protects against CSS selectors from browser extensions
+  or user stylesheets that target `<body>` direct children. The wrapper uses
+  `display: contents` so it has no visual or layout effect.
+- Added BDD regression scenarios (`@delta-added`): no SvelteKit warning about
+  `%sveltekit.body%` in body, shell layout post-hydration, both panels
+  collapsed after hydration, mobile 375 px rail/center contract. Scenarios in
+  `ui-root-foundation.feature`, `panel-resize.feature`, and
+  `responsive-mobile.feature`.
+- Added E2E regression tests: warning absence confirmation, shell
+  post-hydration stability, dual-collapse rail+center visibility, mobile
+  375 px contract, and localStorage NaN/Infinity corruption resilience.
+- Added diagnostic guide for blank/white screen troubleshooting in
+  `docs/design.md` (Visual Debugging section).
 
 ### Security
 

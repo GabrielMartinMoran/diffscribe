@@ -6,6 +6,7 @@
   } from '$lib/server/application/dto/results/file-list-results';
   import type { GitContextAggregate } from '$lib/server/application/services/get-git-context-use-case';
   import FileList from '$lib/web/components/file-list.svelte';
+  import { type GitRefLike, inferComparisonType } from '$lib/web/types/comparison-inference';
 
   // Client-safe draft type — no runtime imports from $lib/server.
   // ComparisonSerialized is a server DTO; on the wire, comparisonType is a string.
@@ -115,10 +116,37 @@
     if (activeSlot === 'base') {
       updated.base = { type: 'branch' as const, value: name, label: name };
     } else {
+      // Auto-activate the Base slot: picking a target without an explicit
+      // base falls back to the current branch. The draft default (HEAD) is
+      // replaced; a user-chosen base is preserved.
+      if (isDefaultBase(updated.base)) {
+        const current = gitContext?.status?.currentBranch;
+        updated.base = current
+          ? { type: 'branch' as const, value: current, label: current }
+          : { type: 'head' as const, value: 'HEAD', label: 'HEAD' };
+      }
       updated.target = { type: 'branch' as const, value: name, label: name };
     }
-    updated.comparisonType = 'branch-vs-branch';
+    updated.comparisonType = inferComparisonType(
+      { type: updated.base.type as GitRefLike['type'], value: updated.base.value },
+      { type: updated.target.type as GitRefLike['type'], value: updated.target.value },
+    );
     internalDraft = updated;
+  }
+
+  const COMPARISON_LABELS: Record<string, string> = {
+    'working-tree-vs-head': 'working tree vs HEAD',
+    'staged-vs-head': 'staged vs HEAD',
+    unstaged: 'unstaged changes',
+    'branch-vs-branch': 'branch vs branch',
+    'commit-vs-commit': 'commit vs commit',
+    'commit-vs-working-tree': 'commit vs working tree',
+    'branch-vs-working-tree': 'branch vs working tree',
+    'commit-range': 'commit range',
+  };
+
+  function comparisonLabel(type: string): string {
+    return COMPARISON_LABELS[type] ?? type;
   }
 
   function selectCommit(shortHash: string) {
@@ -127,10 +155,24 @@
     if (activeSlot === 'base') {
       updated.base = { type: 'commit' as const, value: shortHash, label: shortHash };
     } else {
+      if (isDefaultBase(updated.base)) {
+        const current = gitContext?.status?.currentBranch;
+        updated.base = current
+          ? { type: 'branch' as const, value: current, label: current }
+          : { type: 'head' as const, value: 'HEAD', label: 'HEAD' };
+      }
       updated.target = { type: 'commit' as const, value: shortHash, label: shortHash };
     }
-    updated.comparisonType = 'commit-vs-commit';
+    updated.comparisonType = inferComparisonType(
+      { type: updated.base.type as GitRefLike['type'], value: updated.base.value },
+      { type: updated.target.type as GitRefLike['type'], value: updated.target.value },
+    );
     internalDraft = updated;
+  }
+
+  /** True when the base is the untouched draft default (HEAD). */
+  function isDefaultBase(base: ComparisonDraft['base']): boolean {
+    return base.type === 'head' && base.value === 'HEAD';
   }
 
   async function refresh() {
@@ -244,7 +286,7 @@
     <!-- Comparison slots -->
     <div class="comparison-slots" role="group" aria-label="Comparison slots">
       <button
-        class="slot-btn"
+        class="slot-btn slot-base"
         class:active={activeSlot === 'base'}
         aria-pressed={activeSlot === 'base'}
         onclick={() => (activeSlot = activeSlot === 'base' ? null : 'base')}
@@ -254,7 +296,7 @@
       </button>
       <span class="vs-separator">vs</span>
       <button
-        class="slot-btn"
+        class="slot-btn slot-target"
         class:active={activeSlot === 'target'}
         aria-pressed={activeSlot === 'target'}
         onclick={() => (activeSlot = activeSlot === 'target' ? null : 'target')}
@@ -262,7 +304,9 @@
         <span class="slot-label">Target</span>
         <span class="slot-value">{internalDraft?.target.label ?? '—'}</span>
       </button>
-      <span class="comparison-type">{internalDraft?.comparisonType ?? ''}</span>
+      {#if internalDraft?.comparisonType}
+        <span class="comparison-type">{comparisonLabel(internalDraft.comparisonType)}</span>
+      {/if}
     </div>
 
     <!-- File list -->
@@ -296,6 +340,7 @@
             <button
               class="git-item"
               class:current={branch.isCurrent}
+              class:remote={branch.isRemote}
               role="option"
               aria-selected={branch.isCurrent}
               onclick={() => selectBranch(branch.name)}
@@ -307,6 +352,9 @@
             >
               <span class="item-icon">{branch.isCurrent ? '●' : '○'}</span>
               <span class="item-name">{branch.name}</span>
+              {#if branch.isRemote}
+                <span class="remote-tag" aria-label="Cached remote branch">remote</span>
+              {/if}
             </button>
           </li>
         {:else}
@@ -333,7 +381,7 @@
           aria-label="Filter commits"
         />
       </div>
-      <ul class="git-list commits">
+      <ul class="git-list commits" role="listbox" aria-label="Commit entries">
         {#each filteredCommits() as commit (commit.fullHash)}
           <li>
             <button
@@ -399,7 +447,7 @@
   }
 
   .error-state {
-    color: var(--color-error, #d32f2f);
+    color: var(--color-error);
   }
 
   .empty-hint {
@@ -428,28 +476,28 @@
   }
 
   .status-clean {
-    background: var(--color-success, #2e7d32);
-    color: #fff;
+    background: var(--color-success);
+    color: var(--text-inverse);
   }
   .status-dirty {
-    background: var(--color-warning, #f9a825);
-    color: #000;
+    background: var(--color-warning);
+    color: var(--text-inverse);
   }
   .status-detached {
-    background: var(--color-info, #1565c0);
-    color: #fff;
+    background: var(--color-info);
+    color: var(--text-inverse);
   }
   .status-unborn {
-    background: var(--color-info, #1565c0);
-    color: #fff;
+    background: var(--color-info);
+    color: var(--text-inverse);
   }
   .status-conflict {
     background: var(--color-error, #d32f2f);
-    color: #fff;
+    color: var(--text-inverse);
   }
   .status-error {
     background: var(--color-error, #d32f2f);
-    color: #fff;
+    color: var(--text-inverse);
   }
 
   .status-counts {
@@ -461,7 +509,7 @@
   }
 
   .count-item.conflict {
-    color: var(--color-error, #d32f2f);
+    color: var(--color-error);
     font-weight: var(--font-weight-semibold);
   }
 
@@ -623,8 +671,21 @@
     text-align: center;
   }
 
+  .git-item.remote .item-name {
+    color: var(--text-secondary);
+  }
+
+  .remote-tag {
+    margin-left: auto;
+    padding: 0 var(--space-1);
+    border-radius: var(--radius-sm);
+    background: var(--surface-tertiary);
+    color: var(--text-tertiary);
+    font-size: var(--text-xs);
+  }
+
   .commit-item .commit-hash {
-    font-family: var(--font-mono, monospace);
+    font-family: var(--font-mono);
     font-size: var(--text-xs);
     color: var(--text-tertiary);
     min-width: 56px;

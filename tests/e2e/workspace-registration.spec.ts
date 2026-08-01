@@ -6,6 +6,7 @@ import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import { createGitFixture } from './helpers/git-fixture';
 import { waitForHydration } from './helpers/hydration';
+import { openWorkspaceActionsMenu } from './helpers/open-workspace-menu';
 import { resetDb } from './helpers/reset-db';
 
 function initRepo(fixture: { repoPath: string; runGit(args: readonly string[]): void }): void {
@@ -114,10 +115,10 @@ test.describe('Workspace Registration UI (E2E)', () => {
       // 4. Repair: create new repo and use the in-UI Repair action
       initRepo(fixtureB);
 
-      // Click the Repair button (only visible for invalid workspaces)
-      const repairBtn = wsItem.getByRole('button', { name: /Repair/ });
-      await expect(repairBtn).toBeVisible();
-      await repairBtn.click();
+      // Open the overflow menu and activate Repair (only invalid workspaces
+      // expose the Repair action)
+      await openWorkspaceActionsMenu(page, uniqueName);
+      await page.getByRole('menuitem', { name: 'Repair' }).click();
 
       // Repair form should appear with a path input
       await page.waitForSelector('[data-repair-form] input[name="newPath"]', {
@@ -125,7 +126,7 @@ test.describe('Workspace Registration UI (E2E)', () => {
         timeout: 10000,
       });
       await page.fill('[data-repair-form] input[name="newPath"]', fixtureB.repoPath);
-      await page.click('[data-repair-form] .save-btn');
+      await page.click('[data-repair-form] button[type="submit"]');
 
       // Wait for repair form to close and sidebar to update
       await page.waitForSelector('[data-repair-form]', { state: 'hidden', timeout: 10000 });

@@ -150,6 +150,32 @@ export class SimpleGitContextReader implements GitContextReader {
       isCurrent: !isDetached && name === branchSummary.current,
     }));
 
+    // Remote branches: read the locally cached `refs/remotes/*` only. No
+    // `git fetch` is ever executed; remote refs are whatever the local clone
+    // already has on disk.
+    try {
+      const remoteRefs = await git.raw([
+        'for-each-ref',
+        '--format=%(refname:short)',
+        'refs/remotes',
+      ]);
+      for (const ref of remoteRefs.split('\n')) {
+        const name = ref.trim();
+        if (name.length === 0) continue;
+        // Skip the remote HEAD pseudo-ref (e.g. "origin/HEAD").
+        if (name.endsWith('/HEAD')) continue;
+        const remoteName = name.includes('/') ? name.split('/')[0] : undefined;
+        branches.push({
+          name,
+          isCurrent: false,
+          isRemote: true,
+          ...(remoteName !== undefined ? { remoteName } : {}),
+        });
+      }
+    } catch {
+      // No remotes configured or refs unreadable — remote list stays empty.
+    }
+
     // Map commits (only if we have a HEAD to log from)
     if (headState !== 'unborn') {
       try {

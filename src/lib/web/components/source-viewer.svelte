@@ -257,7 +257,7 @@
   }
 
   .viewer-error {
-    color: #ef4444;
+    color: var(--text-error);
   }
 
   .error-detail {
@@ -341,15 +341,15 @@
   }
 
   .source-line.added {
-    background: rgba(34, 197, 94, 0.08);
+    background: var(--source-line-added-bg);
   }
 
   .source-line.removed {
-    background: rgba(239, 68, 68, 0.08);
+    background: var(--source-line-removed-bg);
   }
 
   .source-line.modified {
-    background: rgba(234, 179, 8, 0.08);
+    background: var(--source-line-modified-bg);
   }
 
   /* ── Line number ── */
@@ -377,15 +377,15 @@
   }
 
   .marker-added {
-    background: #22c55e;
+    background: var(--source-marker-added);
   }
 
   .marker-removed {
-    background: #ef4444;
+    background: var(--source-marker-removed);
   }
 
   .marker-modified {
-    background: #eab308;
+    background: var(--source-marker-modified);
   }
 
   .marker-none {
@@ -419,8 +419,8 @@
     gap: var(--space-2);
     padding: var(--space-2) var(--space-3);
     border-top: 1px solid var(--border-subtle);
-    background: var(--surface-warning, #fef3c7);
-    color: var(--text-warning, #92400e);
+    background: var(--surface-warning);
+    color: var(--text-warning);
     font-size: var(--text-sm);
     font-family: var(--font-sans);
   }

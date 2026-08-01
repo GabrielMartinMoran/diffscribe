@@ -12,6 +12,10 @@ export interface StatusDto {
 export interface BranchDto {
   name: string;
   isCurrent: boolean;
+  /** True for branches read from locally cached `refs/remotes/*`. */
+  isRemote?: boolean;
+  /** Remote name for remote branches (e.g. "origin"), when known. */
+  remoteName?: string;
 }
 
 export interface CommitDto {

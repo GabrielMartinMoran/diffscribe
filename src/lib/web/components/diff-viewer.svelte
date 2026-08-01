@@ -1,6 +1,7 @@
 <script lang="ts">
   /* eslint-disable svelte/no-at-html-tags */
   import type { FileDiffResult } from '$lib/server/application/dto/results/file-diff-results';
+  import { readStoredWrap, resolveWrap } from '$lib/web/stores/wrap-store';
 
   interface ComparisonDraft {
     base: { type: string; value: string; label: string };
@@ -45,6 +46,7 @@
   let loading = $state(false);
   let error = $state<string | null>(null);
   let sideBySide = $state(false);
+  let wrapLines = $state(false);
   let focusedHunkIndex = $state(0);
   let viewportWidth = $state(0);
   let selectedLines = $state<number[]>([]);
@@ -81,6 +83,18 @@
     selectedLineSide = {};
     anchorLine = null;
   });
+
+  // Per-file wrap state: start from the global Settings default whenever a
+  // different file opens; the contextual toggle overrides it for this file
+  // only (not persisted).
+  $effect(() => {
+    if (!selectedFile) return;
+    wrapLines = resolveWrap(readStoredWrap(window.localStorage));
+  });
+
+  function toggleWrap() {
+    wrapLines = !wrapLines;
+  }
 
   // Ctrl+Shift+D global shortcut
   $effect(() => {
@@ -359,13 +373,27 @@
   </div>
 {:else if diffResult}
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-  <div class="diff-viewer diff-rendered" role="region" aria-label="Diff viewer" tabindex="0">
+  <div
+    class="diff-viewer diff-rendered"
+    class:wrap-enabled={wrapLines}
+    role="region"
+    aria-label="Diff viewer"
+    tabindex="0"
+  >
     <div class="diff-header">
       <span class="diff-path">{diffResult.path}</span>
       {#if diffResult.oldPath && diffResult.oldPath !== diffResult.path}
         <span class="diff-rename">(renamed from {diffResult.oldPath})</span>
       {/if}
       <div class="diff-actions">
+        <button
+          class="toggle-btn"
+          onclick={toggleWrap}
+          aria-pressed={wrapLines}
+          aria-label={wrapLines ? 'Disable line wrapping' : 'Enable line wrapping'}
+        >
+          Wrap
+        </button>
         {#if viewportWidth >= 900}
           <button
             class="toggle-btn"
@@ -519,12 +547,24 @@
 
   .diff-viewer {
     overflow-y: auto;
+    overflow-x: auto;
     padding: var(--space-4);
-    font-family: var(--font-mono, monospace);
+    font-family: var(--font-mono);
     font-size: 13px;
     line-height: 1.5;
     background: var(--surface-primary);
     color: var(--text-primary);
+    /* Scroll ownership: the viewer scrolls inside the work area instead of
+       pushing the shell layout. */
+    flex: 1;
+    min-height: 0;
+  }
+
+  /* Wrap mode: long lines wrap inside the viewer. `pre-wrap` keeps code
+     whitespace; overflow-wrap/word-break utilities are intentionally not
+     used (see docs/design.md — Base UI kit anti-patterns). */
+  .diff-viewer.wrap-enabled .diff-line {
+    white-space: pre-wrap;
   }
 
   /* ── State containers ── */
@@ -561,7 +601,7 @@
   }
 
   .diff-error {
-    color: var(--text-error, #d32f2f);
+    color: var(--text-error);
   }
 
   .retry-btn,
@@ -627,10 +667,9 @@
   .diff-truncation-notice {
     padding: var(--space-2);
     margin-bottom: var(--space-3);
-    background: var(--surface-warning, #fff3e0);
-    border: 1px solid var(--border-warning, #ff9800);
-    border-radius: var(--radius-sm);
-    color: var(--text-warning, #e65100);
+    background: var(--surface-warning);
+    border: 1px solid var(--border-warning);
+    color: var(--text-warning);
     font-size: 12px;
   }
 
@@ -677,7 +716,7 @@
 
   .sel-line.selected {
     background: var(--selection-bg, rgba(66, 133, 244, 0.2));
-    border-left: 3px solid var(--selection-border, #4285f4);
+    border-left: 3px solid var(--selection-border);
   }
 
   .diff-line-context {
@@ -686,12 +725,12 @@
 
   .diff-line-added {
     background: var(--diff-added-bg, rgba(0, 255, 0, 0.08));
-    color: var(--diff-added-fg, #1b5e20);
+    color: var(--diff-added-fg);
   }
 
   .diff-line-deleted {
     background: var(--diff-deleted-bg, rgba(255, 0, 0, 0.08));
-    color: var(--diff-deleted-fg, #b71c1c);
+    color: var(--diff-deleted-fg);
   }
 
   .diff-line.no-newline {
@@ -727,11 +766,11 @@
   }
 
   .diff-line-added .line-prefix {
-    color: var(--diff-added-fg, #1b5e20);
+    color: var(--diff-added-fg);
   }
 
   .diff-line-deleted .line-prefix {
-    color: var(--diff-deleted-fg, #b71c1c);
+    color: var(--diff-deleted-fg);
   }
 
   .diff-line-context .line-prefix {
@@ -740,22 +779,13 @@
 
   .line-content {
     flex: 1;
-    overflow-x: auto;
   }
 
   /* ── Side-by-side ── */
-  .diff-side-by-side {
-    overflow-x: auto;
-  }
-
   .hunk-columns {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 1px;
-  }
-
-  .hunk-col {
-    overflow-x: auto;
   }
 
   .old-col .diff-line {

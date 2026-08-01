@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { SelectionInfo } from '$lib/web/stores/observation-store';
 
+  import Select from './ui/Select.svelte';
+
   let {
     activeWorkspaceId,
     activeReviewId,
@@ -109,15 +111,14 @@
   {/if}
 
   <div class="form-group">
-    <label for="obs-type">Type</label>
-    <select id="obs-type" bind:value={obsType} disabled={submitting}>
+    <Select id="obs-type" label="Type" bind:value={obsType} disabled={submitting}>
       <option value="note">Note</option>
       <option value="issue">Issue</option>
       <option value="risk">Risk</option>
       <option value="suggestion">Suggestion</option>
       <option value="question">Question</option>
       <option value="praise">Praise</option>
-    </select>
+    </Select>
   </div>
 
   {#if showSeverity}
@@ -186,10 +187,10 @@
   .form-error {
     padding: var(--space-2);
     margin-bottom: var(--space-2);
-    background: var(--surface-error, #fce4ec);
-    border: 1px solid var(--text-error, #d32f2f);
+    background: var(--surface-error);
+    border: 1px solid var(--text-error);
     border-radius: var(--radius-sm);
-    color: var(--text-error, #d32f2f);
+    color: var(--text-error);
     font-size: var(--text-sm);
   }
 
@@ -206,7 +207,7 @@
   }
 
   .required {
-    color: var(--text-error, #d32f2f);
+    color: var(--text-error);
   }
 
   .form-group select,
@@ -220,6 +221,10 @@
     font-family: inherit;
     background: var(--surface-primary);
     color: var(--text-primary);
+  }
+
+  .form-group :global(.ui-select) {
+    padding: var(--space-1) var(--space-2);
   }
 
   .selection-info {

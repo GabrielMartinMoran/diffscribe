@@ -7,7 +7,7 @@ export default defineConfig({
   fullyParallel: true,
   workers: Number(process.env.DIFFSCRIBE_E2E_WORKERS ?? 4),
   use: {
-    baseURL: 'http://127.0.0.1:5173',
+    baseURL: 'http://127.0.0.1:56823',
     browserName: 'chromium',
     headless: true,
   },

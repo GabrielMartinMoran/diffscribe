@@ -4,6 +4,9 @@
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
 
+  import Button from './ui/Button.svelte';
+  import TextInput from './ui/TextInput.svelte';
+
   let {
     onRegistered = undefined as (() => void) | undefined,
   }: {
@@ -21,7 +24,7 @@
     return async ({ result }) => {
       loading = false;
       if (result.type === 'failure') {
-        error = result.data?.error ?? 'Error al registrar workspace';
+        error = result.data?.error ?? 'Error registering workspace';
       } else if (result.type === 'success') {
         path = '';
         displayName = '';
@@ -42,20 +45,18 @@
   <fieldset disabled={loading}>
     <legend>Open workspace</legend>
 
-    <label for="ws-path">Repository Path</label>
-    <input
+    <TextInput
       id="ws-path"
       name="repositoryPath"
-      type="text"
+      label="Repository Path"
       bind:value={path}
       placeholder="/absolute/path/to/repo"
     />
 
-    <label for="ws-name">Display Name</label>
-    <input
+    <TextInput
       id="ws-name"
       name="displayName"
-      type="text"
+      label="Display Name"
       bind:value={displayName}
       placeholder="My Repository"
     />
@@ -64,9 +65,9 @@
       <p class="error-feedback" role="alert">{error}</p>
     {/if}
 
-    <button type="submit" disabled={loading}>
+    <Button type="submit" disabled={loading}>
       {loading ? 'Opening...' : 'Open'}
-    </button>
+    </Button>
   </fieldset>
 </form>
 
@@ -80,53 +81,17 @@
   }
 
   legend {
+    margin-bottom: var(--space-2);
     font-weight: var(--font-weight-semibold);
     font-size: var(--text-lg);
   }
 
-  label {
-    display: block;
-    margin-top: var(--space-3);
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
-  }
-
-  input {
-    display: block;
-    width: 100%;
+  fieldset :global(.ui-text-input) {
     margin-top: var(--space-1);
-    padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--border-default);
-    border-radius: var(--radius-sm);
-    font-size: var(--text-base);
   }
 
-  input:focus-visible {
-    outline: var(--focus-ring-offset) solid var(--focus-ring);
-  }
-
-  button {
+  fieldset :global(.ui-button) {
     margin-top: var(--space-4);
-    padding: var(--space-2) var(--space-4);
-    border: none;
-    border-radius: var(--radius-sm);
-    background: var(--accent);
-    color: var(--text-inverse);
-    font-weight: var(--font-weight-medium);
-    cursor: pointer;
-  }
-
-  button:hover {
-    background: var(--accent-hover);
-  }
-
-  button:focus-visible {
-    outline: var(--focus-ring-offset) solid var(--focus-ring);
-  }
-
-  button:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
   }
 
   .error-feedback {

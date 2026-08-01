@@ -1,6 +1,9 @@
 <script lang="ts">
   import { FileText, MessageCircle, PanelRightClose, PanelRightOpen } from 'svelte-lucide';
 
+  import type { TabItem } from './ui/Tabs.svelte';
+  import Tabs from './ui/Tabs.svelte';
+
   let {
     activeRightTab = 'comments' as 'comments' | 'review',
     onTabChange = undefined as ((tab: 'comments' | 'review') => void) | undefined,
@@ -22,6 +25,23 @@
     comments?: import('svelte').Snippet;
     review?: import('svelte').Snippet;
   } = $props();
+
+  const tabs: TabItem[] = [
+    {
+      id: 'comments',
+      label: 'Comments',
+      ariaLabel: 'Comments',
+      icon: MessageCircle,
+      testId: 'right-tab-comments',
+    },
+    {
+      id: 'review',
+      label: 'Review',
+      ariaLabel: 'Review',
+      icon: FileText,
+      testId: 'right-tab-review',
+    },
+  ];
 </script>
 
 {#if isMobile}
@@ -42,31 +62,13 @@
       role="tabpanel"
       aria-label="Right panel"
     >
-      <div class="right-panel-tabs" role="tablist" aria-label="Right panel tabs">
-        <button
-          role="tab"
-          aria-selected={activeRightTab === 'comments'}
-          aria-label="Comments"
-          data-testid="right-tab-comments"
-          class="right-tab"
-          class:active={activeRightTab === 'comments'}
-          onclick={() => onTabChange?.('comments')}
-        >
-          <MessageCircle size="16" strokeWidth="1.5" ariaLabel="Comments" />
-          <span>Comments</span>
-        </button>
-        <button
-          role="tab"
-          aria-selected={activeRightTab === 'review'}
-          aria-label="Review"
-          data-testid="right-tab-review"
-          class="right-tab"
-          class:active={activeRightTab === 'review'}
-          onclick={() => onTabChange?.('review')}
-        >
-          <FileText size="16" strokeWidth="1.5" ariaLabel="Review" />
-          <span>Review</span>
-        </button>
+      <div class="right-panel-tabs">
+        <Tabs
+          {tabs}
+          activeId={activeRightTab}
+          ariaLabel="Right panel tabs"
+          onchange={(id) => onTabChange?.(id as 'comments' | 'review')}
+        />
         <button
           data-testid="right-panel-collapse-btn"
           class="right-collapse-btn"
@@ -115,31 +117,13 @@
   </div>
 {:else}
   <div data-testid="right-panel" class="right-panel" role="tabpanel" aria-label="Right panel">
-    <div class="right-panel-tabs" role="tablist" aria-label="Right panel tabs">
-      <button
-        role="tab"
-        aria-selected={activeRightTab === 'comments'}
-        aria-label="Comments"
-        data-testid="right-tab-comments"
-        class="right-tab"
-        class:active={activeRightTab === 'comments'}
-        onclick={() => onTabChange?.('comments')}
-      >
-        <MessageCircle size="16" strokeWidth="1.5" ariaLabel="Comments" />
-        <span>Comments</span>
-      </button>
-      <button
-        role="tab"
-        aria-selected={activeRightTab === 'review'}
-        aria-label="Review"
-        data-testid="right-tab-review"
-        class="right-tab"
-        class:active={activeRightTab === 'review'}
-        onclick={() => onTabChange?.('review')}
-      >
-        <FileText size="16" strokeWidth="1.5" ariaLabel="Review" />
-        <span>Review</span>
-      </button>
+    <div class="right-panel-tabs">
+      <Tabs
+        {tabs}
+        activeId={activeRightTab}
+        ariaLabel="Right panel tabs"
+        onchange={(id) => onTabChange?.(id as 'comments' | 'review')}
+      />
       <button
         data-testid="right-panel-collapse-btn"
         class="right-collapse-btn"
@@ -177,6 +161,8 @@
     border-left: 1px solid var(--border-subtle);
     background: var(--surface-primary);
     overflow: hidden;
+    /* Grid item: stay inside the viewport row (scroll ownership). */
+    min-height: 0;
   }
 
   .right-panel-collapsed {
@@ -209,38 +195,18 @@
     background: var(--surface-secondary);
   }
 
-  .right-tab {
-    display: flex;
-    align-items: center;
-    gap: var(--space-1);
+  .right-panel-tabs :global(.ui-tabs) {
     flex: 1;
+  }
+
+  .right-panel-tabs :global(.ui-tabs__tab) {
+    flex: 1;
+    min-height: 32px;
     padding: var(--space-2) var(--space-2);
-    border: none;
-    border-bottom: 2px solid transparent;
-    background: transparent;
-    color: var(--text-tertiary);
     font-size: var(--text-sm);
-    cursor: pointer;
-    justify-content: center;
-    transition:
-      color 0.15s,
-      border-color 0.15s,
-      background 0.15s;
   }
 
-  .right-tab:hover {
-    color: var(--text-primary);
-    background: var(--surface-hover);
-  }
-
-  .right-tab:focus-visible {
-    outline: var(--focus-ring-offset) solid var(--focus-ring);
-    outline-offset: -2px;
-  }
-
-  .right-tab.active {
-    color: var(--accent);
-    border-bottom-color: var(--accent);
+  .right-panel-tabs :global(.ui-tabs__tab.active) {
     background: var(--surface-primary);
   }
 
@@ -332,13 +298,16 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .right-tab,
     .right-panel-collapsed,
     .right-collapse-btn,
     .mobile-right-toggle,
     .right-panel.mobile-sheet {
       transition: none;
       animation: none;
+    }
+
+    .right-panel-tabs :global(.ui-tabs__tab) {
+      transition: none;
     }
   }
 </style>

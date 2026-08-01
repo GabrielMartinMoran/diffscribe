@@ -392,7 +392,7 @@
     background: var(--state-error-bg, #ffebee);
     border: 1px solid var(--state-error-border, #ef5350);
     border-radius: var(--radius-sm);
-    color: var(--text-error, #c62828);
+    color: var(--text-error);
     font-size: var(--text-sm);
   }
 
@@ -444,7 +444,7 @@
   }
   .status-completed {
     background: var(--diff-added-bg, rgba(0, 200, 0, 0.1));
-    color: var(--diff-added-fg, #1b5e20);
+    color: var(--diff-added-fg);
   }
 
   .review-progress {
@@ -473,7 +473,7 @@
     font-size: var(--text-xs);
     color: var(--text-secondary);
     white-space: nowrap;
-    font-family: var(--font-mono, monospace);
+    font-family: var(--font-mono);
   }
 
   .review-actions {
@@ -542,7 +542,7 @@
   .complete-btn {
     background: var(--diff-added-bg, rgba(0, 200, 0, 0.05));
     border-color: var(--diff-added-fg, #1b5e20);
-    color: var(--diff-added-fg, #1b5e20);
+    color: var(--diff-added-fg);
   }
 
   .new-btn {
@@ -678,7 +678,7 @@
   .list-item-progress {
     font-size: var(--text-xs);
     color: var(--text-secondary);
-    font-family: var(--font-mono, monospace);
+    font-family: var(--font-mono);
   }
   .list-item-date {
     font-size: var(--text-xs);

@@ -1,4 +1,5 @@
 import { expect, test } from './fixtures';
+import { waitForHydration } from './helpers/hydration';
 import { resetDb } from './helpers/reset-db';
 
 test.describe('UI Shell — Rail tabs, theme switcher, file tabs, right panel tabs (SHELL-UI-01)', () => {
@@ -8,18 +9,55 @@ test.describe('UI Shell — Rail tabs, theme switcher, file tabs, right panel ta
     await page.waitForLoadState('networkidle');
   });
 
+  // ────── SvelteKit body wrapper regression ──────
+
+  test('SHELL-UI-01: no SvelteKit warning about %sveltekit.body% in body element', async ({
+    page,
+  }) => {
+    const warnings: string[] = [];
+    page.on('console', (msg) => {
+      if (msg.type() === 'warning' && msg.text().includes('sveltekit.body')) {
+        warnings.push(msg.text());
+      }
+    });
+
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+    await waitForHydration(page);
+
+    expect(warnings).toHaveLength(0);
+  });
+
+  test('SHELL-UI-01: shell layout is visible and stable after hydration', async ({ page }) => {
+    await waitForHydration(page);
+
+    // Shell layout must be visible
+    const layout = page.locator('[data-testid="shell-layout"]');
+    await expect(layout).toBeVisible({ timeout: 10000 });
+
+    // Rail tabs must be visible and interactive
+    const rail = page.locator('[data-testid="rail-tabs"]');
+    await expect(rail).toBeVisible({ timeout: 5000 });
+    const tabs = rail.locator('[role="tab"]');
+    await expect(tabs.nth(0)).toBeVisible();
+
+    // Center content must be visible
+    await expect(page.locator('[data-testid="center-content"]')).toBeVisible();
+  });
+
   // ────── Rail tabs ──────
 
-  test('SHELL-UI-01: rail renders three icon tabs with accessible labels', async ({ page }) => {
+  test('SHELL-UI-01: rail renders four icon tabs with accessible labels', async ({ page }) => {
     const rail = page.locator('[data-testid="rail-tabs"]');
     await expect(rail).toBeVisible({ timeout: 10000 });
 
     const tabs = rail.locator('[role="tab"]');
-    await expect(tabs).toHaveCount(3);
+    await expect(tabs).toHaveCount(4);
 
     await expect(tabs.nth(0)).toHaveAttribute('aria-label', /workspaces/i);
     await expect(tabs.nth(1)).toHaveAttribute('aria-label', /project/i);
     await expect(tabs.nth(2)).toHaveAttribute('aria-label', /git/i);
+    await expect(tabs.nth(3)).toHaveAttribute('aria-label', /settings/i);
   });
 
   test('SHELL-UI-01: active tab has aria-selected true, others false', async ({ page }) => {
@@ -68,9 +106,9 @@ test.describe('UI Shell — Rail tabs, theme switcher, file tabs, right panel ta
     await page.keyboard.press('Home');
     await expect(tabs.nth(0)).toBeFocused();
 
-    // Press End → last
+    // Press End → last (Settings with the 4-tab rail)
     await page.keyboard.press('End');
-    await expect(tabs.nth(2)).toBeFocused();
+    await expect(tabs.nth(3)).toBeFocused();
   });
 
   test('SHELL-UI-01: Enter key activates a focused rail tab', async ({ page }) => {
@@ -119,6 +157,8 @@ test.describe('UI Shell — Rail tabs, theme switcher, file tabs, right panel ta
   test('SHELL-UI-01: ThemeSwitcher shows and toggles between Dark Deep and Synthwave 84', async ({
     page,
   }) => {
+    // The theme switcher lives in Settings (tranche: themes out of header).
+    await page.getByTestId('rail-tab-settings').click();
     const switcher = page.locator('[data-testid="theme-switcher"]');
     await expect(switcher).toBeVisible({ timeout: 10000 });
 
@@ -143,7 +183,8 @@ test.describe('UI Shell — Rail tabs, theme switcher, file tabs, right panel ta
   });
 
   test('SHELL-UI-01: theme selection persists in localStorage', async ({ page }) => {
-    // Switch to Synthwave
+    // Switch to Synthwave from Settings
+    await page.getByTestId('rail-tab-settings').click();
     await page.locator('[data-testid="theme-switcher"] button').last().click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'synthwave-84');
 

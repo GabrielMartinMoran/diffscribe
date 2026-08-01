@@ -192,3 +192,71 @@ describe('SimpleGitContextReader (integration)', () => {
     expect(result.commits).toHaveLength(0);
   });
 });
+
+describe('SimpleGitContextReader remote branches (cached refs/remotes)', () => {
+  let tempRoot: string;
+  let gitRepo: string;
+  let remoteRepo: string;
+
+  beforeEach(() => {
+    tempRoot = mkTempDir();
+    gitRepo = path.join(tempRoot, 'repo');
+    remoteRepo = path.join(tempRoot, 'remote.git');
+    fs.mkdirSync(gitRepo);
+    fs.mkdirSync(remoteRepo);
+    gitInit(gitRepo);
+    execSync('git init --bare', { cwd: remoteRepo, stdio: 'pipe' });
+  });
+
+  afterEach(() => {
+    rmDir(tempRoot);
+  });
+
+  it('reads remote branches from cached refs/remotes without fetching', async () => {
+    gitCommit(gitRepo, 'init', 'README.md');
+    execSync(`git remote add origin "${remoteRepo}"`, { cwd: gitRepo, stdio: 'pipe' });
+    // Simulate a previously fetched remote branch: create refs/remotes/origin/main
+    // directly. No `git fetch` is executed.
+    execSync('git update-ref refs/remotes/origin/main HEAD', { cwd: gitRepo, stdio: 'pipe' });
+
+    const { SimpleGitContextReader } =
+      await import('../../../src/lib/server/infrastructure/git/simple-git-context-reader');
+    const reader = new SimpleGitContextReader();
+    const result = await reader.read(gitRepo);
+
+    const originMain = result.branches.find((b) => b.name === 'origin/main');
+    expect(originMain).toBeDefined();
+    expect(originMain!.isRemote).toBe(true);
+    expect(originMain!.remoteName).toBe('origin');
+
+    const localMain = result.branches.find((b) => b.name === 'master');
+    expect(localMain).toBeDefined();
+    expect(localMain!.isRemote).toBeFalsy();
+
+    // No fetch may have been executed: the remote has no refs beyond what we
+    // created locally.
+    const remoteRefs = execSync('git for-each-ref refs/remotes', {
+      cwd: gitRepo,
+      stdio: 'pipe',
+    })
+      .toString()
+      .trim();
+    expect(remoteRefs).toContain('refs/remotes/origin/main');
+  });
+
+  it('does not mark the current local branch as remote when a remote exists', async () => {
+    gitCommit(gitRepo, 'init', 'README.md');
+    execSync(`git remote add origin "${remoteRepo}"`, { cwd: gitRepo, stdio: 'pipe' });
+    execSync('git update-ref refs/remotes/origin/feature HEAD', { cwd: gitRepo, stdio: 'pipe' });
+
+    const { SimpleGitContextReader } =
+      await import('../../../src/lib/server/infrastructure/git/simple-git-context-reader');
+    const reader = new SimpleGitContextReader();
+    const result = await reader.read(gitRepo);
+
+    const current = result.branches.find((b) => b.isCurrent);
+    expect(current).toBeDefined();
+    expect(current!.isRemote).toBeFalsy();
+    expect(current!.name).toBe('master');
+  });
+});

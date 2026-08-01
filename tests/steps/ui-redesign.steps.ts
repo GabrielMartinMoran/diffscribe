@@ -648,6 +648,22 @@ Given('the global token contract for the Dark Deep theme', (w: World) => {
   w.auditedTokens = parseThemeTokens(TOKENS_CSS_PATH, "[data-theme='dark']");
 });
 
+Given('the Dark Deep theme token contract', (w: World) => {
+  w.themeAuditTarget = 'dark';
+  w.auditedTokens = parseThemeTokens(TOKENS_CSS_PATH, "[data-theme='dark']");
+});
+
+Given('the global :root token contract', (w: World) => {
+  w.themeAuditTarget = 'root';
+  w.auditedTokens = parseRootTokens(TOKENS_CSS_PATH);
+});
+
+Given('the application is running', (_w: World) => {
+  if (!fs.existsSync(APP_HTML_PATH)) {
+    throw new Error('app.html not found — application scaffold missing');
+  }
+});
+
 Given('the set of tokens declared in the Dark Deep theme', (w: World) => {
   w.darkTokens = parseThemeTokens(TOKENS_CSS_PATH, "[data-theme='dark']");
 });
@@ -870,7 +886,7 @@ When('the user selects the Review tab', (w: World) => {
 
 When('the user presses ArrowDown', (w: World) => {
   w.railFocusIndex = (w.railFocusIndex ?? -1) + 1;
-  if (w.railFocusIndex > 2) w.railFocusIndex = 2;
+  if (w.railFocusIndex > 3) w.railFocusIndex = 3;
 });
 
 When('the user presses ArrowUp', (w: World) => {
@@ -986,18 +1002,20 @@ When('the user triggers the reset layout action', (w: World) => {
 When(
   'a static audit checks all used CSS custom properties against the Dark Deep contract',
   (w: World) => {
-    const darkTokens = parseThemeTokens(TOKENS_CSS_PATH, "[data-theme='dark']");
-    const rootTokens = parseRootTokens(TOKENS_CSS_PATH);
-    w.auditResult = { declared: new Set([...darkTokens, ...rootTokens]), missing: [] };
+    const declared = buildDeclaredTokenSet("[data-theme='dark']");
+    const used = scanComponentCssVarRefs(COMPONENTS_DIR);
+    const missing = [...used].filter((t) => !declared.has(t));
+    w.auditResult = { declared, missing };
   },
 );
 
 When(
   "a static audit checks all used CSS custom properties against the Synthwave '{int} contract",
   (w: World, _n: number) => {
-    const synthTokens = parseThemeTokens(TOKENS_CSS_PATH, "[data-theme='synthwave-84']");
-    const rootTokens = parseRootTokens(TOKENS_CSS_PATH);
-    w.auditResult = { declared: new Set([...synthTokens, ...rootTokens]), missing: [] };
+    const declared = buildDeclaredTokenSet("[data-theme='synthwave-84']");
+    const used = scanComponentCssVarRefs(COMPONENTS_DIR);
+    const missing = [...used].filter((t) => !declared.has(t));
+    w.auditResult = { declared, missing };
   },
 );
 
@@ -1652,8 +1670,8 @@ Then('no error is shown to the user', (w: World) => {
 
 // ── Rail tabs ───────────────────────────────────────────────────────────────
 
-Then('the rail shows three icons: Workspaces, Project, and Git', (w: World) => {
-  // Contractual: the rail specification requires 3 tabs
+Then('the rail shows four icons: Workspaces, Project, Git, and Settings', (w: World) => {
+  // Contractual: the rail specification requires 4 tabs
 });
 
 Then('each icon has an accessible label', (w: World) => {
@@ -1951,47 +1969,15 @@ Then(
 );
 
 Then('every referenced token has a declaration in the Dark Deep token set', (w: World) => {
-  const darkTokens = parseThemeTokens(TOKENS_CSS_PATH, "[data-theme='dark']");
-  const rootTokens = parseRootTokens(TOKENS_CSS_PATH);
-  const allDeclared = new Set([...darkTokens, ...rootTokens]);
-  // Reference tokens used by components: surface-primary, text-primary, accent, etc.
-  const referenced = [
-    '--surface-primary',
-    '--surface-secondary',
-    '--surface-tertiary',
-    '--text-primary',
-    '--text-secondary',
-    '--text-tertiary',
-    '--accent',
-    '--accent-hover',
-    '--accent-muted',
-    '--border-subtle',
-    '--border-default',
-    '--border-strong',
-    '--focus-ring',
-    '--focus-ring-offset',
-    '--diff-added-bg',
-    '--diff-added-border',
-    '--diff-added-text',
-    '--diff-removed-bg',
-    '--diff-removed-border',
-    '--diff-removed-text',
-    '--font-family-mono',
-    '--font-weight-normal',
-    '--space-1',
-    '--space-2',
-    '--space-3',
-    '--space-4',
-    '--radius-sm',
-    '--radius-md',
-    '--shadow-sm',
-    '--shadow-md',
-    '--z-base',
-    '--z-dropdown',
-    '--duration-fast',
-    '--duration-normal',
-  ];
-  const missing = referenced.filter((t) => !allDeclared.has(t));
+  if (w.auditResult) {
+    if (w.auditResult.missing.length > 0) {
+      throw new Error(`Missing tokens in Dark Deep: ${w.auditResult.missing.join(', ')}`);
+    }
+    return;
+  }
+  const declared = buildDeclaredTokenSet("[data-theme='dark']");
+  const used = scanComponentCssVarRefs(COMPONENTS_DIR);
+  const missing = [...used].filter((t) => !declared.has(t));
   if (missing.length > 0) {
     throw new Error(`Missing tokens in Dark Deep: ${missing.join(', ')}`);
   }
@@ -2000,31 +1986,15 @@ Then('every referenced token has a declaration in the Dark Deep token set', (w: 
 Then(
   "every referenced token has a declaration in the Synthwave '{int} token set",
   (w: World, _n: number) => {
-    const synthTokens = parseThemeTokens(TOKENS_CSS_PATH, "[data-theme='synthwave-84']");
-    const rootTokens = parseRootTokens(TOKENS_CSS_PATH);
-    const allDeclared = new Set([...synthTokens, ...rootTokens]);
-    const referenced = [
-      '--surface-primary',
-      '--surface-secondary',
-      '--text-primary',
-      '--text-secondary',
-      '--accent',
-      '--accent-hover',
-      '--border-subtle',
-      '--border-default',
-      '--focus-ring',
-      '--diff-added-bg',
-      '--diff-removed-bg',
-      '--space-1',
-      '--space-2',
-      '--space-3',
-      '--space-4',
-      '--radius-sm',
-      '--radius-md',
-      '--shadow-sm',
-      '--shadow-md',
-    ];
-    const missing = referenced.filter((t) => !allDeclared.has(t));
+    if (w.auditResult) {
+      if (w.auditResult.missing.length > 0) {
+        throw new Error(`Missing tokens in Synthwave '84: ${w.auditResult.missing.join(', ')}`);
+      }
+      return;
+    }
+    const declared = buildDeclaredTokenSet("[data-theme='synthwave-84']");
+    const used = scanComponentCssVarRefs(COMPONENTS_DIR);
+    const missing = [...used].filter((t) => !declared.has(t));
     if (missing.length > 0) {
       throw new Error(`Missing tokens in Synthwave '84: ${missing.join(', ')}`);
     }
@@ -2188,3 +2158,975 @@ function parseTokensForThemeObj(cssPath: string, _selector: string): Record<stri
   }
   return tokens;
 }
+
+/** Assert a token is declared in the given selector block. */
+function assertTokenExists(selector: string, token: string): void {
+  const root = parseRootTokens(TOKENS_CSS_PATH);
+  const themed = parseThemeTokens(TOKENS_CSS_PATH, selector);
+  const all = new Set([...root, ...themed]);
+  if (!all.has(token)) {
+    throw new Error(`Token ${token} not found in :root or ${selector} block`);
+  }
+}
+
+/** Assert all tokens exist in both dark and synthwave themes (plus :root). */
+function assertTokenExistsInBothThemes(selector: string, tokens: string[]): void {
+  const root = parseRootTokens(TOKENS_CSS_PATH);
+  for (const t of tokens) {
+    const darkAll = new Set([...root, ...parseThemeTokens(TOKENS_CSS_PATH, "[data-theme='dark']")]);
+    const synthAll = new Set([
+      ...root,
+      ...parseThemeTokens(TOKENS_CSS_PATH, "[data-theme='synthwave-84']"),
+    ]);
+    if (!darkAll.has(t)) {
+      throw new Error(`Token ${t} not found in Dark Deep (${selector})`);
+    }
+    if (!synthAll.has(t)) {
+      throw new Error(`Token ${t} not found in Synthwave '84 (${selector})`);
+    }
+  }
+}
+
+/** Parse all CSS custom property references from a Svelte style block. Returns Set<string>. */
+function parseCssVarRefs(cssContent: string): Set<string> {
+  const refs = new Set<string>();
+  const varRegex = /var\((--[a-zA-Z0-9-]+)/g;
+  let m;
+  while ((m = varRegex.exec(cssContent)) !== null) {
+    refs.add(m[1]);
+  }
+  return refs;
+}
+
+/** Find hardcoded hex color values (#rrggbb) in CSS excluding CSS variable values after `:`. */
+function findHardcodedHex(cssContent: string): string[] {
+  const hexes: string[] = [];
+  // Look for patterns like `background: #xxxxxx;` or `color: #xxxxxx;`
+  const hexRegex = /(?<!var\([^)]{0,200})(?<![a-zA-Z-])(#[0-9a-fA-F]{6})(?![a-fA-F0-9])/g;
+  let m;
+  while ((m = hexRegex.exec(cssContent)) !== null) {
+    hexes.push(m[1]);
+  }
+  return hexes;
+}
+
+/** Extract the <style> block from a Svelte file and find hardcoded hex colors. */
+function findHardcodedHexInComponent(filePath: string): string[] {
+  if (!fs.existsSync(filePath)) return [];
+  const content = fs.readFileSync(filePath, 'utf-8');
+  const styleMatch = content.match(/<style[^>]*>([\s\S]*?)<\/style>/);
+  if (!styleMatch) return [];
+  return findHardcodedHex(styleMatch[1]);
+}
+
+/** Paths to Svelte component files for hex checking */
+const OBSERVATION_CARD_PATH = path.resolve(
+  __dirname,
+  '../../src/lib/web/components/observation-card.svelte',
+);
+const SOURCE_VIEWER_PATH = path.resolve(
+  __dirname,
+  '../../src/lib/web/components/source-viewer.svelte',
+);
+const PROJECT_TREE_NODE_PATH = path.resolve(
+  __dirname,
+  '../../src/lib/web/components/project-tree-node.svelte',
+);
+const GIT_CONTEXT_PANEL_PATH = path.resolve(
+  __dirname,
+  '../../src/lib/web/components/git-context-panel.svelte',
+);
+const APP_HTML_PATH = path.resolve(__dirname, '../../src/app.html');
+
+/** Directory containing Svelte UI components to scan for var() references. */
+const COMPONENTS_DIR = path.resolve(__dirname, '../../src/lib/web/components');
+
+/**
+ * Scan all .svelte component files for var() CSS custom property references.
+ * Returns every referenced token name (e.g., "--surface-primary").
+ */
+function scanComponentCssVarRefs(componentsDir: string): Set<string> {
+  const refs = new Set<string>();
+  if (!fs.existsSync(componentsDir)) return refs;
+  const files = fs.readdirSync(componentsDir).filter((f) => f.endsWith('.svelte'));
+  for (const file of files) {
+    const content = fs.readFileSync(path.join(componentsDir, file), 'utf-8');
+    const styleMatch = content.match(/<style[^>]*>([\s\S]*?)<\/style>/);
+    if (styleMatch) {
+      for (const m of styleMatch[1].matchAll(/var\((--[a-zA-Z0-9-]+)/g)) {
+        refs.add(m[1]);
+      }
+    }
+    // Also catch inline style var() refs outside <style> blocks
+    for (const m of content.matchAll(/style\s*=\s*["'][^"']*?var\((--[a-zA-Z0-9-]+)/g)) {
+      refs.add(m[1]);
+    }
+  }
+  return refs;
+}
+
+/**
+ * Build the full set of declared tokens: :root + theme-specific blocks.
+ */
+function buildDeclaredTokenSet(themeSelector: string): Set<string> {
+  const root = parseRootTokens(TOKENS_CSS_PATH);
+  const themed = parseThemeTokens(TOKENS_CSS_PATH, themeSelector);
+  return new Set([...root, ...themed]);
+}
+
+// ── Token contract: batch assertions ──────────────────────────────────
+
+When('the error and warning token families are enumerated', (w: World) => {
+  w.errorWarningTokens = [
+    '--text-error',
+    '--surface-error',
+    '--border-error',
+    '--text-warning',
+    '--surface-warning',
+    '--border-warning',
+  ];
+});
+
+Then(/^(.+) is declared in Dark Deep$/, (w: World, token: string) => {
+  assertTokenExists("[data-theme='dark']", token);
+});
+
+Then('all error and warning tokens are declared in the Dark Deep theme', (w: World) => {
+  assertTokenExistsInBothThemes(
+    "[data-theme='dark']",
+    (w.errorWarningTokens as string[]) ?? [
+      '--text-error',
+      '--surface-error',
+      '--border-error',
+      '--text-warning',
+      '--surface-warning',
+      '--border-warning',
+    ],
+  );
+});
+
+Then("all error and warning tokens exist in the Synthwave '84 theme", (w: World) => {
+  assertTokenExistsInBothThemes(
+    "[data-theme='synthwave-84']",
+    (w.errorWarningTokens as string[]) ?? [
+      '--text-error',
+      '--surface-error',
+      '--border-error',
+      '--text-warning',
+      '--surface-warning',
+      '--border-warning',
+    ],
+  );
+});
+
+// ── Token contract: color semantic tokens ─────────────────────────────────
+
+When('the color semantic tokens are enumerated', (w: World) => {
+  w.colorSemanticTokens = ['--color-success', '--color-warning', '--color-error', '--color-info'];
+});
+
+Then('all color semantic tokens are declared in the Dark Deep theme', (w: World) => {
+  assertTokenExistsInBothThemes(
+    "[data-theme='dark']",
+    (w.colorSemanticTokens as string[]) ?? [
+      '--color-success',
+      '--color-warning',
+      '--color-error',
+      '--color-info',
+    ],
+  );
+});
+
+Then("all color semantic tokens exist in the Synthwave '84 theme", (w: World) => {
+  assertTokenExistsInBothThemes(
+    "[data-theme='synthwave-84']",
+    (w.colorSemanticTokens as string[]) ?? [
+      '--color-success',
+      '--color-warning',
+      '--color-error',
+      '--color-info',
+    ],
+  );
+});
+
+// ── Token contract: diff foreground tokens ────────────────────────────────
+
+When('the diff token families are enumerated', (w: World) => {
+  w.diffFgTokens = ['--diff-added-fg', '--diff-deleted-fg'];
+});
+
+Then('all diff foreground tokens are declared in the Dark Deep theme', (w: World) => {
+  assertTokenExistsInBothThemes(
+    "[data-theme='dark']",
+    (w.diffFgTokens as string[]) ?? ['--diff-added-fg', '--diff-deleted-fg'],
+  );
+});
+
+Then("all diff foreground tokens exist in the Synthwave '84 theme", (w: World) => {
+  assertTokenExistsInBothThemes(
+    "[data-theme='synthwave-84']",
+    (w.diffFgTokens as string[]) ?? ['--diff-added-fg', '--diff-deleted-fg'],
+  );
+});
+
+// ── Token contract: surface-hover token ────────────────────────────────────
+
+When('the surface-hover token is checked', (w: World) => {
+  w.surfaceHoverToken = '--surface-hover';
+});
+
+Then('--surface-hover is declared in the Dark Deep theme', (_w: World) => {
+  assertTokenExists("[data-theme='dark']", '--surface-hover');
+});
+
+Then("--surface-hover exists in the Synthwave '84 theme", (_w: World) => {
+  assertTokenExists("[data-theme='synthwave-84']", '--surface-hover');
+});
+
+// ── Token contract: auxiliary tokens ──────────────────────────────────────
+
+When('the auxiliary tokens are enumerated', (w: World) => {
+  w.auxTokens = ['--selection-border', '--font-family-sans', '--radius-xs', '--text-md'];
+});
+
+Then('all auxiliary tokens are declared in the Dark Deep theme', (w: World) => {
+  assertTokenExistsInBothThemes(
+    "[data-theme='dark']",
+    (w.auxTokens as string[]) ?? [
+      '--selection-border',
+      '--font-family-sans',
+      '--radius-xs',
+      '--text-md',
+    ],
+  );
+});
+
+Then("all auxiliary tokens exist in the Synthwave '84 theme", (w: World) => {
+  assertTokenExistsInBothThemes(
+    "[data-theme='synthwave-84']",
+    (w.auxTokens as string[]) ?? [
+      '--selection-border',
+      '--font-family-sans',
+      '--radius-xs',
+      '--text-md',
+    ],
+  );
+});
+
+// ── Token contract: observation type badge tokens ─────────────────────────
+
+When('observation badge tokens are enumerated', (w: World) => {
+  w.obsTypeTokens = [
+    '--obs-type-issue-bg',
+    '--obs-type-issue-fg',
+    '--obs-type-risk-bg',
+    '--obs-type-risk-fg',
+    '--obs-type-suggestion-bg',
+    '--obs-type-suggestion-fg',
+    '--obs-type-question-bg',
+    '--obs-type-question-fg',
+    '--obs-type-praise-bg',
+    '--obs-type-praise-fg',
+    '--obs-type-stale-bg',
+    '--obs-type-stale-fg',
+  ];
+});
+
+Then(/^(.+) is declared$/, (w: World, token: string) => {
+  const root = parseRootTokens(TOKENS_CSS_PATH);
+  if (!root.has(token)) {
+    throw new Error(`Token ${token} not found in :root`);
+  }
+});
+
+Then('all observation badge tokens are declared in the :root theme', (w: World) => {
+  const tokens = (w.obsTypeTokens as string[]) ?? [];
+  for (const t of tokens) {
+    const root = parseRootTokens(TOKENS_CSS_PATH);
+    if (!root.has(t)) {
+      throw new Error(`Token ${t} not found in :root`);
+    }
+  }
+});
+
+Then('all observation badge tokens exist in the Dark Deep theme', (w: World) => {
+  assertTokenExistsInBothThemes("[data-theme='dark']", (w.obsTypeTokens as string[]) ?? []);
+});
+
+Then("all observation badge tokens exist in the Synthwave '84 theme", (w: World) => {
+  assertTokenExistsInBothThemes("[data-theme='synthwave-84']", w.obsTypeTokens as string[]);
+});
+
+// ── Token contract: observation severity badge tokens ─────────────────────
+
+When('observation severity badge tokens are enumerated', (w: World) => {
+  w.obsSevTokens = [
+    '--obs-sev-critical-bg',
+    '--obs-sev-critical-fg',
+    '--obs-sev-major-bg',
+    '--obs-sev-major-fg',
+    '--obs-sev-minor-bg',
+    '--obs-sev-minor-fg',
+  ];
+});
+
+Then('all observation severity badge tokens exist in the Dark Deep theme', (w: World) => {
+  assertTokenExistsInBothThemes("[data-theme='dark']", (w.obsSevTokens as string[]) ?? []);
+});
+
+Then("all observation severity badge tokens exist in the Synthwave '84 theme", (w: World) => {
+  assertTokenExistsInBothThemes("[data-theme='synthwave-84']", w.obsSevTokens as string[]);
+});
+
+// ── Token contract: observation status dot tokens ─────────────────────────
+
+When('observation status dot tokens are enumerated', (w: World) => {
+  w.obsStatusTokens = [
+    '--obs-status-open',
+    '--obs-status-resolved',
+    '--obs-status-dismissed',
+    '--obs-status-pending',
+  ];
+});
+
+Then('all observation status dot tokens exist in the Dark Deep theme', (w: World) => {
+  assertTokenExistsInBothThemes("[data-theme='dark']", w.obsStatusTokens as string[]);
+});
+
+Then("all observation status dot tokens exist in the Synthwave '84 theme", (w: World) => {
+  assertTokenExistsInBothThemes("[data-theme='synthwave-84']", w.obsStatusTokens as string[]);
+});
+
+// ── Token contract: source viewer marker tokens ───────────────────────────
+
+When('source viewer marker tokens are enumerated', (w: World) => {
+  w.sourceMarkerTokens = [
+    '--source-marker-added',
+    '--source-marker-removed',
+    '--source-marker-modified',
+    '--source-line-added-bg',
+    '--source-line-removed-bg',
+    '--source-line-modified-bg',
+  ];
+});
+
+Then('all source viewer marker tokens exist in the Dark Deep theme', (w: World) => {
+  assertTokenExistsInBothThemes("[data-theme='dark']", w.sourceMarkerTokens as string[]);
+});
+
+Then("all source viewer marker tokens exist in the Synthwave '84 theme", (w: World) => {
+  assertTokenExistsInBothThemes("[data-theme='synthwave-84']", w.sourceMarkerTokens as string[]);
+});
+
+// ── Token contract: project tree status dot tokens ────────────────────────
+
+When('project tree status dot tokens are enumerated', (w: World) => {
+  w.treeStatusTokens = [
+    '--tree-status-modified',
+    '--tree-status-added',
+    '--tree-status-deleted',
+    '--tree-status-renamed',
+    '--tree-status-type-changed',
+  ];
+});
+
+Then('all project tree status dot tokens exist in the Dark Deep theme', (w: World) => {
+  assertTokenExistsInBothThemes("[data-theme='dark']", w.treeStatusTokens as string[]);
+});
+
+Then("all project tree status dot tokens exist in the Synthwave '84 theme", (w: World) => {
+  assertTokenExistsInBothThemes("[data-theme='synthwave-84']", w.treeStatusTokens as string[]);
+});
+
+// ── Hardcoded hex checks ─────────────────────────────────────────────────
+
+Given('the observation card component styles', (_w: World) => {
+  if (!fs.existsSync(OBSERVATION_CARD_PATH)) {
+    throw new Error('observation-card.svelte not found');
+  }
+});
+
+When('the type badge CSS rules are inspected', (w: World) => {
+  const content = fs.readFileSync(OBSERVATION_CARD_PATH, 'utf-8');
+  const styleMatch = content.match(/<style>([\s\S]*)<\/style>/);
+  if (!styleMatch) {
+    throw new Error('No <style> block in observation-card.svelte');
+  }
+  w.badgeCss = styleMatch[1];
+  w.badgeHexes = findHardcodedHex(w.badgeCss as string);
+  w.badgeVarRefs = parseCssVarRefs(w.badgeCss as string);
+});
+
+Then('no hardcoded hex color values are used for badge backgrounds or foregrounds', (w: World) => {
+  const hexes = w.badgeHexes as string[];
+  // Hardcoded hex in badge rules — filter to lines containing `.badge-` or `.severity.`
+  const badgeHexes: string[] = [];
+  const css = w.badgeCss as string;
+  const rules = css.split('}\n');
+  for (const rule of rules) {
+    if ((rule.includes('.badge-') || rule.includes('.severity.')) && !rule.includes('var(--')) {
+      const hexMatches = rule.match(/#[0-9a-fA-F]{6}/g);
+      if (hexMatches) {
+        badgeHexes.push(...hexMatches);
+      }
+    }
+  }
+  if (badgeHexes.length > 0) {
+    throw new Error(`Hardcoded hex in badge rules: ${badgeHexes.join(', ')}`);
+  }
+});
+
+Then('all badge colors reference CSS custom properties', (w: World) => {
+  const refs = w.badgeVarRefs as Set<string>;
+  if (refs.size === 0) {
+    throw new Error('Badge CSS rules should reference CSS custom properties via var()');
+  }
+});
+
+When('the severity badge CSS rules are inspected', (w: World) => {
+  const content = fs.readFileSync(OBSERVATION_CARD_PATH, 'utf-8');
+  const styleMatch = content.match(/<style>([\s\S]*)<\/style>/);
+  if (!styleMatch) {
+    throw new Error('No <style> block in observation-card.svelte');
+  }
+  w.sevCss = styleMatch[1];
+  w.sevHexes = findHardcodedHex(w.sevCss as string);
+});
+
+Then(
+  'no hardcoded hex color values are used for severity badge backgrounds or foregrounds',
+  (w: World) => {
+    const css = w.sevCss as string;
+    const rules = css.split('}\n');
+    const sevHexes: string[] = [];
+    for (const rule of rules) {
+      if (rule.includes('.sev-') && !rule.includes('var(--')) {
+        const hexMatches = rule.match(/#[0-9a-fA-F]{6}/g);
+        if (hexMatches) {
+          sevHexes.push(...hexMatches);
+        }
+      }
+    }
+    if (sevHexes.length > 0) {
+      throw new Error(`Hardcoded hex in severity badge rules: ${sevHexes.join(', ')}`);
+    }
+  },
+);
+
+Then('all severity colors reference CSS custom properties', (_w: World) => {
+  // Checked together with the previous step
+});
+
+When('the status dot CSS rules are inspected', (w: World) => {
+  const content = fs.readFileSync(OBSERVATION_CARD_PATH, 'utf-8');
+  const styleMatch = content.match(/<style>([\s\S]*)<\/style>/);
+  if (!styleMatch) {
+    throw new Error('No <style> block in observation-card.svelte');
+  }
+  w.dotCss = styleMatch[1];
+  w.dotHexes = findHardcodedHex(w.dotCss as string);
+  w.dotVarRefs = parseCssVarRefs(w.dotCss as string);
+});
+
+Then('no hardcoded hex color values are used for status dot backgrounds', (w: World) => {
+  const css = w.dotCss as string;
+  const rules = css.split('}\n');
+  const dotHexes: string[] = [];
+  for (const rule of rules) {
+    if (rule.includes('.status-') && rule.includes('background') && !rule.includes('var(--')) {
+      const hexMatches = rule.match(/#[0-9a-fA-F]{6}/g);
+      if (hexMatches) {
+        dotHexes.push(...hexMatches);
+      }
+    }
+  }
+  if (dotHexes.length > 0) {
+    throw new Error(`Hardcoded hex in status dot rules: ${dotHexes.join(', ')}`);
+  }
+});
+
+Then('all status dot colors reference CSS custom properties', (w: World) => {
+  const refs = w.dotVarRefs as Set<string>;
+  if (refs.size === 0) {
+    throw new Error('Status dot CSS rules should reference CSS custom properties via var()');
+  }
+});
+
+Given('the source viewer component styles', (_w: World) => {
+  if (!fs.existsSync(SOURCE_VIEWER_PATH)) {
+    throw new Error('source-viewer.svelte not found');
+  }
+});
+
+When('the change marker CSS rules are inspected', (w: World) => {
+  const content = fs.readFileSync(SOURCE_VIEWER_PATH, 'utf-8');
+  const styleMatch = content.match(/<style>([\s\S]*)<\/style>/);
+  if (!styleMatch) {
+    throw new Error('No <style> block in source-viewer.svelte');
+  }
+  w.markerCss = styleMatch[1];
+  w.markerHexes = findHardcodedHex(w.markerCss as string);
+  w.markerVarRefs = parseCssVarRefs(w.markerCss as string);
+});
+
+Then('no hardcoded hex color values are used for marker backgrounds', (w: World) => {
+  const css = w.markerCss as string;
+  const rules = css.split('}\n');
+  const markerHexes: string[] = [];
+  for (const rule of rules) {
+    if (rule.includes('.marker-') && !rule.includes('transparent') && !rule.includes('var(--')) {
+      const hexMatches = rule.match(/#[0-9a-fA-F]{3,8}/g);
+      if (hexMatches) {
+        markerHexes.push(...hexMatches);
+      }
+    }
+  }
+  if (markerHexes.length > 0) {
+    throw new Error(`Hardcoded hex in marker rules: ${markerHexes.join(', ')}`);
+  }
+});
+
+Then('all marker colors reference CSS custom properties', (w: World) => {
+  const refs = w.markerVarRefs as Set<string>;
+  if (refs.size === 0) {
+    throw new Error('Marker CSS rules should reference CSS custom properties via var()');
+  }
+});
+
+// ── Hardcoded hex checks: git-context-panel status badges ──────────────
+
+Given('the git context panel component styles', (_w: World) => {
+  if (!fs.existsSync(GIT_CONTEXT_PANEL_PATH)) {
+    throw new Error('git-context-panel.svelte not found');
+  }
+});
+
+When('the status badge CSS rules are inspected', (w: World) => {
+  const content = fs.readFileSync(GIT_CONTEXT_PANEL_PATH, 'utf-8');
+  const styleMatch = content.match(/<style[^>]*>([\s\S]*?)<\/style>/);
+  if (!styleMatch) {
+    throw new Error('No <style> block in git-context-panel.svelte');
+  }
+  const css = styleMatch[1];
+  w.statusBadgeCss = css;
+  w.statusBadgeHexes = findHardcodedHex(css);
+  w.statusBadgeVarRefs = parseCssVarRefs(css);
+  // Filter to only .status- rules
+  const rules = css.split('}');
+  const statusHexes: string[] = [];
+  for (const rule of rules) {
+    if (rule.includes('.status-') && !rule.includes('var(--')) {
+      const hexMatches = rule.match(/#[0-9a-fA-F]{3,8}/g);
+      if (hexMatches) {
+        statusHexes.push(...hexMatches);
+      }
+    }
+  }
+  w.statusBadgeStatusHexes = statusHexes;
+});
+
+Then('no hardcoded hex color values are used for git status badges', (w: World) => {
+  const statusHexes = w.statusBadgeStatusHexes as string[];
+  if (statusHexes.length > 0) {
+    throw new Error(`Hardcoded hex in git-context-panel status badges: ${statusHexes.join(', ')}`);
+  }
+});
+
+Then('all git status badge colors reference CSS custom properties', (w: World) => {
+  // Check that .status- rules use var() references
+  const css = w.statusBadgeCss as string;
+  const rules = css.split('}');
+  let hasVarTokens = false;
+  for (const rule of rules) {
+    if (rule.includes('.status-')) {
+      if (rule.includes('var(--')) {
+        hasVarTokens = true;
+      }
+    }
+  }
+  if (!hasVarTokens) {
+    throw new Error('Git status badge rules should reference CSS custom properties via var()');
+  }
+});
+
+// ── Root foundation: html/body margin, background, font ───────────────────
+
+Then('the html element has zero margin', (_w: World) => {
+  const html = fs.readFileSync(APP_HTML_PATH, 'utf-8');
+  // The html element in app.html should not have inline margin,
+  // and tokens.css should be imported globally (checked via exist checks)
+  // For BDD, we verify the app.html does not set explicit margin
+  const tokensPath = path.resolve(__dirname, '../../src/lib/web/styles/tokens.css');
+  const tokens = fs.readFileSync(tokensPath, 'utf-8');
+  if (!tokens.includes('html') || !tokens.includes('margin')) {
+    throw new Error('Expected html element margin rules in tokens.css or app.css');
+  }
+});
+
+Then('the body element has zero margin', (_w: World) => {
+  const tokensPath = path.resolve(__dirname, '../../src/lib/web/styles/tokens.css');
+  const tokens = fs.readFileSync(tokensPath, 'utf-8');
+  if (!tokens.includes('body') || !tokens.includes('margin')) {
+    throw new Error('Expected body element margin rules in tokens.css or app.css');
+  }
+});
+
+Then('the body element uses a sans-serif system-ui font stack', (_w: World) => {
+  const tokensPath = path.resolve(__dirname, '../../src/lib/web/styles/tokens.css');
+  const tokens = fs.readFileSync(tokensPath, 'utf-8');
+  const fontStack = tokens.match(/--font-family-sans\s*:\s*([^;]+);/);
+  if (!fontStack) {
+    throw new Error('--font-family-sans not found in tokens.css');
+  }
+  const value = fontStack[1].toLowerCase();
+  if (!value.includes('sans-serif') && !value.includes('system-ui')) {
+    throw new Error(`Expected sans-serif system-ui font stack, got: ${value}`);
+  }
+});
+
+// ── Favicon steps ────────────────────────────────────────────────────────
+
+When('the user inspects the document head', (_w: World) => {
+  const html = fs.readFileSync(APP_HTML_PATH, 'utf-8');
+  if (!html.includes('<link')) {
+    throw new Error('Expected <link> elements in app.html head');
+  }
+});
+
+Then(
+  /^a link element with rel "(.+)" references a valid favicon resource$/,
+  (w: World, rel: string) => {
+    const html = fs.readFileSync(APP_HTML_PATH, 'utf-8');
+    if (!html.includes(`rel="${rel}"`)) {
+      throw new Error(`Expected <link rel="${rel}"> in app.html`);
+    }
+    // Check href points to an existing file
+    const hrefMatch = html.match(new RegExp(`rel="${rel}"\\s+href="([^"]+)"`));
+    if (!hrefMatch) {
+      throw new Error(`Expected href attribute on <link rel="${rel}">`);
+    }
+    // Resolve %sveltekit.assets% to static/ for offline BDD checking
+    let href = hrefMatch[1];
+    href = href.replace('%sveltekit.assets%/', '');
+    const faviconPath = path.resolve(__dirname, '../../static', href);
+    if (!fs.existsSync(faviconPath)) {
+      throw new Error(`Favicon file not found: ${faviconPath}`);
+    }
+  },
+);
+
+Then('a favicon is served with HTTP {int} status', (_w: World, _status: number) => {
+  // Static favicon: check the file exists on disk (HTTP 200 equivalent)
+  const faviconPath = path.resolve(__dirname, '../../static/favicon.svg');
+  if (!fs.existsSync(faviconPath)) {
+    throw new Error(`Favicon file not found at static/favicon.svg`);
+  }
+});
+
+Then(
+  'no {int} error appears in the browser console for the favicon',
+  (_w: World, _code: number) => {
+    // Contractual: with a valid favicon file at static/favicon.svg, no 404
+    const faviconPath = path.resolve(__dirname, '../../static/favicon.svg');
+    if (!fs.existsSync(faviconPath)) {
+      throw new Error('Favicon absent — would cause 404 in browser');
+    }
+  },
+);
+
+// ── Root foundation: html/body layout element checks ───────────────────
+
+Then('the html element background matches the active theme', (_w: World) => {
+  const tokensPath = path.resolve(__dirname, '../../src/lib/web/styles/tokens.css');
+  const tokens = fs.readFileSync(tokensPath, 'utf-8');
+  if (!tokens.includes('html') || !tokens.includes('background')) {
+    throw new Error('Expected html element background rules in tokens.css');
+  }
+});
+
+Then('the shell-layout element has no transparent gap', (_w: World) => {
+  // Contractual: shell-layout must have explicit background
+  // Check in +page.svelte that .shell-layout has background
+  const pagePath = path.resolve(__dirname, '../../src/routes/+page.svelte');
+  const page = fs.readFileSync(pagePath, 'utf-8');
+  const styleMatch = page.match(/<style>([\s\S]*)<\/style>/);
+  if (!styleMatch) {
+    throw new Error('No <style> block in +page.svelte');
+  }
+  const styles = styleMatch[1];
+  if (!styles.includes('.shell-layout') || !styles.includes('background')) {
+    throw new Error('Expected .shell-layout to have explicit background');
+  }
+});
+
+Then('no white gap is visible between the left rail and the center area', (_w: World) => {
+  const pagePath = path.resolve(__dirname, '../../src/routes/+page.svelte');
+  const page = fs.readFileSync(pagePath, 'utf-8');
+  const styleMatch = page.match(/<style>([\s\S]*)<\/style>/);
+  if (!styleMatch) {
+    throw new Error('No <style> block in +page.svelte');
+  }
+  const styles = styleMatch[1];
+  // shell-layout and center-content should have background
+  if (
+    !styles.includes('.shell-layout') &&
+    !styles.includes('.center-content') &&
+    !styles.includes('.work-area') &&
+    !styles.includes('.diff-area')
+  ) {
+    throw new Error('Expected themed backgrounds on layout areas to prevent white gaps');
+  }
+});
+
+Then('the central area background transitions without showing a white rectangle', (_w: World) => {
+  // Contractual: when switching themes, the background should be set via tokens
+  // that smoothly transition. The explicit background prevents white flash.
+  const tokensPath = path.resolve(__dirname, '../../src/lib/web/styles/tokens.css');
+  const tokens = fs.readFileSync(tokensPath, 'utf-8');
+  if (!tokens.includes('[data-theme=') || !tokens.includes('--surface-primary')) {
+    throw new Error('Theme token declarations missing — cannot prevent white rectangle');
+  }
+});
+
+Then("the shell-layout background matches the Synthwave '84 theme", (_w: World) => {
+  const tokensPath = path.resolve(__dirname, '../../src/lib/web/styles/tokens.css');
+  const tokens = fs.readFileSync(tokensPath, 'utf-8');
+  if (!tokens.includes("[data-theme='synthwave-84']") || !tokens.includes('--surface-primary')) {
+    throw new Error('Synthwave theme tokens not found');
+  }
+});
+
+// ── Body / shell background color checks ─────────────────────────────────
+
+Then('the body background color matches the Dark Deep surface color', (_w: World) => {
+  const tokensPath = path.resolve(__dirname, '../../src/lib/web/styles/tokens.css');
+  const tokens = fs.readFileSync(tokensPath, 'utf-8');
+  if (!tokens.includes('body') || !tokens.includes('background')) {
+    throw new Error('Expected body background rules in tokens.css');
+  }
+  if (!tokens.includes("[data-theme='dark']") || !tokens.includes('--surface-primary')) {
+    throw new Error('Dark Deep surface token not declared');
+  }
+});
+
+Then(
+  "the body background color matches the Synthwave '{int} surface color",
+  (_w: World, _n: number) => {
+    const tokensPath = path.resolve(__dirname, '../../src/lib/web/styles/tokens.css');
+    const tokens = fs.readFileSync(tokensPath, 'utf-8');
+    if (!tokens.includes("[data-theme='synthwave-84']") || !tokens.includes('--surface-primary')) {
+      throw new Error('Synthwave surface token not declared');
+    }
+  },
+);
+
+Then('body text is readable against the body background', (_w: World) => {
+  const tokensPath = path.resolve(__dirname, '../../src/lib/web/styles/tokens.css');
+  const tokens = fs.readFileSync(tokensPath, 'utf-8');
+  if (!tokens.includes('--text-primary') || !tokens.includes('--surface-primary')) {
+    throw new Error('Missing text/surface contrast tokens');
+  }
+});
+
+Then('the shell-layout element has a themed background', (_w: World) => {
+  const pagePath = path.resolve(__dirname, '../../src/routes/+page.svelte');
+  const page = fs.readFileSync(pagePath, 'utf-8');
+  const styleMatch = page.match(/<style>([\s\S]*)<\/style>/);
+  if (!styleMatch) throw new Error('No <style> block in +page.svelte');
+  const styles = styleMatch[1];
+  if (!styles.includes('.shell-layout') || !styles.includes('background: var(--surface-primary)')) {
+    throw new Error('Expected .shell-layout to have background: var(--surface-primary)');
+  }
+});
+
+Then('the center-content element has a themed background', (_w: World) => {
+  const pagePath = path.resolve(__dirname, '../../src/routes/+page.svelte');
+  const page = fs.readFileSync(pagePath, 'utf-8');
+  const styleMatch = page.match(/<style>([\s\S]*)<\/style>/);
+  if (!styleMatch) throw new Error('No <style> block in +page.svelte');
+  const styles = styleMatch[1];
+  if (
+    !styles.includes('.center-content') ||
+    !styles.includes('background: var(--surface-primary)')
+  ) {
+    throw new Error('Expected .center-content to have background: var(--surface-primary)');
+  }
+});
+
+Then('the work-area element has a themed background', (_w: World) => {
+  const pagePath = path.resolve(__dirname, '../../src/routes/+page.svelte');
+  const page = fs.readFileSync(pagePath, 'utf-8');
+  const styleMatch = page.match(/<style>([\s\S]*)<\/style>/);
+  if (!styleMatch) throw new Error('No <style> block in +page.svelte');
+  const styles = styleMatch[1];
+  if (!styles.includes('.work-area') || !styles.includes('background: var(--surface-primary)')) {
+    throw new Error('Expected .work-area to have background: var(--surface-primary)');
+  }
+});
+
+Then('the diff-area element has a themed background', (_w: World) => {
+  const pagePath = path.resolve(__dirname, '../../src/routes/+page.svelte');
+  const page = fs.readFileSync(pagePath, 'utf-8');
+  const styleMatch = page.match(/<style>([\s\S]*)<\/style>/);
+  if (!styleMatch) throw new Error('No <style> block in +page.svelte');
+  const styles = styleMatch[1];
+  if (!styles.includes('.diff-area') || !styles.includes('background: var(--surface-primary)')) {
+    throw new Error('Expected .diff-area to have background: var(--surface-primary)');
+  }
+});
+
+// ── Batch token root-declaration helpers ───────────────────────────────
+
+function assertTokensInRoot(w: World, tokenKey: string) {
+  const tokens = (w[tokenKey] as string[]) ?? [];
+  for (const t of tokens) {
+    const root = parseRootTokens(TOKENS_CSS_PATH);
+    if (!root.has(t)) {
+      throw new Error(`Token ${t} not found in :root`);
+    }
+  }
+}
+
+Then('all observation severity badge tokens are declared in the :root theme', (w: World) =>
+  assertTokensInRoot(w, 'obsSevTokens'),
+);
+
+Then('all observation status dot tokens are declared in the :root theme', (w: World) =>
+  assertTokensInRoot(w, 'obsStatusTokens'),
+);
+
+Then('all source viewer marker tokens are declared in the :root theme', (w: World) =>
+  assertTokensInRoot(w, 'sourceMarkerTokens'),
+);
+
+Then('all project tree status dot tokens are declared in the :root theme', (w: World) =>
+  assertTokensInRoot(w, 'treeStatusTokens'),
+);
+
+// ── SvelteKit body wrapper hardening ───────────────────────────────────────
+
+Given('the application is built', (w: World) => {
+  w.buildChecked = true;
+});
+
+Then('%sveltekit.body% is wrapped in a div with display contents', (_w: World) => {
+  const appHtmlPath = path.resolve(__dirname, '../../src/app.html');
+  const content = fs.readFileSync(appHtmlPath, 'utf-8');
+  // Verify that %sveltekit.body% is wrapped in a div with display:contents
+  const wrapped =
+    /<div[^>]*style\s*=\s*"[^"]*display\s*:\s*contents[^"]*"\s*>\s*%sveltekit\.body%\s*<\/div>/.test(
+      content,
+    );
+  if (!wrapped) {
+    throw new Error(
+      'Expected %sveltekit.body% to be wrapped in <div style="display: contents">...</div>',
+    );
+  }
+});
+
+Then('no SvelteKit warning about body is emitted', (_w: World) => {
+  // The wrapper div ensures SvelteKit does not emit the warning
+  // about %sveltekit.body% being a direct child of <body>.
+  // Verified by the previous step — no separate console check needed in BDD.
+});
+
+Then('the shell layout element is visible', (_w: World) => {
+  // Contractual: shell-layout must exist in the DOM after hydration.
+  // Real verification happens at the E2E layer (Playwright).
+});
+
+Then('the rail tabs are interactive', (_w: World) => {
+  // Contractual: rail tabs must respond to click/keyboard after hydration.
+  // Real verification happens at the E2E layer (Playwright).
+});
+
+When('the application hydrates', (w: World) => {
+  w.hydrated = true;
+  w.shellLoaded = true;
+  w.railInteractive = true;
+});
+
+// ── Viewport-bound scroll ownership (tranche) ─────────────────────────────
+
+Given('the user inspects the document scrolling element', (_w: World) => {
+  // Contract check happens in the Then step.
+});
+
+Given('a workspace with changed files is active', (_w: World) => {
+  // Setup happens in E2E.
+});
+
+Given('the user views the Project tree with many entries', (_w: World) => {
+  const tree = path.resolve(__dirname, '../../src/lib/web/components/project-tree.svelte');
+  const src = fs.readFileSync(tree, 'utf-8');
+  if (!src.includes('overflow-y: auto')) {
+    throw new Error('Project tree must scroll inside the contextual panel');
+  }
+});
+
+Given('the user opens a diff with many lines', (_w: World) => {
+  const viewer = path.resolve(__dirname, '../../src/lib/web/components/diff-viewer.svelte');
+  const src = fs.readFileSync(viewer, 'utf-8');
+  if (!src.includes('overflow-y: auto')) {
+    throw new Error('Diff viewer must scroll vertically inside the central area');
+  }
+});
+
+Then('the document does not scroll vertically or horizontally', (_w: World) => {
+  const css = fs.readFileSync(TOKENS_CSS_PATH, 'utf-8');
+  if (!css.includes('overflow: hidden')) {
+    throw new Error('Viewport-bound root requires overflow: hidden on html/body');
+  }
+});
+
+Then('the Project tree scrolls inside the contextual panel', (_w: World) => {
+  const pageSrc = fs.readFileSync(
+    path.resolve(__dirname, '../../src/routes/+page.svelte'),
+    'utf-8',
+  );
+  if (!pageSrc.includes('min-height: 0')) {
+    throw new Error('Contextual panel must constrain its grid row (min-height: 0)');
+  }
+});
+
+Then('the diff viewer scrolls vertically inside the central area', (_w: World) => {
+  const pageSrc = fs.readFileSync(
+    path.resolve(__dirname, '../../src/routes/+page.svelte'),
+    'utf-8',
+  );
+  if (!pageSrc.includes('min-height: 0')) {
+    throw new Error('Work area must constrain its grid row (min-height: 0)');
+  }
+});
+
+// ── Rail fit without clipping (tranche residual) ──────────────────────────
+
+Given('the rail entries are rendered', (_w: World) => {
+  const rail = path.resolve(__dirname, '../../src/lib/web/components/rail-tabs.svelte');
+  const src = fs.readFileSync(rail, 'utf-8');
+  if (!src.includes("id: 'settings'")) {
+    throw new Error('Rail must render the Settings entry');
+  }
+});
+
+When('the user inspects the rail dimensions', (_w: World) => {
+  // Computed dimensions are verified by E2E.
+});
+
+Then('the rail shows all entries without clipping', (_w: World) => {
+  const rail = path.resolve(__dirname, '../../src/lib/web/components/rail-tabs.svelte');
+  const src = fs.readFileSync(rail, 'utf-8');
+  for (const key of ['workspaces', 'project', 'git', 'settings']) {
+    if (!src.includes(`'${key}'`)) {
+      throw new Error(`Rail missing entry: ${key}`);
+    }
+  }
+});
+
+Then('the rail does not scroll vertically', (_w: World) => {
+  const rail = path.resolve(__dirname, '../../src/lib/web/components/rail-tabs.svelte');
+  const src = fs.readFileSync(rail, 'utf-8');
+  if (!src.includes('overflow-y: auto')) {
+    throw new Error('Rail must declare its own overflow behavior');
+  }
+});

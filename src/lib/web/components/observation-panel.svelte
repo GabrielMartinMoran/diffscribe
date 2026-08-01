@@ -215,18 +215,18 @@
   .readonly-notice {
     padding: var(--space-2);
     margin-bottom: var(--space-2);
-    background: var(--surface-warning, #fff3e0);
+    background: var(--surface-warning);
     border-radius: var(--radius-sm);
     font-size: var(--text-sm);
-    color: var(--text-warning, #e65100);
+    color: var(--text-warning);
   }
 
   .panel-error {
     padding: var(--space-2);
     margin-bottom: var(--space-2);
-    background: var(--surface-error, #fce4ec);
+    background: var(--surface-error);
     border-radius: var(--radius-sm);
-    color: var(--text-error, #d32f2f);
+    color: var(--text-error);
     font-size: var(--text-sm);
   }
 

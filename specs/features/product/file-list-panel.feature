@@ -35,6 +35,14 @@ Feature: File list panel — browsing changed files with filtering, sorting, and
     And the renamed file shows the status "renamed"
 
   @p1 @api @bdd @e2e
+  Scenario: Status badges are semantic, theme-aware, and never color-only
+    Given the file list panel shows changed files
+    When the user inspects the status badges
+    Then every status badge shows visible text
+    And every status badge carries a status dot
+    And every badge color references a declared theme token
+
+  @p1 @api @bdd @e2e
   Scenario: Untracked files appear when the target is the working tree
     Given the active workspace has 2 untracked files
     And the active Comparison target is the working tree

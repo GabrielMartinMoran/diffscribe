@@ -64,6 +64,15 @@ Feature: Responsive layout — desktop four-region layout and mobile-optimized d
     Then the sheet closes
     And the center region is fully visible again
 
+  @delta-added @product @responsive @p1 @ui @e2e
+  Scenario: Mobile viewport 375px confirms rail and center visible after wrapper
+    Given the viewport width is 375 px
+    When the user views the application
+    Then the left rail is visible
+    And the center content region is visible
+    And the left contextual panel is hidden
+    And the right panel is hidden
+
   @product @responsive @p1 @ui @e2e
   Scenario: Focus returns to the trigger element when a drawer closes
     Given the left panel drawer is open on mobile

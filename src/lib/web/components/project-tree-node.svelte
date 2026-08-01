@@ -225,28 +225,28 @@
   }
 
   .change-modified {
-    background: #eab308;
-    box-shadow: 0 0 4px rgba(234, 179, 8, 0.4);
+    background: var(--tree-status-modified);
+    box-shadow: 0 0 4px color-mix(in srgb, var(--tree-status-modified) 40%, transparent);
   }
 
   .change-added {
-    background: #22c55e;
-    box-shadow: 0 0 4px rgba(34, 197, 94, 0.4);
+    background: var(--tree-status-added);
+    box-shadow: 0 0 4px color-mix(in srgb, var(--tree-status-added) 40%, transparent);
   }
 
   .change-deleted {
-    background: #ef4444;
-    box-shadow: 0 0 4px rgba(239, 68, 68, 0.4);
+    background: var(--tree-status-deleted);
+    box-shadow: 0 0 4px color-mix(in srgb, var(--tree-status-deleted) 40%, transparent);
   }
 
   .change-untracked {
-    background: #8b5cf6;
-    box-shadow: 0 0 4px rgba(139, 92, 246, 0.4);
+    background: var(--tree-status-untracked);
+    box-shadow: 0 0 4px color-mix(in srgb, var(--tree-status-untracked) 40%, transparent);
   }
 
   .change-other {
-    background: #6b7280;
-    box-shadow: 0 0 4px rgba(107, 114, 128, 0.4);
+    background: var(--tree-status-other);
+    box-shadow: 0 0 4px color-mix(in srgb, var(--tree-status-other) 40%, transparent);
   }
 
   @media (prefers-reduced-motion: reduce) {

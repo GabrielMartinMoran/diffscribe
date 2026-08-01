@@ -70,10 +70,32 @@ src/
 │   │       └── database/
 │   └── web/                        # Svelte components, stores, CSS
 │       ├── components/
+│       │   └── ui/                 # Base UI kit: generic stateless primitives
 │       ├── stores/
 │       └── styles/
 └── routes/                         # SvelteKit endpoints
 ```
+
+### Base UI kit boundary
+
+`web/components/ui/` hosts the generic, stateless, token-driven UI
+primitives (Button, IconButton, TextInput, Select, Checkbox, Switch, Menu,
+Popover, Dialog, Tabs, Tooltip, Badge, StatusBadge). The directory is flat
+(no `atoms/`/`molecules/`/`organisms/` grouping) and enforces three
+invariants:
+
+- **Stateless:** props down, events up. `ui/` modules never import stores,
+  `$lib/server`, application, or domain modules, and never reference product
+  vocabulary (workspace, review, observation, diff, branch).
+- **Native HTML:** `button`, `input`, `select`, `dialog` are used directly;
+  no custom combobox, headless UI library, or portal dependency.
+- **Token-driven:** every visual value references a CSS custom property from
+  the design token contract (see `docs/design.md` — Base UI kit).
+
+Product composites (panels, forms, viewer chrome) live in
+`web/components/` and may consume `ui/` primitives; they must not place
+generic controls inside `ui/`. The import boundary is enforced by a unit
+guard that statically scans `ui/` sources.
 
 ### Repository interfaces (ports)
 

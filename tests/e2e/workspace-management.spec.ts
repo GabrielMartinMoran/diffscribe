@@ -6,6 +6,7 @@ import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import { createGitFixture } from './helpers/git-fixture';
 import { waitForHydration } from './helpers/hydration';
+import { openWorkspaceActionsMenu } from './helpers/open-workspace-menu';
 import { resetDb } from './helpers/reset-db';
 
 function initRepo(fixture: { repoPath: string; runGit(args: readonly string[]): void }): void {
@@ -129,11 +130,9 @@ test.describe('Workspace Management UI (E2E)', () => {
       initRepo(fixture);
       await registerWorkspace(page, fixture.repoPath, originalName);
 
-      // Click the Rename button via accessible name
-      const renameBtn = page
-        .locator(`#workspace-sidebar li:has-text("${originalName}")`)
-        .getByRole('button', { name: /Rename/ });
-      await renameBtn.click();
+      // Open the overflow menu and activate Rename
+      await openWorkspaceActionsMenu(page, originalName);
+      await page.getByRole('menuitem', { name: 'Rename' }).click();
 
       // Wait for rename form
       await page.waitForSelector('[data-rename-form]', { state: 'visible', timeout: 10000 });
@@ -141,7 +140,7 @@ test.describe('Workspace Management UI (E2E)', () => {
       // Fill and submit rename
       const renameInput = page.locator('[data-rename-form] input[name="displayName"]');
       await renameInput.fill(newName);
-      await page.locator('[data-rename-form] .save-btn').click();
+      await page.locator('[data-rename-form] button[type="submit"]').click();
       // Wait for rename form to close (onSaved callback hides it)
       await page.waitForSelector('[data-rename-form]', { state: 'hidden', timeout: 10000 });
       // Reload to force fresh data from server after rename
@@ -163,10 +162,8 @@ test.describe('Workspace Management UI (E2E)', () => {
       await registerWorkspace(page, fixture.repoPath, uniqueName);
 
       // Click Delete button
-      const deleteBtn = page
-        .locator(`#workspace-sidebar li:has-text("${uniqueName}") .action-btn.danger`)
-        .first();
-      await deleteBtn.click();
+      await openWorkspaceActionsMenu(page, uniqueName);
+      await page.getByRole('menuitem', { name: 'Delete' }).click();
 
       // Dialog should appear
       const dialog = page.getByRole('alertdialog', { name: /delete/i });
@@ -198,10 +195,8 @@ test.describe('Workspace Management UI (E2E)', () => {
       await registerWorkspace(page, fixture.repoPath, uniqueName);
 
       // Click Delete button
-      const deleteBtn = page
-        .locator(`#workspace-sidebar li:has-text("${uniqueName}") .action-btn.danger`)
-        .first();
-      await deleteBtn.click();
+      await openWorkspaceActionsMenu(page, uniqueName);
+      await page.getByRole('menuitem', { name: 'Delete' }).click();
 
       // Dialog should appear
       const dialog = page.getByRole('alertdialog', { name: /delete/i });
@@ -303,10 +298,8 @@ test.describe('Workspace Management UI (E2E)', () => {
       });
 
       // Now delete it
-      const deleteBtn = page
-        .locator(`#workspace-sidebar li:has-text("${uniqueName}") .action-btn.danger`)
-        .first();
-      await deleteBtn.click();
+      await openWorkspaceActionsMenu(page, uniqueName);
+      await page.getByRole('menuitem', { name: 'Delete' }).click();
       const dialog = page.getByRole('alertdialog', { name: /delete/i });
       await expect(dialog).toBeVisible({ timeout: 10000 });
       await dialog.getByRole('button', { name: 'Delete' }).click();
@@ -348,10 +341,8 @@ test.describe('Hydration race regression', () => {
         await registerWorkspace(page, fixture.repoPath, name);
 
         // Click Delete button — this is the hydration-dependent action
-        const deleteBtn = page
-          .locator(`#workspace-sidebar li:has-text("${name}") .action-btn.danger`)
-          .first();
-        await deleteBtn.click();
+        await openWorkspaceActionsMenu(page, name);
+        await page.getByRole('menuitem', { name: 'Delete' }).click();
 
         // Dialog should appear if hydration succeeded
         const dialog = page.getByRole('alertdialog', { name: /delete/i });

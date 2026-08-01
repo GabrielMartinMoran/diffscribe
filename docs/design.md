@@ -2,8 +2,9 @@
 
 **Status:** Updated for UI redesign v1. The icon set (Lucide), theme system
 (Dark Deep + Synthwave '84), left rail layout with contextual panel, right
-panel with Comments/Review, and panel resize/collapse are resolved. Final
-visual branding and typography remain `[PENDIENTE]`.
+panel with Comments/Review, panel resize/collapse, and the Base UI kit
+contract are resolved. Final visual branding and typography remain
+`[PENDIENTE]`.
 
 This guide defines DiffScribe's visual system: principles, CSS tokens, layout,
 responsive behavior, component states, accessibility, and validation. It is
@@ -112,9 +113,14 @@ when the value differs from the semantic token it inherits.
 | `--accent`                | `#2563EB`          | `#3B82F6`         |
 | `--accent-hover`          | `#1D4ED8`          | `#60A5FA`         |
 | `--accent-muted`          | `#EFF6FF`          | `#1E3A5F`         |
+| `--accent-light`          | `rgba(37,99,235,0.08)` | `rgba(59,130,246,0.1)` |
 
 The accent color `#2563EB` is initial and `[PENDIENTE]` for final validation.
 The value in dark mode adjusts automatically to maintain equivalent contrast.
+`--accent-light` provides a subtle accent-tinted background for active tabs,
+selected rows, and muted accent surfaces. It is a token value, distinct from
+the Synthwave '84 palette role "Light accent" (`#540d6e`), which is a palette
+color and not a token.
 
 ### Focus
 
@@ -200,12 +206,17 @@ as the sole channel.
 
 ## Typography
 
-Final typography is `[PENDIENTE]`. A system font family will be used as the
+Final typography is `[PENDIENTE]`. System font family stacks are used as the
 initial fallback:
 
 ```css
-font-family: ui-monospace, SFMono-Regular, 'Cascadia Code', 'Fira Code',
+--font-family-sans: system-ui, -apple-system, 'Segoe UI', Roboto,
+  'Helvetica Neue', Arial, sans-serif;
+--font-family-mono: ui-monospace, SFMono-Regular, 'Cascadia Code', 'Fira Code',
   Menlo, Consolas, monospace;
+/* Aliases */
+--font-sans: var(--font-family-sans);
+--font-mono: var(--font-family-mono);
 ```
 
 ### Scale
@@ -278,6 +289,7 @@ font-family: ui-monospace, SFMono-Regular, 'Cascadia Code', 'Fira Code',
 | `--shadow-sm`     | `0 1px 2px rgba(0,0,0,0.06)`                          | File list hover         |
 | `--shadow-md`     | `0 2px 8px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)` | Dropdowns, tooltips  |
 | `--shadow-lg`     | `0 4px 16px rgba(0,0,0,0.12)`                         | Modals                  |
+| `--shadow-xl`     | `0 4px 24px rgba(0,0,0,0.15)`                         | Confirm dialogs, elevated surfaces |
 
 ---
 
@@ -338,6 +350,7 @@ font-family: ui-monospace, SFMono-Regular, 'Cascadia Code', 'Fira Code',
   --accent: #2563EB;
   --accent-hover: #1D4ED8;
   --accent-muted: #EFF6FF;
+  --accent-light: rgba(37, 99, 235, 0.08);
 
   /* Focus */
   --focus-ring: #2563EB;
@@ -415,6 +428,7 @@ font-family: ui-monospace, SFMono-Regular, 'Cascadia Code', 'Fira Code',
   --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.08),
                0 1px 2px rgba(0, 0, 0, 0.04);
   --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.12);
+  --shadow-xl: 0 4px 24px rgba(0, 0, 0, 0.15);
 
   /* Z-index */
   --z-base: 0;
@@ -459,6 +473,7 @@ font-family: ui-monospace, SFMono-Regular, 'Cascadia Code', 'Fira Code',
   --accent: #3B82F6;
   --accent-hover: #60A5FA;
   --accent-muted: #1E3A5F;
+  --accent-light: rgba(59, 130, 246, 0.1);
 
   --state-hover: rgba(255, 255, 255, 0.06);
   --state-active: rgba(255, 255, 255, 0.10);
@@ -490,6 +505,7 @@ font-family: ui-monospace, SFMono-Regular, 'Cascadia Code', 'Fira Code',
   --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.30),
                0 1px 2px rgba(0, 0, 0, 0.20);
   --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.40);
+  --shadow-xl: 0 4px 24px rgba(0, 0, 0, 0.5);
 }
 ```
 
@@ -560,6 +576,7 @@ controlled opacity.
   --accent: #920075;
   --accent-hover: #b0108a;
   --accent-muted: #2e2157;
+  --accent-light: rgba(146, 0, 117, 0.1);
 
   --focus-ring: #2de2e6;
   --focus-ring-offset: 2px;
@@ -593,6 +610,7 @@ controlled opacity.
   --shadow-sm: 0 1px 2px rgba(45, 222, 230, 0.10);
   --shadow-md: 0 2px 8px rgba(45, 222, 230, 0.15);
   --shadow-lg: 0 4px 16px rgba(45, 222, 230, 0.20);
+  --shadow-xl: 0 4px 24px rgba(45, 222, 230, 0.25);
 }
 ```
 
@@ -748,6 +766,63 @@ Each zone handles its own scroll independently:
 The main viewport scrollbar belongs to the central area. The side panels do
 not push the central content.
 
+**Implementation (tranche):** the application is viewport-bound. `html` and
+`body` set `overflow: hidden`; the shell grid uses a fixed
+`height: 100dvh`; every grid item (rail, contextual panel, center content,
+right panel) sets `min-height: 0` so zones cannot grow the shell. Zones that
+own vertical scroll (`project-tree`, `diff-viewer`, panels) combine
+`flex: 1; min-height: 0; overflow-y: auto`. The document never scrolls.
+
+### Diff line wrapping (tranche)
+
+Diff lines are **no-wrap by default**: `white-space: pre`. Long lines extend
+the file's single horizontal scrollbar, owned by the diff viewer container
+(`overflow-x: auto` on the viewer; per-line and per-column scrollbars are
+prohibited).
+
+- The contextual **Wrap** toggle in the diff header (aria-pressed) overrides
+  the default for the current file only (not persisted).
+- The global default lives in **Settings → Editor** ("Line wrapping"), is
+  stored in `localStorage` under `diffscribe-line-wrap`, defaults to
+  `false`, and applies to newly opened diffs.
+- Wrap mode uses `white-space: pre-wrap`. `overflow-wrap: anywhere` and
+  `word-break: break-all` are prohibited.
+- No JavaScript scroll synchronization between zones.
+
+### Settings (tranche)
+
+The rail exposes a **Settings** entry at its bottom (fourth tab). Activating
+it opens the Settings panel in the contextual area:
+
+- **Appearance:** theme selection (Dark Deep / Synthwave '84). The theme
+  switcher is not rendered in panel headers anymore.
+- **Editor:** line wrapping default (see above).
+
+Settings are client-only preferences; they persist in `localStorage` and are
+not part of the server-side domain model.
+
+### Git panel — branches and comparisons (tranche)
+
+The Git contextual panel lists **local branches** and **cached remote
+branches** (`refs/remotes/*` read with `git for-each-ref`, read-only). No
+`git fetch`, tags, or network operation is ever executed; remote refs are
+whatever the local clone already has on disk. Remote branches are marked
+with a "remote" tag and are selectable as comparison refs.
+
+The **Base/Target selector** works on the ephemeral comparison draft:
+
+- Selecting a target **auto-activates the Base slot** with the current
+  branch when the draft default (HEAD) has not been touched; a user-chosen
+  base is preserved.
+- The **ComparisonType is inferred from the real base/target pair**
+  (`inferComparisonType`), never hardcoded: branch+branch →
+  branch-vs-branch, commit+commit (or any pair containing a commit) →
+  commit-vs-commit, commit+branch → commit-vs-commit (a branch is a commit
+  pointer), HEAD+branch → branch-vs-branch, working tree pairs →
+  working-tree-vs-head / branch-vs-working-tree / commit-vs-working-tree,
+  index pairs → staged-vs-head / unstaged.
+- The inferred type renders as a readable feedback label next to the slots.
+
 ### Side-by-side minimum
 
 Side-by-side mode requires a minimum approximate width of 900px in the viewport
@@ -899,6 +974,161 @@ expected subset per component type:
 
 ---
 
+## Base UI kit
+
+The **base UI kit** is the set of generic, stateless, token-driven UI
+primitives shared by every product surface. It lives in a flat directory:
+`src/lib/web/components/ui/`. Product-specific composites (panels, forms,
+viewer chrome, navigation assemblies) must NOT live in `ui/`.
+
+### Purpose
+
+Product components (forms, panels, dialogs, viewers) repeatedly recreated
+control styles and implemented focus and ARIA contracts inconsistently. The
+kit centralizes those contracts so new surfaces reuse them instead of
+reinventing them.
+
+### Boundaries
+
+- **Generic only:** the kit contains no product vocabulary (workspace,
+  review, observation, diff, branch, status semantics are mapped by
+  consumers).
+- **Stateless:** props down, events up. No imports from stores,
+  `$lib/server`, application, or domain modules. No global state.
+- **Native HTML first:** `<button>`, `<input>`, `<select>`, `<dialog>` are
+  used where the platform provides them. There is no custom combobox, no
+  headless UI library, and no portal dependency.
+- **Token-driven:** every visual value references a CSS custom property
+  declared in the three theme blocks (`:root`, `[data-theme="dark"]`,
+  `[data-theme="synthwave-84"]`). Hardcoded hex colors are prohibited.
+- **Semantics are distinct:** Checkbox and Switch are different semantics
+  (binary choice vs. on/off setting). Menu and Popover are different
+  contracts (action list with menu roles vs. non-modal surface). Badge is
+  never interactive.
+
+### Location and structure
+
+```text
+src/lib/web/components/ui/
+├── Button.svelte
+├── IconButton.svelte
+├── TextInput.svelte
+├── Select.svelte
+├── Checkbox.svelte
+├── Switch.svelte
+├── Menu.svelte
+├── Popover.svelte
+├── Dialog.svelte
+├── Tabs.svelte
+├── Tooltip.svelte
+├── Badge.svelte
+├── StatusBadge.svelte
+├── ids.ts          # deterministic id helpers
+└── variants.ts     # exported variant/size/tone lists
+```
+
+The directory is flat: no `atoms/`, `molecules/`, or `organisms/` grouping.
+
+### Catalog
+
+| Primitive    | Element / role                          | Contract summary                                                      |
+| ------------ | --------------------------------------- | --------------------------------------------------------------------- |
+| Button       | `<button>`                              | Variants primary/secondary/ghost/danger; sizes sm/md/lg; loading; disabled |
+| IconButton   | `<button>`                              | Requires `label` for the accessible name; icons are decorative (`aria-hidden`) |
+| TextInput    | `<input type="text">`                   | Label association, `aria-invalid` + `aria-describedby` on error, focus-visible |
+| Select       | native `<select>`                       | Label association, error wiring, focus-visible; no custom combobox    |
+| Checkbox     | `<input type="checkbox">`               | Binary choice; native keyboard and checked state                      |
+| Switch       | `<input type="checkbox" role="switch">` | On/off setting; `aria-checked`, stable label, native keyboard         |
+| Menu         | `role="menu"` + `role="menuitem"`       | Trigger `aria-haspopup`/`aria-expanded`; arrows, Home/End, Enter/Space, Escape, focus return |
+| Popover      | non-modal surface                       | No menu roles unless content is a menu; Escape, predictable focus, documented light dismiss |
+| Dialog       | native `<dialog>` + `showModal()`       | Labelled title, sensible initial focus, Escape, focus returns to invoker |
+| Tabs         | `role="tablist"` + `role="tab"`         | Orientation, roving tabindex, arrows per orientation, Home/End, `aria-controls`/`aria-labelledby` |
+| Tooltip      | hover/focus surface                     | `aria-describedby`, Escape dismiss, persistent/hoverable, no interactive content, never relies on `title` |
+| Badge        | `<span>`                                | Visible text, tone variants, never color-only                         |
+| StatusBadge  | `<span>`                                | Visible text + tone, icon optional, never color-only                  |
+
+### Control scale
+
+The control scale is **provisional** until validated by E2E target-size
+checks on real consumers:
+
+| Size | Minimum height | Notes                                     |
+| ---- | -------------- | ----------------------------------------- |
+| sm   | 24 px          | Meets WCAG 2.2 2.5.8 (24×24 minimum)      |
+| md   | 32 px          | Default for most controls                 |
+| lg   | 40 px          | Primary actions, touch-first surfaces     |
+
+The scale is declared in `ui/variants.ts` and enforced by E2E (computed
+height ≥ minimum). Do not lock it as a contract until the E2E validation
+passes on migrated consumers.
+
+### Keyboard and focus contract
+
+- Every interactive primitive exposes visible focus (`:focus-visible`) with
+  `--focus-ring` and `--focus-ring-offset`.
+- Tabs: roving tabindex (one stop per tablist), ArrowLeft/ArrowRight for
+  horizontal, ArrowUp/ArrowDown for vertical, Home/End, Enter/Space
+  activates (automatic activation).
+- Menu: trigger toggles with `aria-expanded`; menu items navigate with
+  ArrowUp/ArrowDown (or Left/Right for submenus — not used in Stage 1),
+  Home/End, Enter/Space activates, Escape closes and returns focus to the
+  trigger.
+- Popover: Escape closes, focus moves predictably (first focusable or
+  trigger), light dismiss (click outside) is part of the contract.
+- Dialog: native `showModal()`; Escape closes natively; the browser returns
+  focus to the invoker on close. No custom focus trap unless a test
+  demonstrates the browser behavior is insufficient.
+- Tooltip: opens on hover and keyboard focus, closes on Escape, blur, or
+  mouse leave; content is never interactive.
+
+### ARIA rules
+
+- Button/IconButton always have an accessible name (text content or
+  `label`/`aria-label`).
+- TextInput/Select associate the label (`for`/`id`) and, when in error,
+  `aria-invalid="true"` and `aria-describedby` pointing at the error text.
+- Switch sets `role="switch"` and `aria-checked` from the checked state.
+- Tabs wire `aria-controls` (panel id) and `aria-labelledby` (tab button id)
+  both directions.
+- Menu uses `role="menu"`/`role="menuitem"` only for action lists.
+- Decorative icons inside primitives are `aria-hidden="true"`.
+
+### Token usage
+
+The kit consumes existing tokens only. New tokens are added only when
+repetition demonstrates a gap, and any new token must be declared in the
+three theme blocks (`:root`, `[data-theme="dark"]`, `[data-theme="synthwave-84"]`)
+and documented in this guide. The unit suite includes a static audit that
+fails on undeclared token references inside `ui/`.
+
+### Reduced motion
+
+All kit transitions and animations use the `--duration-*` and `--ease-*`
+tokens. The global `prefers-reduced-motion: reduce` block in `tokens.css`
+already zeroes those durations; kit components must not define their own
+durations outside the token system.
+
+### Validation
+
+- Unit: variant lists, id helpers, import boundary guard, token audit.
+- BDD (quickpickle): contract scenarios in
+  `specs/features/product/base-ui-kit.feature`.
+- E2E (Playwright): DOM, ARIA, focus, keyboard, target size, themes, and
+  reduced motion through real consumers.
+
+### Anti-patterns
+
+- No custom combobox or Select replacement.
+- No `overflow-wrap: anywhere` or `word-break: break-all`.
+- No focus trap that duplicates native `<dialog>` behavior.
+- No Tooltip content that is interactive.
+- No color-only Badge/StatusBadge state.
+- No product vocabulary or store imports inside `ui/`.
+- No Storybook, Testing Library, jsdom, happy-dom, or headless UI
+  dependencies.
+
+---
+
 ## Accessibility
 
 DiffScribe targets **WCAG 2.2 Level AA** as a design goal.
@@ -964,7 +1194,8 @@ DiffScribe targets **WCAG 2.2 Level AA** as a design goal.
 
 ### Targets
 
-- Minimum touch area: 24×24px for interactive controls (WCAG 2.5.5).
+- Minimum touch area: 24×24px for interactive controls
+  (WCAG 2.2, criterion 2.5.8 Target Size (Minimum)).
 - Sufficient spacing between adjacent targets to prevent accidental
   activations.
 
@@ -1089,6 +1320,212 @@ automate progressively:
 | Reduced motion            | OS toggle + visual inspection      | Playwright with emulation   |
 | Applied tokens            | Computed style inspection          | Token snapshot testing      |
 | Visual regression         | `[PENDIENTE]`                      | `[PENDIENTE]`               |
+
+---
+
+## Global reset and root foundation
+
+The `html` and `body` elements receive a global reset in `tokens.css`:
+
+- `margin: 0; padding: 0` — eliminates white viewport margins.
+- `background: var(--surface-primary)` — inherits the active theme background.
+- `color: var(--text-primary); font-family: var(--font-family-sans)` —
+  consistent text color and sans-serif system font.
+
+--- *The shell layout areas (`.shell-layout`, `.center-content`, `.work-area`,
+`.diff-area`) carry explicit `background: var(--surface-primary)` to prevent
+white rectangles during theme switching and when no file is loaded.
+
+### SvelteKit body wrapper
+
+`%sveltekit.body%` is wrapped in `<div style="display: contents">…</div>` in
+`src/app.html`. The wrapper is a CSS-hardening measure recommended by SvelteKit
+to guard against external stylesheets (browser extensions, user stylesheets) that
+target `<body>` direct children or use selectors sensitive to the body's child
+structure. `display: contents` makes the wrapper invisible to layout — it has no
+box, margin, padding, or border, and does not create a new stacking context.
+
+**What the wrapper protects against:**
+
+- CSS rules from browser extensions that use `body > *` selectors and set
+  `display: none`, `visibility: hidden`, or `opacity: 0`.
+- User stylesheets or Dark Reader variants that inject overlay elements as
+  `<body>` direct children.
+- Styles that depend on `<body>` having exactly one child element.
+
+**What the wrapper does NOT protect against:**
+
+- Extensions or user styles that target by class, `data-testid`, `id`, or tag
+  name (`main`, `aside`, `nav`). The wrapper only changes the direct-child
+  relationship with `<body>`.
+- CSS-injected overlays positioned independently of the DOM hierarchy.
+- Rendering bugs in extension font or color filters.
+
+### Visual debugging guide: blank screen or dark background with no panels
+
+This section helps diagnose when the shell renders as a blank (usually dark or
+white) background without visible panels, rail, or center content.
+
+**Step 1 — Verify the shell is present in the DOM.**
+
+Open DevTools → Elements tab. The rendered HTML should contain:
+
+- `<div style="display: contents">` as the direct child of `<body>`.
+- Inside it: elements with `data-testid="shell-layout"`, `data-testid="rail-tabs"`,
+  `data-testid="center-content"`, and `data-testid="right-panel"`.
+
+If these DOM nodes exist but are visually invisible, the issue is CSS, not a
+JavaScript hydration failure.
+
+**Step 2 — Check for extension-injected styles.**
+
+Open DevTools → Sources → Content Scripts (or inspect the Styles pane in the
+Elements tab). Look for injected `<style>` elements or stylesheets with selectors
+like `body > * { display: none !important; }`, `body > div { visibility: hidden; }`,
+or `body > :not(style) { opacity: 0; }`.
+
+To isolate: open DiffScribe in a guest/incognito window or a clean browser profile.
+If the issue disappears, an extension or user stylesheet is responsible.
+
+**Step 3 — Check the computed background color.**
+
+In DevTools → Elements, select `<body>` and inspect the Computed tab →
+`background-color`. It should match the active theme surface color. Select
+`[data-testid="shell-layout"]` and confirm its computed `background-color`
+matches `var(--surface-primary)` for the active theme.
+
+**Step 4 — Check for SvelteKit console warnings.**
+
+Open DevTools → Console. If the SvelteKit warning about `%sveltekit.body%`
+appears, the wrapper is missing — verify `src/app.html` has the
+`<div style="display: contents">` wrapper. If the warning does not appear and the
+shell elements are in the DOM but invisible, the cause is almost certainly
+external CSS (see Step 2).
+
+**Limitation:** The wrapper is hardening, not a universal guarantee. Extensions
+that target elements by `class`, `id`, `data-testid`, or tag name are not
+affected by the wrapper. Diagnose those case by case using DevTools inspection.
+
+---
+
+## Auxiliary and semantic tokens
+
+### Font, radius, size shorthands
+
+| Token              | Value     | Purpose                       |
+| ------------------ | --------- | ----------------------------- |
+| `--font-sans`      | ref       | Alias for `--font-family-sans` |
+| `--font-mono`      | ref       | Alias for `--font-family-mono` |
+| `--text-md`        | 0.875rem  | Equivalent to `--text-base`    |
+| `--radius-xs`      | 3px       | Tight badge/pill radius        |
+
+### Surface hover
+
+| Token              | Purpose                     |
+| ------------------ | --------------------------- |
+| `--surface-hover`  | Alias for `--state-hover`   |
+
+### Error and warning semantic families
+
+| Token              | Light        | Dark / Synthwave     |
+| ------------------ | ------------ | -------------------- |
+| `--text-error`     | `#d32f2f`    | `#e06c5d`            |
+| `--surface-error`  | `#fce4ec`    | `#3d1212`            |
+| `--border-error`   | `#fecaca`    | `#78281f`            |
+| `--text-warning`   | `#92400e`    | `#fbbf24`            |
+| `--surface-warning`| `#fff3e0`    | `#2d1a00` / `#3d2e00` |
+| `--border-warning` | `#ff9800`    | `#ff9800` / `#7d6600` |
+
+### Color semantic (status badges)
+
+| Token              | Light        | Dark           |
+| ------------------ | ------------ | -------------- |
+| `--color-success`  | `#2e7d32`    | `#22c55e`      |
+| `--color-warning`  | `#f9a825`    | `#fbbf24`      |
+| `--color-error`    | `#d32f2f`    | `#e06c5d`      |
+| `--color-info`     | `#1565c0`    | `#60a5fa`      |
+
+### Selection
+
+| Token                | Light                   | Dark                    |
+| -------------------- | ----------------------- | ----------------------- |
+| `--selection-border`  | `#4285f4`              | `#4285f4` / `#2de2e6`  |
+| `--selection-bg`      | `rgba(66,133,244,0.15)`| semi-transparent        |
+
+### Diff foreground
+
+| Token                | Light       | Dark       |
+| -------------------- | ----------- | ---------- |
+| `--diff-added-fg`    | `#1b5e20`   | `#57d68d`  |
+| `--diff-deleted-fg`  | `#b71c1c`   | `#e06c5d`  |
+
+---
+
+## Observation component tokens
+
+### Type badges
+
+| Token                    | Light / Dark / Synthwave purpose     |
+| ------------------------ | ------------------------------------ |
+| `--obs-type-issue-bg/fg` | Issue badge background and foreground |
+| `--obs-type-risk-bg/fg`  | Risk badge                           |
+| `--obs-type-suggestion-bg/fg` | Suggestion badge               |
+| `--obs-type-question-bg/fg`  | Question badge                   |
+| `--obs-type-praise-bg/fg`    | Praise badge                     |
+| `--obs-type-stale-bg/fg`     | Stale indicator badge            |
+
+### Severity badges
+
+| Token                     | Purpose                         |
+| ------------------------- | ------------------------------- |
+| `--obs-sev-critical-bg/fg`| Critical severity badge         |
+| `--obs-sev-major-bg/fg`   | Major severity badge            |
+| `--obs-sev-minor-bg/fg`   | Minor severity badge            |
+
+### Status dots
+
+| Token                 | Purpose              |
+| --------------------- | -------------------- |
+| `--obs-status-open`    | Open status dot      |
+| `--obs-status-resolved`| Resolved status dot  |
+| `--obs-status-dismissed`| Dismissed status dot |
+| `--obs-status-pending` | Pending status dot   |
+
+---
+
+## Source viewer marker tokens
+
+| Token                       | Purpose                            |
+| --------------------------- | ---------------------------------- |
+| `--source-marker-added`     | Added-line gutter marker           |
+| `--source-marker-removed`   | Removed-line gutter marker         |
+| `--source-marker-modified`  | Modified-line gutter marker        |
+| `--source-line-added-bg`    | Added-line background tint         |
+| `--source-line-removed-bg`  | Removed-line background tint       |
+| `--source-line-modified-bg` | Modified-line background tint      |
+
+---
+
+## Project tree status dot tokens
+
+| Token                      | Purpose                    |
+| -------------------------- | -------------------------- |
+| `--tree-status-modified`   | Modified file indicator    |
+| `--tree-status-added`      | Added file indicator       |
+| `--tree-status-deleted`    | Deleted file indicator     |
+| `--tree-status-renamed`    | Renamed/copied indicator   |
+| `--tree-status-type-changed`| Type-change indicator     |
+| `--tree-status-untracked`  | Untracked file indicator   |
+| `--tree-status-other`      | Other/unrecognized status  |
+
+---
+
+## Favicon
+
+A provisional "DS" favicon (`static/favicon.svg`) is linked in `app.html` via
+`<link rel="icon" href="%sveltekit.assets%/favicon.svg">`. The SVG shows the
+"DS" initials on the Dark Deep primary surface background with accent-colored
+text. Final branding will replace this with a definitive logo.
 
 ---
 

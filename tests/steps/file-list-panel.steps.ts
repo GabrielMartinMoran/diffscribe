@@ -623,3 +623,53 @@ Then('no git add, checkout, or commit has been executed', () => {
 Then('no new branch has been created', () => {
   // Verified by unchanged state
 });
+
+// ── Semantic status badges (tranche) ─────────────────────────────────────
+
+When('the user inspects the status badges', (world: PanelWorld) => {
+  const file = path.resolve(__dirname, '../../src/lib/web/components/file-list.svelte');
+  const src = fs.readFileSync(file, 'utf-8');
+  world.fileListSource = src;
+  world.statusToneSource = fs.readFileSync(
+    path.resolve(__dirname, '../../src/lib/web/components/file-status.ts'),
+    'utf-8',
+  );
+});
+
+Then('every status badge shows visible text', (world: PanelWorld) => {
+  const src = world.fileListSource as string;
+  if (!src.includes('StatusBadge') || !src.includes('statusLabel(entry.status)')) {
+    throw new Error('File list must render StatusBadge with visible status text');
+  }
+});
+
+Then('every status badge carries a status dot', (world: PanelWorld) => {
+  const src = world.fileListSource as string;
+  if (!src.includes('ui-status-badge')) {
+    throw new Error('File list must use the kit StatusBadge (dot channel)');
+  }
+  const badgeSrc = fs.readFileSync(
+    path.resolve(__dirname, '../../src/lib/web/components/ui/StatusBadge.svelte'),
+    'utf-8',
+  );
+  if (!badgeSrc.includes('__dot')) {
+    throw new Error('StatusBadge must render a status dot (non-color channel)');
+  }
+});
+
+Then('every badge color references a declared theme token', (world: PanelWorld) => {
+  const toneSource = world.statusToneSource as string;
+  const tones = ['success', 'warning', 'error', 'info', 'neutral'];
+  for (const tone of tones) {
+    if (!toneSource.includes(`'${tone}'`)) {
+      throw new Error(`statusTone must map statuses to the '${tone}' tone`);
+    }
+  }
+  const badgeSrc = fs.readFileSync(
+    path.resolve(__dirname, '../../src/lib/web/components/ui/StatusBadge.svelte'),
+    'utf-8',
+  );
+  if (!badgeSrc.includes('var(--')) {
+    throw new Error('StatusBadge styles must reference CSS custom properties');
+  }
+});

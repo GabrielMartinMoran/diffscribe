@@ -18,11 +18,17 @@ Feature: Rail tabs — compact icon rail, left contextual panel, and right panel
   # ────── Rail tab rendering ──────
 
   @product @navigation @p1 @ui @e2e
-  Scenario: Rail displays Workspaces, Project, and Git tab icons
+  Scenario: Rail displays Workspaces, Project, Git, and Settings tab icons
     Given the application is loaded
     When the user views the left rail
-    Then the rail shows three icons: Workspaces, Project, and Git
+    Then the rail shows four icons: Workspaces, Project, Git, and Settings
     And each icon has an accessible label
+
+  @product @navigation @p1 @ui @e2e
+  Scenario: Settings entry opens the Settings panel
+    Given the rail tabs are visible
+    When the user activates the Settings entry
+    Then the Settings panel appears in the contextual area
 
   @product @navigation @p1 @ui @e2e
   Scenario: Active tab is visually indicated with a selected state
@@ -103,6 +109,15 @@ Feature: Rail tabs — compact icon rail, left contextual panel, and right panel
     Given the right panel is focused
     When the user presses ArrowLeft or ArrowRight
     Then focus moves between the Comments and Review tabs
+
+  # ────── Hydration stability ──────
+
+  @product @hydration @stability @e2e
+  Scenario: Rail tab icons survive Svelte 5 client-side hydration without errors
+    Given the application is loaded and hydrated
+    When the user views the left rail
+    Then all four rail tab icons are rendered as SVG elements
+    And no TypeError or "Failed to hydrate" console errors are emitted
 
   # ────── Edge cases ──────
 

@@ -107,3 +107,14 @@ Feature: Panel resize and collapse — collapsible panels with bounded resize an
     Then the left rail is visible
     And the center region fills the remaining width
     And no empty panel frames are displayed
+
+  @delta-added @product @layout @p2 @ui @e2e
+  Scenario: Both panels collapsed after hydration maintains rail and center visible
+    Given DiffScribe is started
+    And a workspace is registered and active
+    And the left panel is collapsed
+    And the right panel is collapsed
+    When the application hydrates
+    Then the left rail is visible
+    And the center region fills the remaining width
+    And no empty panel frames are displayed

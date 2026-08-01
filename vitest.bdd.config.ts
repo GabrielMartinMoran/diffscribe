@@ -40,6 +40,13 @@ export default defineConfig({
       'tests/steps/test-db-isolation.steps.ts',
       'tests/steps/ui-redesign.steps.ts',
       'tests/steps/e2e-helper-timing.steps.ts',
+      'tests/steps/rail-hydration-stability.steps.ts',
+      'tests/steps/base-ui-kit.steps.ts',
+      'tests/steps/workspace-actions-overflow.steps.ts',
+      'tests/steps/settings-panel.steps.ts',
+      'tests/steps/line-wrapping.steps.ts',
+      'tests/steps/file-list-tree.steps.ts',
+      'tests/steps/git-branches.steps.ts',
     ],
   },
 });

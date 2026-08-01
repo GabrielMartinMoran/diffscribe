@@ -151,7 +151,7 @@
   }
 
   .obs-card.stale {
-    border-color: var(--border-warning, #ff9800);
+    border-color: var(--border-warning);
   }
 
   .obs-card:focus-within {
@@ -172,51 +172,51 @@
     padding: 1px 6px;
     font-size: 10px;
     font-weight: 600;
-    border-radius: var(--radius-xs, 3px);
+    border-radius: var(--radius-xs);
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
 
   .badge-issue {
-    background: #fce4ec;
-    color: #c62828;
+    background: var(--obs-type-issue-bg);
+    color: var(--obs-type-issue-fg);
   }
   .badge-risk {
-    background: #fff3e0;
-    color: #e65100;
+    background: var(--obs-type-risk-bg);
+    color: var(--obs-type-risk-fg);
   }
   .badge-suggestion {
-    background: #e8f5e9;
-    color: #2e7d32;
+    background: var(--obs-type-suggestion-bg);
+    color: var(--obs-type-suggestion-fg);
   }
   .badge-question {
-    background: #e3f2fd;
-    color: #1565c0;
+    background: var(--obs-type-question-bg);
+    color: var(--obs-type-question-fg);
   }
   .badge-praise {
-    background: #f3e5f5;
-    color: #6a1b9a;
+    background: var(--obs-type-praise-bg);
+    color: var(--obs-type-praise-fg);
   }
   .badge-note {
     background: var(--surface-secondary);
     color: var(--text-secondary);
   }
   .badge-stale {
-    background: #fff8e1;
-    color: #f57f17;
+    background: var(--obs-type-stale-bg);
+    color: var(--obs-type-stale-fg);
   }
 
   .severity.sev-critical {
-    background: #ffcdd2;
-    color: #b71c1c;
+    background: var(--obs-sev-critical-bg);
+    color: var(--obs-sev-critical-fg);
   }
   .severity.sev-major {
-    background: #ffe0b2;
-    color: #e65100;
+    background: var(--obs-sev-major-bg);
+    color: var(--obs-sev-major-fg);
   }
   .severity.sev-minor {
-    background: #fff9c4;
-    color: #f57f17;
+    background: var(--obs-sev-minor-bg);
+    color: var(--obs-sev-minor-fg);
   }
   .severity.sev-nitpick {
     background: var(--surface-secondary);
@@ -230,16 +230,16 @@
     flex-shrink: 0;
   }
   .status-open {
-    background: #4caf50;
+    background: var(--obs-status-open);
   }
   .status-resolved {
-    background: #2196f3;
+    background: var(--obs-status-resolved);
   }
   .status-dismissed {
-    background: #9e9e9e;
+    background: var(--obs-status-dismissed);
   }
   .status-pending {
-    background: #ff9800;
+    background: var(--obs-status-pending);
   }
 
   .card-title {
@@ -268,7 +268,7 @@
   }
 
   .meta-file {
-    font-family: var(--font-mono, monospace);
+    font-family: var(--font-mono);
   }
 
   .card-actions {
@@ -301,7 +301,7 @@
   }
 
   .card-actions button.danger:hover {
-    background: var(--text-error, #d32f2f);
+    background: var(--text-error);
     color: white;
   }
 
@@ -320,7 +320,7 @@
     padding: var(--space-2);
     background: var(--surface-secondary);
     border-radius: var(--radius-sm);
-    font-family: var(--font-mono, monospace);
+    font-family: var(--font-mono);
     font-size: 11px;
     white-space: pre-wrap;
     overflow-x: auto;

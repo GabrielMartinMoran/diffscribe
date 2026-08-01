@@ -3,7 +3,7 @@ import { expect } from '@playwright/test';
 
 import { waitForHydration } from './hydration';
 
-export type TargetRail = 'workspaces' | 'git';
+export type TargetRail = 'workspaces' | 'project' | 'git' | 'settings';
 export type RightPanelTab = 'comments' | 'review';
 
 /**

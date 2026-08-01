@@ -69,3 +69,110 @@ Feature: Design token contract — every UI token is declared and applied correc
     When the user switches to "Synthwave '84"
     Then Shiki token colors update to match the Synthwave '84 palette
     And no hard-coded Dark Deep colors remain visible
+
+  # ────── Auxiliary / semantic tokens ──────
+
+  @quality @tokens @p1 @ui @bdd
+  Scenario: Error and warning semantic tokens are declared in both themes
+    Given the Dark Deep theme token contract
+    When the error and warning token families are enumerated
+    Then all error and warning tokens are declared in the Dark Deep theme
+    And all error and warning tokens exist in the Synthwave '84 theme
+
+  @quality @tokens @p1 @ui @bdd
+  Scenario: Color semantic tokens for status badges are declared in both themes
+    Given the Dark Deep theme token contract
+    When the color semantic tokens are enumerated
+    Then all color semantic tokens are declared in the Dark Deep theme
+    And all color semantic tokens exist in the Synthwave '84 theme
+
+  @quality @tokens @p1 @ui @bdd
+  Scenario: Diff foreground tokens are declared in both themes
+    Given the Dark Deep theme token contract
+    When the diff token families are enumerated
+    Then all diff foreground tokens are declared in the Dark Deep theme
+    And all diff foreground tokens exist in the Synthwave '84 theme
+
+  @quality @tokens @p1 @ui @bdd
+  Scenario: Surface hover token is declared in both themes
+    Given the Dark Deep theme token contract
+    When the surface-hover token is checked
+    Then --surface-hover is declared in the Dark Deep theme
+    And --surface-hover exists in the Synthwave '84 theme
+
+  @quality @tokens @p1 @ui @bdd
+  Scenario: Selection and font-family tokens are declared in both themes
+    Given the Dark Deep theme token contract
+    When the auxiliary tokens are enumerated
+    Then all auxiliary tokens are declared in the Dark Deep theme
+    And all auxiliary tokens exist in the Synthwave '84 theme
+
+  @quality @tokens @p1 @ui @bdd
+  Scenario: Observation type badge tokens are declared for light base and both themes
+    Given the global :root token contract
+    When observation badge tokens are enumerated
+    Then all observation badge tokens are declared in the :root theme
+    And all observation badge tokens exist in the Dark Deep theme
+    And all observation badge tokens exist in the Synthwave '84 theme
+
+  @quality @tokens @p1 @ui @bdd
+  Scenario: Observation severity badge tokens are declared for light base and both themes
+    Given the global :root token contract
+    When observation severity badge tokens are enumerated
+    Then all observation severity badge tokens are declared in the :root theme
+    And all observation severity badge tokens exist in the Dark Deep theme
+    And all observation severity badge tokens exist in the Synthwave '84 theme
+
+  @quality @tokens @p1 @ui @bdd
+  Scenario: Observation status dot tokens are declared for light base and both themes
+    Given the global :root token contract
+    When observation status dot tokens are enumerated
+    Then all observation status dot tokens are declared in the :root theme
+    And all observation status dot tokens exist in the Dark Deep theme
+    And all observation status dot tokens exist in the Synthwave '84 theme
+
+  @quality @tokens @p1 @ui @bdd
+  Scenario: Source viewer marker tokens are declared for light base and both themes
+    Given the global :root token contract
+    When source viewer marker tokens are enumerated
+    Then all source viewer marker tokens are declared in the :root theme
+    And all source viewer marker tokens exist in the Dark Deep theme
+    And all source viewer marker tokens exist in the Synthwave '84 theme
+
+  @quality @tokens @p1 @ui @bdd
+  Scenario: Project tree status dot tokens are declared for light base and both themes
+    Given the global :root token contract
+    When project tree status dot tokens are enumerated
+    Then all project tree status dot tokens are declared in the :root theme
+    And all project tree status dot tokens exist in the Dark Deep theme
+    And all project tree status dot tokens exist in the Synthwave '84 theme
+
+  # ────── Hardcoded hex prohibition ──────
+
+  @quality @tokens @p1 @ui @bdd
+  Scenario: Observation badges do not use hardcoded hex colors
+    Given the observation card component styles
+    When the type badge CSS rules are inspected
+    Then no hardcoded hex color values are used for badge backgrounds or foregrounds
+    And all badge colors reference CSS custom properties
+
+  @quality @tokens @p1 @ui @bdd
+  Scenario: Observation severity badges do not use hardcoded hex colors
+    Given the observation card component styles
+    When the severity badge CSS rules are inspected
+    Then no hardcoded hex color values are used for severity badge backgrounds or foregrounds
+    And all severity colors reference CSS custom properties
+
+  @quality @tokens @p1 @ui @bdd
+  Scenario: Observation status dots do not use hardcoded hex colors
+    Given the observation card component styles
+    When the status dot CSS rules are inspected
+    Then no hardcoded hex color values are used for status dot backgrounds
+    And all status dot colors reference CSS custom properties
+
+  @quality @tokens @p1 @ui @bdd
+  Scenario: Source viewer markers do not use hardcoded hex colors
+    Given the source viewer component styles
+    When the change marker CSS rules are inspected
+    Then no hardcoded hex color values are used for marker backgrounds
+    And all marker colors reference CSS custom properties

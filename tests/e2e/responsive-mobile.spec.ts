@@ -13,6 +13,28 @@ test.describe('Responsive layout (RESPONSIVE-UI-01)', () => {
     await page.setViewportSize({ width: 1280, height: 800 });
   });
 
+  // ────── Body wrapper regression: mobile contract ──────
+
+  test('RESPONSIVE-UI-01: mobile 375px shows rail and center visible, side panels hidden after wrapper', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+
+    // Rail must be visible on mobile
+    await expect(page.locator('[data-testid="rail-tabs"]')).toBeVisible({ timeout: 10000 });
+
+    // Center must be visible and fill most of the viewport
+    await expect(page.locator('[data-testid="center-content"]')).toBeVisible();
+
+    // Left panel must be hidden on mobile
+    await expect(page.locator('[data-testid="left-contextual-panel"]')).not.toBeVisible();
+
+    // Right panel must be hidden on mobile
+    await expect(page.locator('[data-testid="right-panel"]')).not.toBeVisible();
+  });
+
   // ────── Desktop layout ──────
 
   test('RESPONSIVE-UI-01: desktop 1280px shows all four layout regions', async ({ page }) => {

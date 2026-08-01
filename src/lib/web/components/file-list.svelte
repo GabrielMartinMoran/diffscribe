@@ -1,5 +1,20 @@
 <script lang="ts">
+  import { SvelteSet } from 'svelte/reactivity';
+
+  import { browser } from '$app/environment';
   import type { FileListEntry } from '$lib/server/application/dto/results/file-list-results';
+  import {
+    DEFAULT_FILE_LIST_VIEW,
+    type FileListView,
+    readStoredFileListView,
+    resolveFileListView,
+    writeStoredFileListView,
+  } from '$lib/web/stores/file-list-view-store';
+
+  import { buildFileTree, type FileTreeNode } from './file-list-tree';
+  import { statusTone } from './file-status';
+  import FileTreeBranch from './file-tree-branch.svelte';
+  import StatusBadge from './ui/StatusBadge.svelte';
 
   let {
     entries = [] as FileListEntry[],
@@ -27,6 +42,31 @@
   let sortDir = $state<'asc' | 'desc'>('asc');
   let currentPage = $state(1);
   let activeFile = $state<string | null>(null);
+  let view = $state<FileListView>(DEFAULT_FILE_LIST_VIEW);
+  let expandedDirs = new SvelteSet<string>();
+
+  // Restore the persisted view preference on load.
+  $effect(() => {
+    if (!browser) return;
+    view = resolveFileListView(readStoredFileListView(window.localStorage));
+  });
+
+  function setView(next: FileListView) {
+    view = next;
+    if (browser) {
+      writeStoredFileListView(next, window.localStorage);
+    }
+  }
+
+  function toggleDir(node: FileTreeNode) {
+    if (expandedDirs.has(node.path)) {
+      expandedDirs.delete(node.path);
+    } else {
+      expandedDirs.add(node.path);
+    }
+  }
+
+  const treeNodes = $derived.by(() => buildFileTree(filtered));
 
   const PAGE_SIZE = 50;
 
@@ -188,6 +228,24 @@
           <option value={status}>{statusLabel(status)}</option>
         {/each}
       </select>
+      <div class="view-switcher" role="group" aria-label="File list view">
+        <button
+          class="view-toggle"
+          data-testid="file-list-view-list"
+          aria-pressed={view === 'list'}
+          onclick={() => setView('list')}
+        >
+          List
+        </button>
+        <button
+          class="view-toggle"
+          data-testid="file-list-view-tree"
+          aria-pressed={view === 'tree'}
+          onclick={() => setView('tree')}
+        >
+          Tree
+        </button>
+      </div>
     </div>
 
     <!-- Table header (sortable) -->
@@ -226,55 +284,74 @@
     </div>
 
     <!-- File rows -->
-    <div class="file-rows" role="listbox" aria-label="Changed files">
-      {#each paginated as entry, idx (entry.path)}
-        <button
-          class="file-row"
-          class:active={activeFile === entry.path}
-          role="option"
-          aria-selected={activeFile === entry.path}
-          data-file-index={idx}
-          onclick={() => selectFile(entry.path)}
-          onkeydown={(e) => handleRowKeydown(e, idx)}
-        >
-          <div class="path-cell">
-            <span class="file-path">{entry.path}</span>
-            {#if entry.oldPath && (entry.status === 'renamed' || entry.status === 'copied')}
-              <span class="old-path" aria-label="Previously named {entry.oldPath}"
-                >{entry.oldPath}</span
-              >
-            {/if}
-          </div>
-          <div class="status-cell">
-            <span class="status-badge status-{entry.status}">{statusLabel(entry.status)}</span>
-            {#if entry.binary}
-              <span class="binary-badge" aria-label="Binary file">B</span>
-            {/if}
-            {#if entry.error}
-              <span class="error-badge" title={entry.error}>⚠</span>
-            {/if}
-          </div>
-          <div class="stats-cell">
-            {statCell(entry.additions, entry.deletions)}
-          </div>
-          {#if hasActiveReview}
-            <div
-              class="review-cell"
-              aria-label={reviewedSet.has(entry.path) ? 'Reviewed' : 'Not reviewed'}
-            >
-              {#if reviewedSet.has(entry.path)}
-                <span class="review-marker reviewed" aria-hidden="true">✓</span>
-              {:else}
-                <span class="review-marker unreviewed" aria-hidden="true">○</span>
+    {#if view === 'tree'}
+      <div
+        class="file-rows tree-rows"
+        data-testid="file-list-tree"
+        role="tree"
+        aria-label="Changed files by directory"
+      >
+        {#each treeNodes as node (node.path)}
+          <FileTreeBranch
+            {node}
+            {expandedDirs}
+            {activeFile}
+            onToggleDir={toggleDir}
+            onSelect={selectFile}
+          />
+        {/each}
+      </div>
+    {:else}
+      <div class="file-rows" role="listbox" aria-label="Changed files">
+        {#each paginated as entry, idx (entry.path)}
+          <button
+            class="file-row"
+            class:active={activeFile === entry.path}
+            role="option"
+            aria-selected={activeFile === entry.path}
+            data-file-index={idx}
+            onclick={() => selectFile(entry.path)}
+            onkeydown={(e) => handleRowKeydown(e, idx)}
+          >
+            <div class="path-cell">
+              <span class="file-path">{entry.path}</span>
+              {#if entry.oldPath && (entry.status === 'renamed' || entry.status === 'copied')}
+                <span class="old-path" aria-label="Previously named {entry.oldPath}"
+                  >{entry.oldPath}</span
+                >
               {/if}
             </div>
-          {/if}
-        </button>
-      {/each}
-    </div>
+            <div class="status-cell">
+              <StatusBadge tone={statusTone(entry.status)}>{statusLabel(entry.status)}</StatusBadge>
+              {#if entry.binary}
+                <span class="binary-badge" aria-label="Binary file">B</span>
+              {/if}
+              {#if entry.error}
+                <span class="error-badge" title={entry.error}>⚠</span>
+              {/if}
+            </div>
+            <div class="stats-cell">
+              {statCell(entry.additions, entry.deletions)}
+            </div>
+            {#if hasActiveReview}
+              <div
+                class="review-cell"
+                aria-label={reviewedSet.has(entry.path) ? 'Reviewed' : 'Not reviewed'}
+              >
+                {#if reviewedSet.has(entry.path)}
+                  <span class="review-marker reviewed" aria-hidden="true">✓</span>
+                {:else}
+                  <span class="review-marker unreviewed" aria-hidden="true">○</span>
+                {/if}
+              </div>
+            {/if}
+          </button>
+        {/each}
+      </div>
+    {/if}
 
-    <!-- Pagination -->
-    {#if totalPages > 1}
+    <!-- Pagination (list view only; the tree renders the full filtered set) -->
+    {#if view === 'list' && totalPages > 1}
       <div class="pagination" aria-label="File list pagination">
         <button disabled={currentPage === 1} onclick={() => goPage(-1)} aria-label="Previous page"
           >←</button
@@ -474,52 +551,8 @@
     flex-shrink: 0;
   }
 
-  .status-badge {
-    display: inline-block;
-    padding: 0 var(--space-1);
-    border-radius: var(--radius-sm);
-    font-size: var(--text-xs);
-    font-weight: var(--font-weight-medium);
-    font-family: inherit;
-    line-height: 1.4;
-    white-space: nowrap;
-  }
-
-  .status-added {
-    background: var(--diff-added-bg);
-    color: var(--diff-added-text);
-  }
-  .status-modified {
-    background: var(--diff-modified-bg);
-    color: var(--diff-modified-text);
-  }
-  .status-deleted {
-    background: var(--diff-removed-bg);
-    color: var(--diff-removed-text);
-  }
-  .status-renamed {
-    background: var(--accent-muted);
-    color: var(--accent);
-  }
-  .status-copied {
-    background: var(--accent-muted);
-    color: var(--accent);
-  }
-  .status-type-changed {
-    background: var(--diff-modified-bg);
-    color: var(--diff-modified-text);
-  }
-  .status-unmerged {
-    background: var(--state-error-bg);
-    color: var(--severity-critical);
-  }
-  .status-untracked {
-    background: var(--diff-modified-bg);
-    color: var(--text-secondary);
-  }
-  .status-unknown {
-    background: var(--state-disabled-bg);
-    color: var(--state-disabled-text);
+  .status-cell :global(.ui-status-badge) {
+    text-transform: capitalize;
   }
 
   .binary-badge {
@@ -560,7 +593,7 @@
   }
 
   .review-marker.reviewed {
-    color: var(--diff-added-fg, #1b5e20);
+    color: var(--diff-added-fg);
     font-weight: var(--font-weight-bold);
   }
 

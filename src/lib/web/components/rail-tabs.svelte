@@ -1,7 +1,10 @@
 <script lang="ts">
-  import { Files, Folder, GitBranch, PanelLeftOpen } from 'svelte-lucide';
+  import { Files, Folder, GitBranch, PanelLeftOpen, Settings } from 'svelte-lucide';
 
-  export type RailTabKey = 'workspaces' | 'project' | 'git';
+  import type { TabItem } from './ui/Tabs.svelte';
+  import Tabs from './ui/Tabs.svelte';
+
+  export type RailTabKey = 'workspaces' | 'project' | 'git' | 'settings';
 
   let {
     activeTab = 'workspaces' as RailTabKey,
@@ -17,69 +20,40 @@
     isMobile?: boolean;
   } = $props();
 
-  const tabs: Array<{ key: RailTabKey; label: string; icon: typeof Files }> = [
-    { key: 'workspaces', label: 'Workspaces', icon: Files },
-    { key: 'project', label: 'Project', icon: Folder },
-    { key: 'git', label: 'Git', icon: GitBranch },
+  const tabs: TabItem[] = [
+    {
+      id: 'workspaces',
+      label: 'Workspaces',
+      ariaLabel: 'Workspaces',
+      icon: Files,
+      testId: 'rail-tab-workspaces',
+    },
+    {
+      id: 'project',
+      label: 'Project',
+      ariaLabel: 'Project',
+      icon: Folder,
+      testId: 'rail-tab-project',
+    },
+    { id: 'git', label: 'Git', ariaLabel: 'Git', icon: GitBranch, testId: 'rail-tab-git' },
+    {
+      id: 'settings',
+      label: 'Settings',
+      ariaLabel: 'Settings',
+      icon: Settings,
+      testId: 'rail-tab-settings',
+    },
   ];
-
-  let tabRefs: (HTMLButtonElement | null)[] = [];
-
-  function handleKeydown(e: KeyboardEvent) {
-    const currentIndex = tabs.findIndex((t) => t.key === activeTab);
-    let nextIndex: number;
-
-    switch (e.key) {
-      case 'ArrowDown':
-        e.preventDefault();
-        nextIndex = (currentIndex + 1) % tabs.length;
-        break;
-      case 'ArrowUp':
-        e.preventDefault();
-        nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
-        break;
-      case 'Home':
-        e.preventDefault();
-        nextIndex = 0;
-        break;
-      case 'End':
-        e.preventDefault();
-        nextIndex = tabs.length - 1;
-        break;
-      default:
-        return;
-    }
-
-    const nextKey = tabs[nextIndex].key;
-    onTabChange?.(nextKey);
-    tabRefs[nextIndex]?.focus();
-  }
 </script>
 
-<div
-  data-testid="rail-tabs"
-  class="rail-tabs"
-  class:is-mobile={isMobile}
-  role="tablist"
-  aria-label="Navigation tabs"
-  tabindex="-1"
-  onkeydown={handleKeydown}
->
-  {#each tabs as { key, label, icon: Icon }, i (key)}
-    <button
-      role="tab"
-      aria-selected={activeTab === key}
-      aria-label={label}
-      data-testid="rail-tab-{key}"
-      class="rail-tab"
-      class:active={activeTab === key}
-      bind:this={tabRefs[i]}
-      onclick={() => onTabChange?.(key)}
-    >
-      <Icon size="18" strokeWidth="1.5" ariaLabel={label} />
-      <span class="tab-label">{label}</span>
-    </button>
-  {/each}
+<div data-testid="rail-tabs" class="rail-tabs" class:is-mobile={isMobile} tabindex="-1">
+  <Tabs
+    {tabs}
+    activeId={activeTab}
+    orientation="vertical"
+    ariaLabel="Navigation tabs"
+    onchange={(id) => onTabChange?.(id as RailTabKey)}
+  />
 
   {#if leftCollapsed}
     <button
@@ -105,43 +79,34 @@
     background: var(--surface-primary);
     border-right: 1px solid var(--border-subtle);
     overflow-y: auto;
+    /* Grid item: stay inside the viewport row. */
+    min-height: 0;
   }
 
-  .rail-tab {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 2px;
+  .rail-tabs :global(.ui-tabs) {
+    gap: var(--space-1);
+  }
+
+  .rail-tabs :global(.ui-tabs__tab) {
     width: 40px;
     height: 48px;
     padding: var(--space-1) 0;
-    border: none;
-    border-radius: var(--radius-sm);
-    background: transparent;
-    color: var(--text-tertiary);
-    cursor: pointer;
-    transition:
-      color 0.15s,
-      background 0.15s;
+    border-left: 2px solid transparent;
+    flex-direction: column;
+    gap: 2px;
   }
 
-  .rail-tab:hover {
-    color: var(--text-primary);
+  .rail-tabs :global(.ui-tabs__tab.active) {
+    color: var(--accent);
+    background: var(--accent-light);
+    border-left-color: var(--accent);
+  }
+
+  .rail-tabs :global(.ui-tabs__tab:hover:not(:disabled)) {
     background: var(--surface-hover);
   }
 
-  .rail-tab:focus-visible {
-    outline: var(--focus-ring-offset) solid var(--focus-ring);
-    outline-offset: -2px;
-  }
-
-  .rail-tab.active {
-    color: var(--accent);
-    background: var(--accent-light, rgba(66, 133, 244, 0.1));
-  }
-
-  .tab-label {
+  .rail-tabs :global(.ui-tabs__label) {
     font-size: 8px;
     line-height: 1;
     letter-spacing: 0.02em;
@@ -178,28 +143,28 @@
 
   /* ── Mobile rail: no label text, tighter spacing ── */
 
-  .rail-tabs.is-mobile .tab-label {
+  .rail-tabs.is-mobile :global(.ui-tabs__label) {
     display: none;
   }
 
-  .rail-tabs.is-mobile .rail-tab {
+  .rail-tabs.is-mobile :global(.ui-tabs__tab) {
     height: 40px;
     width: 40px;
   }
 
   @media (max-width: 768px) {
-    .tab-label {
+    .rail-tabs :global(.ui-tabs__label) {
       display: none;
     }
 
-    .rail-tab {
+    .rail-tabs :global(.ui-tabs__tab) {
       height: 40px;
       width: 40px;
     }
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .rail-tab,
+    .rail-tabs :global(.ui-tabs__tab),
     .rail-reopen-btn {
       transition: none;
     }

@@ -339,8 +339,10 @@ test.describe('Diff Viewer (E2E)', () => {
       const diffViewer = page.locator('.diff-viewer');
       await expect(diffViewer).toBeVisible({ timeout: 8000 });
 
-      // Side-by-side toggle should be visible
-      const toggle = diffViewer.locator('button[aria-pressed]');
+      // Side-by-side toggle should be visible (Wrap is a separate toggle)
+      const toggle = diffViewer.getByRole('button', {
+        name: /side-by-side|unified view/i,
+      });
       await expect(toggle).toBeVisible({ timeout: 10000 });
     } finally {
       fixture.cleanup();
@@ -373,7 +375,9 @@ test.describe('Diff Viewer (E2E)', () => {
       // Side-by-side toggle should not be visible
       const diffViewer = page.locator('.diff-viewer');
       await expect(diffViewer).toBeVisible({ timeout: 8000 });
-      const toggle = diffViewer.locator('button[aria-pressed]');
+      const toggle = diffViewer.getByRole('button', {
+        name: /side-by-side|unified view/i,
+      });
       await expect(toggle).toBeHidden({ timeout: 10000 });
     } finally {
       fixture.cleanup();

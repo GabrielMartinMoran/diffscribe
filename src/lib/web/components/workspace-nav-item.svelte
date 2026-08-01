@@ -1,8 +1,11 @@
 <script lang="ts">
+  import { Ellipsis } from 'svelte-lucide';
+
   import { enhance } from '$app/forms';
   import type { WorkspaceListItem } from '$lib/server/application/dto/results/workspace-results';
 
   import DeleteConfirmDialog from './delete-confirm-dialog.svelte';
+  import Menu from './ui/Menu.svelte';
   import WorkspaceRenameForm from './workspace-rename-form.svelte';
   import WorkspaceRepairForm from './workspace-repair-form.svelte';
 
@@ -26,10 +29,6 @@
     showRenameForm = false;
   }
 
-  function openDeleteDialog() {
-    showDeleteDialog = true;
-  }
-
   function closeDeleteDialog() {
     showDeleteDialog = false;
   }
@@ -40,6 +39,16 @@
 
   function onRepairCancelled() {
     showRepairForm = false;
+  }
+
+  function handleMenuSelect(value: string) {
+    if (value === 'rename') {
+      showRenameForm = true;
+    } else if (value === 'repair') {
+      showRepairForm = true;
+    } else if (value === 'delete') {
+      showDeleteDialog = true;
+    }
   }
 
   function handleSelectKeydown(e: KeyboardEvent) {
@@ -115,33 +124,18 @@
     <span class="invalid-badge" aria-label="Invalid workspace">invalid</span>
   {/if}
 
-  <div class="actions">
-    {#if workspace.status === 'invalid'}
-      <button
-        class="action-btn repair-btn"
-        onclick={() => (showRepairForm = !showRepairForm)}
-        aria-label="Repair {workspace.displayName}"
-        aria-expanded={showRepairForm}
-      >
-        Repair
-      </button>
-    {/if}
-    <button
-      class="action-btn"
-      onclick={() => (showRenameForm = !showRenameForm)}
-      aria-label="Rename {workspace.displayName}"
-      aria-expanded={showRenameForm}
-    >
-      Rename
-    </button>
-    <button
-      class="action-btn danger"
-      onclick={openDeleteDialog}
-      aria-label="Delete {workspace.displayName}"
-    >
-      Delete
-    </button>
-  </div>
+  <Menu
+    data-testid="workspace-actions"
+    label="Workspace actions"
+    icon={Ellipsis}
+    align="end"
+    items={[
+      ...(workspace.status === 'invalid' ? [{ value: 'repair', label: 'Repair' }] : []),
+      { value: 'rename', label: 'Rename' },
+      { value: 'delete', label: 'Delete', destructive: true },
+    ]}
+    onselect={handleMenuSelect}
+  />
 
   {#if showRenameForm}
     <div class="rename-form-container" data-rename-form>
@@ -275,36 +269,6 @@
     color: var(--severity-critical);
     border: 1px solid var(--state-error-border);
     text-transform: uppercase;
-  }
-
-  .actions {
-    display: flex;
-    gap: var(--space-1);
-  }
-
-  .action-btn {
-    font-size: var(--text-xs);
-    padding: var(--space-1) var(--space-2);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    background: var(--surface-secondary);
-    color: var(--text-secondary);
-    cursor: pointer;
-  }
-
-  .action-btn:hover {
-    background: var(--accent);
-    color: var(--text-inverse);
-    border-color: var(--accent);
-  }
-
-  .action-btn:focus-visible {
-    outline: var(--focus-ring-offset) solid var(--focus-ring);
-  }
-
-  .action-btn.danger:hover {
-    background: var(--severity-critical);
-    border-color: var(--severity-critical);
   }
 
   .rename-form-container {

@@ -1,4 +1,5 @@
 import { expect, test } from './fixtures';
+import { waitForHydration } from './helpers/hydration';
 import { resetDb } from './helpers/reset-db';
 
 test.describe('Panel resize and collapse (PANELS-UI-01)', () => {
@@ -6,6 +7,36 @@ test.describe('Panel resize and collapse (PANELS-UI-01)', () => {
     await resetDb(request);
     await page.goto('/');
     await page.waitForLoadState('networkidle');
+  });
+
+  // ────── Body wrapper regression: both panels collapsed ──────
+
+  test('PANELS-UI-01: both panels collapsed after hydration maintains rail and center visible', async ({
+    page,
+  }) => {
+    await waitForHydration(page);
+
+    // Collapse left
+    const leftCollapseBtn = page.locator('[data-testid="left-panel-collapse-btn"]');
+    await expect(leftCollapseBtn).toBeVisible({ timeout: 10000 });
+    await leftCollapseBtn.click();
+    await expect(page.locator('[data-testid="left-contextual-panel"]')).not.toBeVisible();
+
+    // Collapse right
+    const rightCollapseBtn = page.locator('[data-testid="right-panel-collapse-btn"]');
+    await expect(rightCollapseBtn).toBeVisible();
+    await rightCollapseBtn.click();
+
+    // Rail must be visible
+    await expect(page.locator('[data-testid="rail-tabs"]')).toBeVisible();
+
+    // Center must fill remaining space
+    await expect(page.locator('[data-testid="center-content"]')).toBeVisible();
+
+    // No empty panel frames
+    await expect(page.locator('[data-testid="left-contextual-panel"]')).not.toBeVisible();
+    const rightPanel = page.locator('[data-testid="right-panel"]');
+    await expect(rightPanel).toHaveAttribute('role', 'button');
   });
 
   // ────── Collapse and expand ──────
@@ -237,5 +268,41 @@ test.describe('Panel resize and collapse (PANELS-UI-01)', () => {
       return document.documentElement.scrollWidth > document.documentElement.clientWidth;
     });
     expect(hasOverflow).toBe(false);
+  });
+
+  // ────── localStorage corruption regression ──────
+
+  test('PANELS-UI-01: NaN/Infinity localStorage values do not break the shell', async ({
+    page,
+  }) => {
+    // Inject NaN as leftWidth into localStorage
+    await page.evaluate(() =>
+      localStorage.setItem(
+        'diffscribe-panel-layout',
+        '{"leftWidth":null,"rightWidth":320,"leftCollapsed":false,"rightCollapsed":false}',
+      ),
+    );
+
+    // Reload — the app must not crash or show a blank page
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+
+    // Shell must still be visible
+    await expect(page.locator('[data-testid="shell-layout"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="rail-tabs"]')).toBeVisible();
+    await expect(page.locator('[data-testid="center-content"]')).toBeVisible();
+
+    // Repeat with Infinity and string values
+    await page.evaluate(() =>
+      localStorage.setItem(
+        'diffscribe-panel-layout',
+        '{"leftWidth":Infinity,"rightWidth":"garbage","leftCollapsed":42,"rightCollapsed":null}',
+      ),
+    );
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+
+    // Shell must still be visible
+    await expect(page.locator('[data-testid="shell-layout"]')).toBeVisible({ timeout: 10000 });
   });
 });

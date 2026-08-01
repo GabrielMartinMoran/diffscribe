@@ -15,8 +15,8 @@
   import RailTabs from '$lib/web/components/rail-tabs.svelte';
   import ReviewPanel from '$lib/web/components/review-panel.svelte';
   import RightPanelTabs from '$lib/web/components/right-panel-tabs.svelte';
+  import SettingsPanel from '$lib/web/components/settings-panel.svelte';
   import SourceViewer from '$lib/web/components/source-viewer.svelte';
-  import ThemeSwitcher from '$lib/web/components/theme-switcher.svelte';
   import WorkspaceSidebar from '$lib/web/components/workspace-sidebar.svelte';
   import {
     activeFilePath,
@@ -300,7 +300,6 @@
   >
     {#if isMobileViewport}
       <div class="left-panel-header">
-        <ThemeSwitcher />
         <button
           data-testid="left-panel-collapse-btn"
           class="left-collapse-btn"
@@ -312,7 +311,6 @@
       </div>
     {:else}
       <div class="left-panel-header">
-        <ThemeSwitcher />
         <button
           data-testid="left-panel-collapse-btn"
           class="left-collapse-btn"
@@ -356,6 +354,8 @@
         {reviewedFilePaths}
         hasActiveReview={!!data.activeReview}
       />
+    {:else if activeRailTab === 'settings'}
+      <SettingsPanel />
     {/if}
   </aside>
 
@@ -471,8 +471,10 @@
     display: grid;
     grid-template-columns: 48px var(--left-panel-width, 300px) 1fr var(--right-panel-width, 320px);
     grid-template-rows: 1fr;
-    min-height: 100dvh;
+    /* Viewport-bound: fixed height so grid items cannot grow the shell. */
+    height: 100dvh;
     overflow: hidden;
+    background: var(--surface-primary);
   }
 
   /* ── Mobile grid: rail + center only ── */
@@ -489,6 +491,8 @@
     border-right: 1px solid var(--border-subtle);
     background: var(--surface-primary);
     overflow: hidden;
+    /* Grid item: never grow past the viewport row (scroll ownership). */
+    min-height: 0;
   }
 
   .left-contextual-panel:not(.collapsed) {
@@ -633,12 +637,17 @@
     grid-template-rows: auto 1fr;
     overflow: hidden;
     min-width: 0;
+    min-height: 0;
+    background: var(--surface-primary);
   }
 
   .work-area {
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    background: var(--surface-primary);
+    /* Grid item: stay inside the viewport row (scroll ownership). */
+    min-height: 0;
   }
 
   .diff-area {
@@ -646,6 +655,7 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    background: var(--surface-primary);
   }
 
   /* ─── Sidebar actions ─── */

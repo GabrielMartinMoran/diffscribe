@@ -155,6 +155,11 @@
     font-family: var(--font-mono);
     user-select: none;
     padding: var(--space-1) 0;
+    /* Scroll ownership: the tree scrolls inside the contextual panel
+       instead of being clipped by it. */
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
   }
 
   .tree-status {
@@ -171,7 +176,7 @@
   }
 
   .tree-error {
-    color: #ef4444;
+    color: var(--text-error);
   }
 
   .placeholder-hint {

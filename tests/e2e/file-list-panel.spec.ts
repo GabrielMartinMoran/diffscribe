@@ -65,7 +65,7 @@ test.describe('File List Panel (E2E)', () => {
       await expect(panel).toBeVisible({ timeout: 8000 });
 
       // Status badges should be present
-      await expect(panel.locator('.status-badge').first()).toBeVisible({ timeout: 10000 });
+      await expect(panel.locator('.ui-status-badge').first()).toBeVisible({ timeout: 10000 });
     } finally {
       fixture.cleanup();
     }
