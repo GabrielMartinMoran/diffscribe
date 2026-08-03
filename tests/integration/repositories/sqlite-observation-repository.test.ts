@@ -74,7 +74,7 @@ describe('SqliteObservationRepository', () => {
       reviewId: new ReviewId(reviewId),
       type: ObservationType.ISSUE,
       severity: ObservationSeverity.MAJOR,
-      title: 'Missing validation',
+      body: 'Missing validation',
       filePath: 'src/app.ts',
       lineRange: new LineRange(10, 15),
       comparisonSnapshotJson: JSON.stringify(makeComparison().toJSON()),
@@ -86,7 +86,7 @@ describe('SqliteObservationRepository', () => {
 
     const found = await repo.findById(obs.id);
     expect(found).not.toBeNull();
-    expect(found!.title).toBe('Missing validation');
+    expect(found!.body).toBe('Missing validation');
     expect(found!.type).toBe(ObservationType.ISSUE);
     expect(found!.filePath).toBe('src/app.ts');
     expect(found!.lineRange?.start).toBe(10);
@@ -105,7 +105,7 @@ describe('SqliteObservationRepository', () => {
       id: ObservationId.generate(),
       reviewId: new ReviewId(reviewId),
       type: ObservationType.NOTE,
-      title: 'Obs 1',
+      body: 'Obs 1',
       filePath: 'src/a.ts',
       comparisonSnapshotJson: JSON.stringify(makeComparison().toJSON()),
       diffSnapshot: 'content',
@@ -116,7 +116,7 @@ describe('SqliteObservationRepository', () => {
       id: ObservationId.generate(),
       reviewId: new ReviewId(reviewId),
       type: ObservationType.QUESTION,
-      title: 'Obs 2',
+      body: 'Obs 2',
       filePath: 'src/b.ts',
       comparisonSnapshotJson: JSON.stringify(makeComparison().toJSON()),
       diffSnapshot: 'content',
@@ -128,9 +128,9 @@ describe('SqliteObservationRepository', () => {
 
     const list = await repo.findByReviewId(new ReviewId(reviewId));
     expect(list).toHaveLength(2);
-    const titles = list.map((o) => o.title);
-    expect(titles).toContain('Obs 1');
-    expect(titles).toContain('Obs 2');
+    const bodies = list.map((o) => o.body);
+    expect(bodies).toContain('Obs 1');
+    expect(bodies).toContain('Obs 2');
   });
 
   it('deletes an observation by id', async () => {
@@ -143,7 +143,7 @@ describe('SqliteObservationRepository', () => {
       id: ObservationId.generate(),
       reviewId: new ReviewId(reviewId),
       type: ObservationType.NOTE,
-      title: 'To delete',
+      body: 'To delete',
       filePath: 'src/a.ts',
       comparisonSnapshotJson: JSON.stringify(makeComparison().toJSON()),
       diffSnapshot: 'content',
@@ -167,7 +167,7 @@ describe('SqliteObservationRepository', () => {
       id: ObservationId.generate(),
       reviewId: new ReviewId(reviewId),
       type: ObservationType.NOTE,
-      title: 'Obs',
+      body: 'Obs',
       filePath: 'src/a.ts',
       comparisonSnapshotJson: JSON.stringify(makeComparison().toJSON()),
       diffSnapshot: 'content',
@@ -190,7 +190,7 @@ describe('SqliteObservationRepository', () => {
       id: ObservationId.generate(),
       reviewId: new ReviewId(reviewId),
       type: ObservationType.NOTE,
-      title: 'Obs',
+      body: 'Obs',
       filePath: 'src/a.ts',
       comparisonSnapshotJson: JSON.stringify(makeComparison().toJSON()),
       diffSnapshot: 'content',
@@ -213,7 +213,7 @@ describe('SqliteObservationRepository', () => {
       id: obsId,
       reviewId: new ReviewId(reviewId),
       type: ObservationType.NOTE,
-      title: 'Original',
+      body: 'Original',
       filePath: 'src/a.ts',
       comparisonSnapshotJson: JSON.stringify(makeComparison().toJSON()),
       diffSnapshot: 'content',
@@ -222,11 +222,11 @@ describe('SqliteObservationRepository', () => {
 
     await repo.save(obs);
 
-    obs.editTitle('Updated');
+    obs.editBody('Updated');
     await repo.save(obs);
 
     const found = await repo.findById(obsId);
-    expect(found!.title).toBe('Updated');
+    expect(found!.body).toBe('Updated');
   });
 
   it('returns null for non-existent observation', async () => {
@@ -244,7 +244,7 @@ describe('SqliteObservationRepository', () => {
       id: ObservationId.generate(),
       reviewId: new ReviewId(reviewId),
       type: ObservationType.QUESTION,
-      title: 'Review-level question',
+      body: 'Review-level question',
       comparisonSnapshotJson: JSON.stringify(makeComparison().toJSON()),
     });
 

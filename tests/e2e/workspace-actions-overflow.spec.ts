@@ -105,4 +105,103 @@ test.describe('Workspace actions overflow menu', () => {
       fixture.cleanup();
     }
   });
+
+  test('overflow menu stays fully visible near the bottom edge of the sidebar', async ({
+    page,
+  }) => {
+    const fixture = createGitFixture('diffscribe-e2e-ovf-');
+    const name = `E2E-Ovf3-${Date.now()}`;
+
+    try {
+      initRepo(fixture);
+      await registerWorkspace(page, fixture.repoPath, name);
+
+      // Squeeze the viewport so the sidebar scrolls and the workspace item
+      // sits close to the bottom edge of the viewport.
+      await page.setViewportSize({ width: 1280, height: 320 });
+      await waitForHydration(page);
+
+      const item = page.locator(`#workspace-sidebar li:has-text("${name}")`);
+      const trigger = item.locator('[data-testid="workspace-actions"] button').first();
+      await trigger.scrollIntoViewIfNeeded();
+      await trigger.click();
+
+      const menu = page.getByRole('menu');
+      await expect(menu).toBeVisible({ timeout: 5000 });
+
+      // The whole menu, including its last item, must be inside the viewport.
+      const menuBox = (await menu.boundingBox())!;
+      const lastItem = menu.getByRole('menuitem', { name: 'Delete' });
+      await expect(lastItem).toBeVisible();
+      const itemBox = (await lastItem.boundingBox())!;
+
+      expect(menuBox.y).toBeGreaterThanOrEqual(0);
+      expect(itemBox.y + itemBox.height).toBeLessThanOrEqual(page.viewportSize()!.height + 1);
+      expect(menuBox.x).toBeGreaterThanOrEqual(0);
+      expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(page.viewportSize()!.width + 1);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  test('WS-OVERFLOW-06: invalid workspace menu paints above later rows', async ({ page }) => {
+    const fixtureA = createGitFixture('diffscribe-e2e-ovf-');
+    const fixtureB = createGitFixture('diffscribe-e2e-ovf-');
+    const nameA = `E2E-InvA-${Date.now()}`;
+    const nameB = `E2E-InvB-${Date.now()}`;
+
+    try {
+      initRepo(fixtureA);
+      initRepo(fixtureB);
+      await registerWorkspace(page, fixtureA.repoPath, nameA);
+      await registerWorkspace(page, fixtureB.repoPath, nameB);
+
+      // Invalidate A by removing its repository so the item renders with the
+      // invalid state (opacity < 1 creates a stacking context that used to
+      // trap the fixed-position popup below later sidebar rows).
+      fixtureA.cleanup();
+      await page.reload();
+      await page.waitForLoadState('networkidle');
+      await waitForHydration(page);
+
+      const itemA = page.locator(`#workspace-sidebar li:has-text("${nameA}")`).first();
+      await expect(itemA).toBeVisible({ timeout: 10000 });
+      const triggerA = itemA.locator('[data-testid="workspace-actions"] button').first();
+      await triggerA.click();
+
+      const menu = page.getByRole('menu');
+      await expect(menu).toBeVisible({ timeout: 5000 });
+      await expect(menu.getByRole('menuitem', { name: 'Repair' })).toBeVisible();
+
+      // Hit-test the center of the menu: the topmost element there must be
+      // the portaled menu (or one of its items), never a later sidebar row.
+      const box = (await menu.boundingBox())!;
+      const topmostRole = await page.evaluate(
+        ([x, y]) => {
+          const el = document.elementFromPoint(x, y);
+          const closest = el?.closest('[role="menu"], [role="menuitem"]');
+          return closest?.getAttribute('role') ?? el?.tagName.toLowerCase() ?? 'none';
+        },
+        [box.x + box.width / 2, box.y + box.height / 2] as [number, number],
+      );
+      expect(topmostRole, 'menu must be the topmost painted element at its center').toMatch(
+        /menu|menuitem/,
+      );
+
+      // The popup must live in the in-mount overlay host, not on document.body.
+      const hostOwner = await menu.evaluate((el) => {
+        const host = el.closest('[data-overlay-host]');
+        return host !== null;
+      });
+      expect(hostOwner).toBe(true);
+
+      // Every action must remain clickable (Repair is only present on
+      // invalid workspaces and must be actionable).
+      await menu.getByRole('menuitem', { name: 'Repair' }).click();
+      await expect(itemA.locator('[data-repair-form]').first()).toBeVisible({ timeout: 5000 });
+    } finally {
+      fixtureA.cleanup();
+      fixtureB.cleanup();
+    }
+  });
 });

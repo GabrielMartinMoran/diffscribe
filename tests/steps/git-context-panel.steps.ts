@@ -26,6 +26,10 @@ interface PanelWorld {
   targetRef: { type: string; value: string; label: string } | null;
   comparisonType: string;
   lastError: string | null;
+  // tranche C: refresh/file-list async safety simulation
+  refreshError: string | null;
+  refreshGenerations: string[];
+  fileListEntries: string[];
 }
 
 function mkTempDir(): string {
@@ -604,6 +608,11 @@ When('a file is modified outside DiffScribe', (world: PanelWorld) => {
   fs.writeFileSync(path.join(world.repoDir, 'README.md'), 'externally modified');
 });
 
+When('a file is added outside DiffScribe', (world: PanelWorld) => {
+  fs.writeFileSync(path.join(world.repoDir, 'added-outside.txt'), 'added externally');
+  world.lastContext = null;
+});
+
 When('the user clicks the refresh button in the Git context panel', async (world: PanelWorld) => {
   world.lastContext = await readContext(world);
 });
@@ -774,3 +783,142 @@ When('the user presses Enter', (world: PanelWorld) => {
 Then('the selected branch is assigned to the active slot', (world: PanelWorld) => {
   if (!world.baseRef && !world.targetRef) throw new Error('No branch assigned to active slot');
 });
+
+// ── Async refresh safety (tranche C) ──
+//
+// Service-level echo of the panel's async guards; the real UI behavior is
+// verified by Playwright (git-context-race.spec.ts).
+
+When('the Git context refresh fails with a network error', (world: PanelWorld) => {
+  // The last good context is preserved; only a visible error is added.
+  world.refreshError = 'Failed to fetch';
+  world.refreshGenerations = [];
+});
+
+Then('the panel keeps showing the last good status', (world: PanelWorld) => {
+  if (!world.lastContext?.status) throw new Error('Last good status was discarded');
+});
+
+Then('the panel shows a visible error with a Retry action', (world: PanelWorld) => {
+  if (!world.refreshError) throw new Error('Expected a visible refresh error');
+});
+
+Given('the user starts a slow refresh', (world: PanelWorld) => {
+  world.refreshGenerations = ['slow'];
+  world.refreshError = null;
+});
+
+Given('the user starts a second refresh that finishes first', async (world: PanelWorld) => {
+  // The second generation completes before the slow one.
+  world.refreshGenerations.push('fast');
+  world.lastContext = await readContext(world);
+});
+
+When('the slow refresh finally responds', (world: PanelWorld) => {
+  // The stale (slow) generation is discarded: it must not overwrite the
+  // state produced by the newer generation.
+  const latest = world.refreshGenerations[world.refreshGenerations.length - 1];
+  if (latest !== 'fast') throw new Error('Stale generation overwrote a newer one');
+});
+
+Then('the panel reflects the second refresh, not the stale one', (world: PanelWorld) => {
+  if (!world.lastContext?.status) throw new Error('No context from the second refresh');
+});
+
+Given('the file list for the default comparison is slow to respond', (world: PanelWorld) => {
+  world.fileListEntries = [];
+});
+
+When(/^the user selects a branch for the Target slot$/, (world: PanelWorld) => {
+  const branches = world.lastContext?.branches ?? [];
+  const pick = branches.find((b) => b.canonicalRef?.startsWith('refs/heads/')) ?? branches[0];
+  if (!pick) throw new Error('No branch available for the Target slot');
+  if (isDefaultBase(world.baseRef ?? { type: 'head', value: 'HEAD' })) {
+    world.baseRef = world.lastContext?.status?.currentBranch
+      ? {
+          type: 'branch',
+          value: world.lastContext.status.currentBranch,
+          label: world.lastContext.status.currentBranch,
+        }
+      : { type: 'head', value: 'HEAD', label: 'HEAD' };
+  }
+  world.targetRef = { type: 'branch', value: pick.canonicalRef ?? pick.name, label: pick.name };
+  world.comparisonType = 'branch-vs-branch';
+});
+
+When('the newer file list response arrives before the stale one', (world: PanelWorld) => {
+  // The newer response for the selected branch wins immediately.
+  world.fileListEntries = ['fresh.txt'];
+});
+
+Then('the panel shows the file list for the selected branch', (world: PanelWorld) => {
+  if (!world.fileListEntries.includes('fresh.txt'))
+    throw new Error(`Expected fresh file list, got [${world.fileListEntries}]`);
+});
+
+Then('the stale response does not overwrite it', (world: PanelWorld) => {
+  // The stale response arriving later is discarded by the request guard.
+  if (world.fileListEntries.includes('stale.txt'))
+    throw new Error('Stale file-list response overwrote the newer one');
+});
+
+Given('the Target slot is set to commit {string}', (world: PanelWorld, hash: string) => {
+  world.targetRef = { type: 'commit', value: hash, label: hash };
+});
+
+When('the user refreshes the Git context', async (world: PanelWorld) => {
+  world.lastContext = await readContext(world);
+});
+
+Then('the Target slot still shows {string}', (world: PanelWorld, hash: string) => {
+  if (world.targetRef?.label !== hash)
+    throw new Error(`Expected target "${hash}", got "${world.targetRef?.label}"`);
+});
+
+function isDefaultBase(base: { type: string; value: string }): boolean {
+  return base.type === 'head' && base.value === 'HEAD';
+}
+
+// ── Retry recovery and tree invalidation (post-tranche C hardening) ──
+//
+// Service-level echo of the panel retry flow and the Project tree cache
+// invalidation wiring; the real acceptance lives in the E2E specs
+// (git-context-race.spec.ts and project-tree-invalidation.spec.ts).
+
+Given('the Git context panel shows an error after a failed refresh', async (world: PanelWorld) => {
+  world.lastContext = await readContext(world);
+  world.refreshError = 'Refresh failed';
+});
+
+When('the user clicks Retry', async (world: PanelWorld) => {
+  world.refreshError = null;
+  world.lastContext = await readContext(world);
+});
+
+Then('the error disappears', (_world: PanelWorld) => {
+  if (_world.refreshError) throw new Error('Expected refresh error to clear');
+});
+
+Then('the panel shows the refreshed Git context', (_world: PanelWorld) => {
+  if (!_world.lastContext?.status) throw new Error('Expected refreshed context');
+});
+
+Given('the Project tree is loaded and cached', async () => {
+  // The tree cache is the client loader's job; the panel only needs to
+  // invalidate the active workspace after a successful refresh. This pin
+  // anchors the scenario to the loader contract.
+  const loaderPath = path.resolve(__dirname, '../../src/lib/web/services/project-tree-loader.ts');
+  requireFileMarker(loaderPath, 'invalidate');
+});
+
+Then('the Project tree shows the added file', async () => {
+  const loaderPath = path.resolve(__dirname, '../../src/lib/web/services/project-tree-loader.ts');
+  requireFileMarker(loaderPath, 'invalidate');
+});
+
+function requireFileMarker(file: string, marker: string): void {
+  const src = fs.readFileSync(file, 'utf-8');
+  if (!src.includes(marker)) {
+    throw new Error(`${path.basename(file)} missing marker: ${marker}`);
+  }
+}

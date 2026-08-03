@@ -37,8 +37,8 @@ function workspaceIdByName(world: OwnershipWorld, name: string): string {
 // Workspaces and reviews are pre-registered by shared steps in workspace-registration and review step files.
 
 Given(
-  'an observation with title {string} exists on the active review for workspace {string}',
-  async (world: OwnershipWorld, title: string, wsName: string) => {
+  'an observation with body {string} exists on the active review for workspace {string}',
+  async (world: OwnershipWorld, body: string, wsName: string) => {
     const services = createWorkspaceServices(world.db);
     const wsId = workspaceIdByName(world, wsName);
 
@@ -50,7 +50,7 @@ Given(
     const result = await services.createObservationUseCase.execute({
       reviewId,
       type: ObservationType.NOTE,
-      title,
+      body,
       filePath: 'src/app.ts',
       comparisonSnapshotJson: JSON.stringify(compJson()),
       diffSnapshot: 'content',
@@ -81,17 +81,17 @@ When(
   },
 );
 
-Then('the list contains {string}', (world: OwnershipWorld, title: string) => {
+Then('the list contains {string}', (world: OwnershipWorld, body: string) => {
   const list = (world as any).observationsForQuery as any[];
-  if (!list?.some((o: any) => o.title === title)) {
-    throw new Error(`Expected list to contain "${title}"`);
+  if (!list?.some((o: any) => o.body === body)) {
+    throw new Error(`Expected list to contain "${body}"`);
   }
 });
 
-Then('the list does not contain {string}', (world: OwnershipWorld, title: string) => {
+Then('the list does not contain {string}', (world: OwnershipWorld, body: string) => {
   const list = (world as any).observationsForQuery as any[];
-  if (list?.some((o: any) => o.title === title)) {
-    throw new Error(`Expected list NOT to contain "${title}"`);
+  if (list?.some((o: any) => o.body === body)) {
+    throw new Error(`Expected list NOT to contain "${body}"`);
   }
 });
 
@@ -103,7 +103,7 @@ Given('an observation exists on the completed review', async (world: OwnershipWo
   const obsId = randomUUID();
   const now = new Date().toISOString();
   db.prepare(
-    'INSERT INTO observations (id, review_id, type, title, comparison_snapshot_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    'INSERT INTO observations (id, review_id, type, body, comparison_snapshot_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
   ).run(
     obsId,
     world.activeReviewId!,
@@ -115,7 +115,7 @@ Given('an observation exists on the completed review', async (world: OwnershipWo
   );
   world.lastObservation = {
     id: obsId,
-    title: 'On completed review',
+    body: 'On completed review',
     reviewId: world.activeReviewId,
     status: 'open',
   };
@@ -129,7 +129,7 @@ Given(
     const obsId = randomUUID();
     const now = new Date().toISOString();
     db.prepare(
-      'INSERT INTO observations (id, review_id, type, title, status, comparison_snapshot_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO observations (id, review_id, type, body, status, comparison_snapshot_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
     ).run(
       obsId,
       world.activeReviewId!,
@@ -142,7 +142,7 @@ Given(
     );
     world.lastObservation = {
       id: obsId,
-      title: 'Status test',
+      body: 'Status test',
       reviewId: world.activeReviewId,
       status,
     };
@@ -157,7 +157,7 @@ When(
       await services.createObservationUseCase.execute({
         reviewId: world.activeReviewId!,
         type: ObservationType.NOTE,
-        title: 'Should fail',
+        body: 'Should fail',
         filePath: 'src/app.ts',
         comparisonSnapshotJson: JSON.stringify(compJson()),
         diffSnapshot: 'content',
@@ -172,11 +172,11 @@ When(
   },
 );
 
-When('the user attempts to edit the observation title', async (world: OwnershipWorld) => {
+When('the user attempts to edit the observation body', async (world: OwnershipWorld) => {
   const services = createWorkspaceServices(world.db);
   try {
     await services.updateObservationUseCase.execute(world.lastObservation!.id, {
-      title: 'Changed',
+      body: 'Changed',
     });
   } catch (e: any) {
     world.lastObservationError = e.message;
@@ -242,7 +242,7 @@ Given(
       await services.createObservationUseCase.execute({
         reviewId,
         type: ObservationType.NOTE,
-        title: `${wsName}-obs-${i}`,
+        body: `${wsName}-obs-${i}`,
         filePath: 'src/app.ts',
         comparisonSnapshotJson: JSON.stringify(compJson()),
         diffSnapshot: 'content',

@@ -146,11 +146,15 @@ test.describe('Git Context Panel (E2E)', () => {
 
       const panel = page.locator('#git-context-panel');
       await expect(panel).toBeVisible({ timeout: 10000 });
-      // Branch list should show branches
-      await expect(panel.locator('[aria-label="Local branches"]')).toBeVisible({ timeout: 8000 });
-      await expect(panel).toContainText('master');
-      await expect(panel).toContainText('feat/a');
-      await expect(panel).toContainText('fix/b');
+      // Open the Base trigger popup: the branch list lives in the popup now.
+      await panel.locator('.slot-base').click();
+      const branchList = panel.getByRole('listbox', { name: 'Branches' });
+      await expect(branchList).toBeVisible({ timeout: 8000 });
+      await expect(branchList).toContainText('master');
+      await expect(branchList).toContainText('feat/a');
+      await expect(branchList).toContainText('fix/b');
+      // The current branch has a separate marker in the popup.
+      await expect(branchList.getByText('current', { exact: true })).toBeVisible();
     } finally {
       fixture.cleanup();
     }
@@ -198,13 +202,14 @@ test.describe('Git Context Panel (E2E)', () => {
       const panel = page.locator('#git-context-panel');
       await expect(panel).toBeVisible({ timeout: 10000 });
 
-      // Filter branches
-      const filterInput = panel.locator('input[aria-label="Filter branches"]');
+      // Open the Base trigger popup and filter inside it.
+      await panel.locator('.slot-base').click();
+      const filterInput = panel.getByRole('combobox', { name: 'Filter branches' });
       await expect(filterInput).toBeVisible({ timeout: 10000 });
       await filterInput.fill('feat');
 
-      // After filtering, only feat/* branches should appear in the branch list
-      const branchItems = panel.locator('[aria-label="Local branches"] button');
+      // After filtering, only feat/* branches should appear in the popup.
+      const branchItems = panel.getByRole('listbox', { name: 'Branches' }).getByRole('option');
       await expect(branchItems).toHaveCount(2, { timeout: 8000 });
     } finally {
       fixture.cleanup();
@@ -406,9 +411,10 @@ test.describe('Git Context Panel (E2E)', () => {
       const panel = page.locator('#git-context-panel');
       await expect(panel).toBeVisible({ timeout: 10000 });
 
-      const filterInput = panel.locator('input[aria-label="Filter branches"]');
+      // The popup search input is autofocused on open and keyboard usable.
+      await panel.locator('.slot-base').click();
+      const filterInput = panel.getByRole('combobox', { name: 'Filter branches' });
       await expect(filterInput).toBeVisible({ timeout: 10000 });
-      await filterInput.focus();
       await expect(filterInput).toBeFocused();
 
       // Type filter text

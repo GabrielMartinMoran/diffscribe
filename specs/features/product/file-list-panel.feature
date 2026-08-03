@@ -167,3 +167,21 @@ Feature: File list panel — browsing changed files with filtering, sorting, and
     Then the repository index is unchanged
     And no git add, checkout, or commit has been executed
     And no new branch has been created
+
+  # ────── Mobile and narrow-panel controls (hardening H1) ──────
+
+  @delta-added @p1 @ui @e2e
+  Scenario Outline: File list controls fit and stay interactive at narrow widths
+    Given the user views the file list panel at <width> px
+    Then the file list controls fit within the panel without horizontal overflow
+    And the List and Tree controls are inside the panel
+    When the user clicks the Tree control and then the List control
+    Then the file list switches between Tree and List views
+    And the chosen view persists across reloads
+
+    Examples:
+      | width |
+      | 320   |
+      | 375   |
+      | 768   |
+      | 1280  |

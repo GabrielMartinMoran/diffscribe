@@ -94,16 +94,16 @@ test.describe('Comparison Propagation (E2E)', () => {
       const diffViewer = page.locator('.diff-viewer');
       await expect(diffViewer).toBeVisible({ timeout: 8000 });
 
-      // Change the base slot to feature-branch
+      // Change the base slot to feature-branch (via the branch popup)
       const comparisonSlots = page.locator('.comparison-slots');
       const baseBtn = comparisonSlots.locator('.slot-btn').first();
       const slotValues = comparisonSlots.locator('.slot-value');
       await baseBtn.click();
 
-      const branchList = page.locator('[aria-label="Local branches"]');
+      const branchList = page.getByRole('listbox', { name: 'Branches' });
       await expect(branchList).toBeVisible({ timeout: 10000 });
 
-      const branchItem = branchList.locator('button').filter({ hasText: 'feature-branch' });
+      const branchItem = branchList.getByRole('option', { name: /feature-branch/ });
       await expect(branchItem).toBeVisible({ timeout: 10000 });
       await branchItem.click();
 

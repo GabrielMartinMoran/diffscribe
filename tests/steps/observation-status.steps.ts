@@ -30,7 +30,7 @@ Given(
     const result = await services.createObservationUseCase.execute({
       reviewId: world.activeReviewId!,
       type: ObservationType.NOTE,
-      title: 'Status test',
+      body: 'Status test',
       filePath: 'src/app.ts',
       comparisonSnapshotJson: JSON.stringify(compJson()),
       diffSnapshot: 'content',

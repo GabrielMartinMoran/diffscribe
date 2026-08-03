@@ -81,7 +81,6 @@ export class CreateObservationUseCase {
       reviewId,
       type: command.type,
       severity: command.severity,
-      title: command.title,
       body: command.body,
       agentInstruction: command.agentInstruction,
       filePath: command.filePath,
@@ -143,7 +142,7 @@ export class UpdateObservationUseCase {
 
   async execute(
     observationId: string,
-    update: { title?: string; body?: string; agentInstruction?: string },
+    update: { body?: string; agentInstruction?: string },
   ): Promise<ObservationResult> {
     const id = new ObservationId(observationId);
     const observation = await this.observationRepository.findById(id);
@@ -157,9 +156,6 @@ export class UpdateObservationUseCase {
       throw new ReviewReadOnlyError(observation.reviewId.value);
     }
 
-    if (update.title !== undefined) {
-      observation.editTitle(update.title);
-    }
     if (update.body !== undefined) {
       observation.editBody(update.body);
     }
@@ -246,7 +242,6 @@ function toResult(obs: Observation): ObservationResult {
     severity: obs.severity,
     origin: obs.origin,
     status: obs.status,
-    title: obs.title,
     body: obs.body,
     agentInstruction: obs.agentInstruction,
     filePath: obs.filePath,

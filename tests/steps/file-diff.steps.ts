@@ -1034,3 +1034,45 @@ Then('the side-by-side toggle control is hidden', () => {
 Given('the file list panel is visible', (world: DiffWorld) => {
   ensureRepo(world);
 });
+
+// ────────────────────────────────────────────────────────────────────────────
+//  Line-number gutter geometry (CSS contract; real geometry is measured in
+//  tests/e2e/gutter-geometry.spec.ts with real fonts, tolerance <= 1 px)
+// ────────────────────────────────────────────────────────────────────────────
+
+const DIFF_VIEWER_PATH = path.resolve(__dirname, '../../src/lib/web/components/diff-viewer.svelte');
+
+function requireCssRuleMarker(file: string, selector: string, marker: string): void {
+  const src = fs.readFileSync(file, 'utf-8');
+  const styleMatch = src.match(/<style[^>]*>([\s\S]*?)<\/style>/);
+  const styleSource = styleMatch ? styleMatch[1] : '';
+  const rules = styleSource.replace(/\/\*[\s\S]*?\*\//g, '').match(/[^{}]+\{[^}]*\}/g) ?? [];
+  const rule = rules.find((r) => r.replace(/\{[\s\S]*$/, '').trim() === selector);
+  if (!rule || !rule.includes(marker)) {
+    throw new Error(`${path.basename(file)}: rule ${selector} missing marker: ${marker}`);
+  }
+}
+
+Then(
+  'each line-number cell in the unified diff is 48 px wide including its internal padding',
+  () => {
+    requireCssRuleMarker(DIFF_VIEWER_PATH, '.line-number', 'width: 48px');
+    requireCssRuleMarker(DIFF_VIEWER_PATH, '.line-number', 'padding: 0 var(--space-2)');
+    requireCssRuleMarker(DIFF_VIEWER_PATH, '.line-number', 'box-sizing: border-box');
+  },
+);
+
+Then('the old and new line-number cells together span exactly 96 px', () => {
+  const src = fs.readFileSync(DIFF_VIEWER_PATH, 'utf-8');
+  if (
+    !src.includes('class="line-number old-number"') ||
+    !src.includes('class="line-number new-number"')
+  ) {
+    throw new Error('Unified diff rows must render two line-number cells (old + new)');
+  }
+});
+
+Then('every rendered line number stays inside its 48 px line-number cell', () => {
+  requireCssRuleMarker(DIFF_VIEWER_PATH, '.line-number', 'text-align: right');
+  requireCssRuleMarker(DIFF_VIEWER_PATH, '.line-number', 'box-sizing: border-box');
+});

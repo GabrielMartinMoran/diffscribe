@@ -47,6 +47,12 @@ export default defineConfig({
       'tests/steps/line-wrapping.steps.ts',
       'tests/steps/file-list-tree.steps.ts',
       'tests/steps/git-branches.steps.ts',
+      'tests/steps/workspace-invalid-state.steps.ts',
+      'tests/steps/observation-draft.steps.ts',
+      'tests/steps/open-files-tabs.steps.ts',
+      'tests/steps/quick-open.steps.ts',
+      'tests/steps/git-ref-popup.steps.ts',
+      'tests/steps/mobile-hardening.steps.ts',
     ],
   },
 });

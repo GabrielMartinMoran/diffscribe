@@ -1,10 +1,12 @@
 <script lang="ts">
-  import { Ellipsis } from 'svelte-lucide';
+  import { Ellipsis, TriangleAlert } from 'svelte-lucide';
 
   import { enhance } from '$app/forms';
   import type { WorkspaceListItem } from '$lib/server/application/dto/results/workspace-results';
+  import { projectTreeLoader } from '$lib/web/services/project-tree-loader';
 
   import DeleteConfirmDialog from './delete-confirm-dialog.svelte';
+  import Dialog from './ui/Dialog.svelte';
   import Menu from './ui/Menu.svelte';
   import WorkspaceRenameForm from './workspace-rename-form.svelte';
   import WorkspaceRepairForm from './workspace-repair-form.svelte';
@@ -20,6 +22,7 @@
   let showRenameForm = $state(false);
   let showDeleteDialog = $state(false);
   let showRepairForm = $state(false);
+  let showWarningDialog = $state(false);
 
   function onRenameSaved() {
     showRenameForm = false;
@@ -35,10 +38,25 @@
 
   function onRepairSaved() {
     showRepairForm = false;
+    // The repaired workspace may point at different repository content:
+    // drop its cached Project tree so the next load starts a fresh request.
+    // Targeted only — other workspaces keep their cache.
+    projectTreeLoader.invalidate(workspace.id);
   }
 
   function onRepairCancelled() {
     showRepairForm = false;
+  }
+
+  function closeWarningDialog() {
+    showWarningDialog = false;
+  }
+
+  // Repair from the warning dialog: close the dialog and reuse the existing
+  // repair form rendered by this item.
+  function repairFromWarningDialog() {
+    showWarningDialog = false;
+    showRepairForm = true;
   }
 
   function handleMenuSelect(value: string) {
@@ -116,12 +134,17 @@
     </button>
   </form>
 
-  {#if isActive}
-    <span class="active-badge" role="status">active</span>
-  {/if}
-
   {#if workspace.status === 'invalid'}
-    <span class="invalid-badge" aria-label="Invalid workspace">invalid</span>
+    <button
+      type="button"
+      data-testid="invalid-warning-btn"
+      class="invalid-warning-btn"
+      aria-label="Invalid workspace, repair required"
+      title="Invalid workspace, repair required"
+      onclick={() => (showWarningDialog = true)}
+    >
+      <TriangleAlert size="14" strokeWidth="1.5" aria-hidden="true" />
+    </button>
   {/if}
 
   <Menu
@@ -165,6 +188,25 @@
     workspaceName={workspace.displayName}
     onClose={closeDeleteDialog}
   />
+{/if}
+
+{#if showWarningDialog}
+  <Dialog
+    open={true}
+    id="invalid-workspace-{workspace.id}"
+    title="Invalid workspace"
+    onclose={closeWarningDialog}
+  >
+    <p id="invalid-workspace-desc">
+      This workspace points to a repository path that is missing or no longer a valid Git
+      repository. Repair it to continue reviewing.
+    </p>
+
+    {#snippet actions()}
+      <button type="button" class="btn-secondary" onclick={closeWarningDialog}>Close</button>
+      <button type="button" class="btn-primary" onclick={repairFromWarningDialog}>Repair</button>
+    {/snippet}
+  </Dialog>
 {/if}
 
 <style>
@@ -249,26 +291,55 @@
     min-width: 0;
   }
 
-  .active-badge {
-    font-size: var(--text-xs);
-    font-weight: var(--font-weight-semibold);
-    padding: 0 var(--space-2);
-    border-radius: var(--radius-full);
-    background: var(--diff-added-bg);
-    color: var(--diff-added-text);
-    border: 1px solid var(--diff-added-border);
-    text-transform: uppercase;
-  }
-
-  .invalid-badge {
-    font-size: var(--text-xs);
-    font-weight: var(--font-weight-semibold);
-    padding: 0 var(--space-2);
-    border-radius: var(--radius-full);
+  .invalid-warning-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 1px solid var(--state-error-border);
+    border-radius: var(--radius-sm);
     background: var(--state-error-bg);
     color: var(--severity-critical);
-    border: 1px solid var(--state-error-border);
-    text-transform: uppercase;
+    cursor: pointer;
+    transition:
+      color 0.15s,
+      background 0.15s;
+  }
+
+  .invalid-warning-btn:hover {
+    background: var(--state-error-border);
+    color: var(--text-inverse);
+  }
+
+  .invalid-warning-btn:focus-visible {
+    outline: var(--focus-ring-offset) solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+
+  .btn-primary {
+    padding: var(--space-1) var(--space-3);
+    border: none;
+    border-radius: var(--radius-sm);
+    background: var(--accent);
+    color: var(--text-inverse);
+    cursor: pointer;
+    font-size: var(--text-sm);
+  }
+
+  .btn-primary:hover {
+    opacity: 0.9;
+  }
+
+  .btn-secondary {
+    padding: var(--space-1) var(--space-3);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    background: var(--surface-primary);
+    color: var(--text-primary);
+    cursor: pointer;
+    font-size: var(--text-sm);
   }
 
   .rename-form-container {

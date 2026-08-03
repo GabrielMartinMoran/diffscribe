@@ -11,7 +11,6 @@ export interface ObservationResult {
   severity: ObservationSeverity | null;
   origin: string;
   status: ObservationStatus;
-  title: string;
   body: string;
   agentInstruction: string;
   filePath: string | null;

@@ -15,12 +15,12 @@ export class SqliteObservationRepository implements ObservationRepository {
     this.db
       .prepare(
         `INSERT INTO observations (
-          id, review_id, type, severity, origin, status, title, body, agent_instruction,
+          id, review_id, type, severity, origin, status, body, agent_instruction,
           file_path, side, line_start, line_end,
           comparison_snapshot_json, diff_snapshot, content_hash,
           created_at, updated_at
         ) VALUES (
-          @id, @review_id, @type, @severity, @origin, @status, @title, @body, @agent_instruction,
+          @id, @review_id, @type, @severity, @origin, @status, @body, @agent_instruction,
           @file_path, @side, @line_start, @line_end,
           @comparison_snapshot_json, @diff_snapshot, @content_hash,
           @created_at, @updated_at
@@ -28,7 +28,6 @@ export class SqliteObservationRepository implements ObservationRepository {
           type = excluded.type,
           severity = excluded.severity,
           status = excluded.status,
-          title = excluded.title,
           body = excluded.body,
           agent_instruction = excluded.agent_instruction,
           file_path = excluded.file_path,

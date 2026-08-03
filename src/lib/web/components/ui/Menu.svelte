@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { Component } from 'svelte';
 
+  import { portal } from '$lib/web/actions/portal';
+
   import { uid } from './ids';
 
   export type MenuItem = {
@@ -33,20 +35,60 @@
   let open = $state(false);
   let triggerRef = $state<HTMLButtonElement>();
   let wrapperRef = $state<HTMLDivElement>();
+  let listRef = $state<HTMLDivElement>();
   let itemRefs: (HTMLButtonElement | null)[] = [];
 
   // Dynamic icon tag: derived so the variable name is a valid component tag.
   const TriggerIcon = $derived(icon);
 
+  /**
+   * Position the popup in fixed coordinates relative to the viewport and
+   * clamp it so the whole menu stays visible even when the trigger sits near
+   * the bottom or right edge of a scrollable container. The position and
+   * visibility are applied imperatively in the same frame so the first item
+   * can be focused immediately: a class-based visibility toggle would not
+   * be painted yet and focus() on a hidden element is a no-op.
+   */
+  function positionMenu(): void {
+    if (!triggerRef || !listRef) return;
+    const rect = triggerRef.getBoundingClientRect();
+    const width = listRef.offsetWidth;
+    const height = listRef.offsetHeight;
+    const gap = 8; // var(--space-2)
+    const margin = 4;
+
+    let left = align === 'end' ? rect.right - width : rect.left;
+    let top = rect.bottom + gap;
+
+    left = Math.max(margin, Math.min(left, window.innerWidth - width - margin));
+    top = Math.max(margin, Math.min(top, window.innerHeight - height - margin));
+
+    listRef.style.left = `${Math.round(left)}px`;
+    listRef.style.top = `${Math.round(top)}px`;
+    listRef.style.visibility = 'visible';
+  }
+
+  function focusFirstItem(): void {
+    const first = itemRefs.find((el) => el && !el.disabled);
+    first?.focus({ preventScroll: true });
+  }
+
+  function openMenu(): void {
+    open = true;
+    // Position after the list is in the DOM, before paint. The list is
+    // hidden (visibility: hidden) until this pass so it never flashes at
+    // the origin; positionMenu() also reveals it.
+    requestAnimationFrame(() => {
+      positionMenu();
+      focusFirstItem();
+    });
+  }
+
   function toggle() {
     if (open) {
       close();
     } else {
-      open = true;
-      requestAnimationFrame(() => {
-        const first = itemRefs.find((el) => el && !el.disabled);
-        first?.focus();
-      });
+      openMenu();
     }
   }
 
@@ -60,10 +102,7 @@
     if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
       if (!open) {
         e.preventDefault();
-        open = true;
-        requestAnimationFrame(() => {
-          itemRefs.find((el) => el && !el.disabled)?.focus();
-        });
+        openMenu();
       }
     }
   }
@@ -98,7 +137,7 @@
       default:
         return;
     }
-    next?.focus();
+    next?.focus({ preventScroll: true });
   }
 
   function activate(item: MenuItem) {
@@ -106,16 +145,46 @@
     close();
   }
 
-  // Light dismiss: click outside the wrapper closes the menu.
+  // Light dismiss: a pointer down outside the trigger and the portaled popup
+  // closes the menu. The popup lives in the overlay host (see use:portal
+  // below), so the wrapper alone cannot contain it.
   $effect(() => {
     if (!open) return;
     function onPointerDown(e: PointerEvent) {
-      if (wrapperRef && e.target instanceof Node && !wrapperRef.contains(e.target)) {
+      if (
+        e.target instanceof Node &&
+        wrapperRef &&
+        listRef &&
+        !wrapperRef.contains(e.target) &&
+        !listRef.contains(e.target)
+      ) {
         close();
       }
     }
     document.addEventListener('pointerdown', onPointerDown);
     return () => document.removeEventListener('pointerdown', onPointerDown);
+  });
+
+  // Reposition when the viewport resizes while open; close on scroll so the
+  // popup never drifts away from its trigger inside scrollable containers.
+  $effect(() => {
+    if (!open) return;
+    function onResize() {
+      if (open) {
+        requestAnimationFrame(() => positionMenu());
+      }
+    }
+    function onScroll(e: Event) {
+      // Only react to scrolling containers that are not the popup itself.
+      if (e.target instanceof Node && listRef && listRef.contains(e.target)) return;
+      close();
+    }
+    window.addEventListener('resize', onResize);
+    document.addEventListener('scroll', onScroll, true);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      document.removeEventListener('scroll', onScroll, true);
+    };
   });
 </script>
 
@@ -138,7 +207,15 @@
     {/if}
   </button>
   {#if open}
-    <div id={menuId} role="menu" class="ui-menu__list" tabindex="-1" onkeydown={handleMenuKeydown}>
+    <div
+      bind:this={listRef}
+      id={menuId}
+      role="menu"
+      class="ui-menu__list"
+      tabindex="-1"
+      use:portal
+      onkeydown={handleMenuKeydown}
+    >
       {#each items as item, i (item.value)}
         <button
           type="button"
@@ -189,9 +266,12 @@
     outline-offset: 2px;
   }
 
+  /* Fixed positioning: the popup is placed relative to the viewport and
+     clamped inside it, so it stays fully visible even when the trigger sits
+     near the bottom edge of a scrollable container. Hidden until the first
+     position pass (imperative) to avoid a flash at the origin. */
   .ui-menu__list {
-    position: absolute;
-    top: calc(100% + var(--space-2));
+    position: fixed;
     z-index: var(--z-dropdown);
     display: flex;
     flex-direction: column;
@@ -201,14 +281,7 @@
     border-radius: var(--radius-sm);
     background: var(--surface-elevated);
     box-shadow: var(--shadow-md);
-  }
-
-  .ui-menu--align-start .ui-menu__list {
-    left: 0;
-  }
-
-  .ui-menu--align-end .ui-menu__list {
-    right: 0;
+    visibility: hidden;
   }
 
   .ui-menu__item {

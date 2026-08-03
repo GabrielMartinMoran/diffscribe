@@ -56,15 +56,15 @@ Given(
 // ── Observation creation ──
 
 When(
-  'the user creates an observation with type {string}, severity {string}, and title {string}',
-  async (world: ObsWorld, type: string, severity: string, title: string) => {
+  'the user creates an observation with type {string}, severity {string}, and body {string}',
+  async (world: ObsWorld, type: string, severity: string, body: string) => {
     const services = createWorkspaceServices(world.db);
     try {
       const result = await services.createObservationUseCase.execute({
         reviewId: world.activeReviewId!,
         type: type as ObservationType,
         severity: severity as ObservationSeverity,
-        title,
+        body,
         filePath: 'src/app.ts',
         lineRangeStart: 10,
         lineRangeEnd: 15,
@@ -91,15 +91,15 @@ Given(
 );
 
 When(
-  'the user creates an observation with type {string} and title {string}',
-  async (world: ObsWorld, type: string, title: string) => {
+  'the user creates an observation with type {string} and body {string}',
+  async (world: ObsWorld, type: string, body: string) => {
     const services = createWorkspaceServices(world.db);
     try {
       const noFile = (world as any)._noFileSelected;
       const createParams: any = {
         reviewId: world.activeReviewId!,
         type: type as ObservationType,
-        title,
+        body,
         comparisonSnapshotJson: JSON.stringify(compJson()),
       };
       if (!noFile) {
@@ -118,14 +118,14 @@ When(
 );
 
 When(
-  'the user creates a review-level observation with type {string} and title {string}',
-  async (world: ObsWorld, type: string, title: string) => {
+  'the user creates a review-level observation with type {string} and body {string}',
+  async (world: ObsWorld, type: string, body: string) => {
     const services = createWorkspaceServices(world.db);
     try {
       const result = await services.createObservationUseCase.execute({
         reviewId: world.activeReviewId!,
         type: type as ObservationType,
-        title,
+        body,
         comparisonSnapshotJson: JSON.stringify(compJson()),
       });
       world.lastObservation = result;
@@ -140,20 +140,17 @@ When('the user selects lines {int} through {int} in {string} on the new side', (
   // No-op: selection is implicit in create
 });
 
-When(
-  'the user creates an observation with type {string} and no title',
-  async (world: ObsWorld, type: string) => {
-    await whenUserAttemptsEmptyTitle(world, type);
-  },
-);
+When('the user attempts to create an observation with an empty body', async (world: ObsWorld) => {
+  await whenUserAttemptsEmptyBody(world, 'note');
+});
 
-async function whenUserAttemptsEmptyTitle(world: ObsWorld, type: string) {
+async function whenUserAttemptsEmptyBody(world: ObsWorld, type: string) {
   const services = createWorkspaceServices(world.db);
   try {
     await services.createObservationUseCase.execute({
       reviewId: world.activeReviewId!,
       type: type as ObservationType,
-      title: '',
+      body: '',
       filePath: 'src/app.ts',
       comparisonSnapshotJson: JSON.stringify(compJson()),
       diffSnapshot: 'content',
@@ -165,19 +162,15 @@ async function whenUserAttemptsEmptyTitle(world: ObsWorld, type: string) {
   }
 }
 
-When('the user attempts to create an observation with an empty title', async (world: ObsWorld) => {
-  await whenUserAttemptsEmptyTitle(world, 'note');
-});
-
 When(
-  'the user attempts to create an observation with a title of {int} characters',
+  'the user attempts to create an observation with a body of {int} characters',
   async (world: ObsWorld, length: number) => {
     const services = createWorkspaceServices(world.db);
     try {
       await services.createObservationUseCase.execute({
         reviewId: world.activeReviewId!,
         type: ObservationType.NOTE,
-        title: 'x'.repeat(length),
+        body: 'x'.repeat(length),
         filePath: 'src/app.ts',
         comparisonSnapshotJson: JSON.stringify(compJson()),
         diffSnapshot: 'content',
@@ -198,7 +191,7 @@ When(
       await services.createObservationUseCase.execute({
         reviewId: world.activeReviewId!,
         type: type as ObservationType,
-        title: 'Test',
+        body: 'Test',
         severity: undefined,
         filePath: 'src/app.ts',
         lineRangeStart: 10,
@@ -222,7 +215,7 @@ When(
       const result = await services.createObservationUseCase.execute({
         reviewId: world.activeReviewId!,
         type: type as ObservationType,
-        title: 'Great work',
+        body: 'Great work',
         filePath: 'src/app.ts',
         comparisonSnapshotJson: JSON.stringify(compJson()),
         diffSnapshot: 'content',
@@ -331,14 +324,14 @@ Then('the operation is rejected', (world: ObsWorld) => {
   if (!world.lastObservationError) throw new Error('Expected error but operation succeeded');
 });
 
-Then('the error indicates that the title must not be empty', (world: ObsWorld) => {
-  if (!world.lastObservationError?.includes('title must not be empty')) {
-    throw new Error(`Expected title error, got: ${world.lastObservationError}`);
+Then('the error indicates that the body must not be empty', (world: ObsWorld) => {
+  if (!world.lastObservationError?.includes('body must not be empty')) {
+    throw new Error(`Expected body error, got: ${world.lastObservationError}`);
   }
 });
 
-Then('the error indicates that the title exceeds the maximum length', (world: ObsWorld) => {
-  if (!world.lastObservationError?.includes('title exceeds 200')) {
+Then('the error indicates that the body exceeds the maximum length', (world: ObsWorld) => {
+  if (!world.lastObservationError?.includes('body exceeds 5000')) {
     throw new Error(`Expected length error, got: ${world.lastObservationError}`);
   }
 });
@@ -370,13 +363,13 @@ Then('the operation succeeds without error', (world: ObsWorld) => {
 // ── Edit and delete ──
 
 Given(
-  'an observation with title {string} exists on the active review',
-  async (world: ObsWorld, title: string) => {
+  'an observation with body {string} exists on the active review',
+  async (world: ObsWorld, body: string) => {
     const services = createWorkspaceServices(world.db);
     const result = await services.createObservationUseCase.execute({
       reviewId: world.activeReviewId!,
       type: ObservationType.NOTE,
-      title,
+      body,
       filePath: 'src/app.ts',
       comparisonSnapshotJson: JSON.stringify(compJson()),
       diffSnapshot: 'content',
@@ -387,12 +380,12 @@ Given(
 );
 
 When(
-  'the user edits the observation title to {string}',
-  async (world: ObsWorld, newTitle: string) => {
+  'the user edits the observation body to {string}',
+  async (world: ObsWorld, newBody: string) => {
     const services = createWorkspaceServices(world.db);
     try {
       const result = await services.updateObservationUseCase.execute(world.lastObservation!.id, {
-        title: newTitle,
+        body: newBody,
       });
       world.lastObservation = result;
     } catch (e: any) {
@@ -401,9 +394,9 @@ When(
   },
 );
 
-Then('the observation title is updated to {string}', (world: ObsWorld, expected: string) => {
-  if (world.lastObservation.title !== expected) {
-    throw new Error(`Expected title "${expected}", got "${world.lastObservation.title}"`);
+Then('the observation body is updated to {string}', (world: ObsWorld, expected: string) => {
+  if (world.lastObservation.body !== expected) {
+    throw new Error(`Expected body "${expected}", got "${world.lastObservation.body}"`);
   }
 });
 

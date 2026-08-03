@@ -176,3 +176,12 @@ Feature: Design token contract — every UI token is declared and applied correc
     When the change marker CSS rules are inspected
     Then no hardcoded hex color values are used for marker backgrounds
     And all marker colors reference CSS custom properties
+
+  @quality @tokens @theme @etapa-1
+  Scenario: TOKEN-02 — the --text-2xs token is declared in every theme block and used with an ellipsis
+    Given the global token contract
+    When the text token family is enumerated
+    Then --text-2xs is declared in the :root token block
+    And --text-2xs is declared in the Dark Deep token block
+    And --text-2xs is declared in the Synthwave '84 token block
+    And the rail label styles use --text-2xs with nowrap and ellipsis truncation

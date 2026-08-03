@@ -1,21 +1,37 @@
 <script lang="ts">
   import { browser } from '$app/environment';
+  import {
+    readStoredQuickOpenIncludeUntracked,
+    resolveQuickOpenIncludeUntracked,
+    writeStoredQuickOpenIncludeUntracked,
+  } from '$lib/web/stores/quick-open-store';
   import { readStoredWrap, resolveWrap, writeStoredWrap } from '$lib/web/stores/wrap-store';
 
   import ThemeSwitcher from './theme-switcher.svelte';
   import Switch from './ui/Switch.svelte';
 
   let wrapEnabled = $state(false);
+  let quickOpenIncludeUntracked = $state(false);
 
   $effect(() => {
     if (!browser) return;
     wrapEnabled = resolveWrap(readStoredWrap(window.localStorage));
+    quickOpenIncludeUntracked = resolveQuickOpenIncludeUntracked(
+      readStoredQuickOpenIncludeUntracked(window.localStorage),
+    );
   });
 
   function handleWrapChange() {
     wrapEnabled = !wrapEnabled;
     if (browser) {
       writeStoredWrap(wrapEnabled, window.localStorage);
+    }
+  }
+
+  function handleQuickOpenUntrackedChange() {
+    quickOpenIncludeUntracked = !quickOpenIncludeUntracked;
+    if (browser) {
+      writeStoredQuickOpenIncludeUntracked(quickOpenIncludeUntracked, window.localStorage);
     }
   }
 </script>
@@ -47,6 +63,17 @@
         When enabled, long lines wrap inside the diff viewer instead of scrolling horizontally.
       </p>
     </div>
+    <div class="settings-row">
+      <Switch
+        data-testid="settings-quick-open-untracked-switch"
+        checked={quickOpenIncludeUntracked}
+        label="Include untracked files in Quick Open"
+        onchange={handleQuickOpenUntrackedChange}
+      />
+      <p class="settings-hint">
+        When enabled, Quick Open also lists untracked files. The Git file list is not affected.
+      </p>
+    </div>
   </section>
 </div>
 
@@ -70,6 +97,7 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
+    margin-bottom: var(--space-4);
   }
 
   .settings-hint {

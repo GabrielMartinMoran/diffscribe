@@ -484,3 +484,232 @@ Given(
 When('the adapter attempts to access the repository', async (world: GitContextAdapterWorld) => {
   world.mappedResult = await world.reader.read('/tmp/does-not-exist-bdd-99999');
 });
+
+// ── Canonical branch refs (tranche C) ──
+
+Given(
+  'a workspace with local branch {string} and cached remote branch {string}',
+  (world: GitContextAdapterWorld, local: string, remote: string) => {
+    ensureRepo(world);
+    gitCommit(world.repoDir, 'initial');
+    execSync(`git checkout -b ${local}`, { cwd: world.repoDir, stdio: 'pipe' });
+    gitCommit(world.repoDir, `${local} work`);
+    execSync(`git update-ref refs/remotes/${remote} HEAD`, { cwd: world.repoDir, stdio: 'pipe' });
+  },
+);
+
+Given(
+  'a workspace with local branches {string}, {string}, and {string} with known committer dates',
+  (world: GitContextAdapterWorld, b1: string, b2: string, b3: string) => {
+    ensureRepo(world);
+    const commit = (msg: string, date: string): void => {
+      fs.writeFileSync(path.join(world.repoDir, `f-${msg}.txt`), msg);
+      execSync('git add .', { cwd: world.repoDir, stdio: 'pipe' });
+      execSync(`git commit -m "${msg}"`, {
+        cwd: world.repoDir,
+        stdio: 'pipe',
+        env: { ...process.env, GIT_COMMITTER_DATE: date, GIT_AUTHOR_DATE: date },
+      });
+    };
+    commit('initial', '2026-01-01T10:00:00Z');
+    execSync(`git checkout -b ${b1}`, { cwd: world.repoDir, stdio: 'pipe' });
+    commit(`${b1} work`, '2026-01-03T10:00:00Z');
+    execSync(`git checkout -b ${b2}`, { cwd: world.repoDir, stdio: 'pipe' });
+    commit(`${b2} work`, '2026-01-02T10:00:00Z');
+    execSync(`git checkout -b ${b3}`, { cwd: world.repoDir, stdio: 'pipe' });
+    commit(`${b3} work`, '2026-01-02T10:00:00Z');
+    execSync('git checkout master', { cwd: world.repoDir, stdio: 'pipe' });
+  },
+);
+
+Given(
+  'a cached remote branch {string} with a known committer date',
+  (world: GitContextAdapterWorld, remote: string) => {
+    execSync(`git update-ref refs/remotes/${remote} HEAD`, { cwd: world.repoDir, stdio: 'pipe' });
+  },
+);
+
+Given('a workspace with a branch that has no committer date', (world: GitContextAdapterWorld) => {
+  ensureRepo(world);
+  gitCommit(world.repoDir, 'initial');
+  // A branch ref pointing at a blob object has no committer date in
+  // for-each-ref %(committerdate) output, simulating a ref without a date.
+  // update-ref rejects non-commit objects for refs/heads, so the loose ref
+  // file is written directly; the reader only runs for-each-ref + status.
+  const blob = execSync('git hash-object -w --stdin', {
+    cwd: world.repoDir,
+    stdio: 'pipe',
+    input: 'blob content',
+  })
+    .toString()
+    .trim();
+  fs.mkdirSync(path.join(world.repoDir, '.git', 'refs', 'heads'), { recursive: true });
+  fs.writeFileSync(path.join(world.repoDir, '.git', 'refs', 'heads', 'undated'), `${blob}\n`);
+});
+
+Given('a branch with a known committer date', (world: GitContextAdapterWorld) => {
+  gitCommit(world.repoDir, 'dated work');
+  execSync('git branch dated', { cwd: world.repoDir, stdio: 'pipe' });
+});
+
+Given(
+  'a workspace with a cached remote branch and a remote HEAD pseudo-ref',
+  (world: GitContextAdapterWorld) => {
+    ensureRepo(world);
+    gitCommit(world.repoDir, 'initial');
+    execSync('git update-ref refs/remotes/origin/main HEAD', {
+      cwd: world.repoDir,
+      stdio: 'pipe',
+    });
+    execSync('git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main', {
+      cwd: world.repoDir,
+      stdio: 'pipe',
+    });
+  },
+);
+
+Given('the git context adapter is loaded', (world: GitContextAdapterWorld) => {
+  ensureRepo(world);
+  gitCommit(world.repoDir, 'initial');
+  execSync('git update-ref refs/remotes/origin/main HEAD', { cwd: world.repoDir, stdio: 'pipe' });
+});
+
+When('the adapter maps the combined for-each-ref output', async (world: GitContextAdapterWorld) => {
+  world.mappedResult = await world.reader.read(world.repoDir);
+  world.mappedBranches = world.mappedResult.branches;
+});
+
+When(
+  'the adapter reads branches from a workspace with a cached remote branch',
+  async (world: GitContextAdapterWorld) => {
+    world.mappedResult = await world.reader.read(world.repoDir);
+    world.mappedBranches = world.mappedResult.branches;
+  },
+);
+
+Then(
+  'the branch entry for {string} has canonicalRef {string}',
+  (world: GitContextAdapterWorld, name: string, canonicalRef: string) => {
+    const branch = world.mappedBranches.find((b) => b.name === name);
+    if (!branch) throw new Error(`Branch "${name}" not found`);
+    if (branch.canonicalRef !== canonicalRef)
+      throw new Error(
+        `Expected canonicalRef "${canonicalRef}" for "${name}", got "${branch.canonicalRef}"`,
+      );
+  },
+);
+
+Then(
+  'every branch entry has a committerDate serialized as ISO-8601 UTC',
+  (world: GitContextAdapterWorld) => {
+    for (const b of world.mappedBranches) {
+      if (!b.committerDate) throw new Error(`Branch "${b.name}" missing committerDate`);
+      if (!b.committerDate.endsWith('Z'))
+        throw new Error(`committerDate "${b.committerDate}" not UTC`);
+      if (Number.isNaN(Date.parse(b.committerDate)))
+        throw new Error(`committerDate "${b.committerDate}" not ISO-8601`);
+    }
+  },
+);
+
+Then(
+  'the visible branch names remain short without the full ref prefix',
+  (world: GitContextAdapterWorld) => {
+    for (const b of world.mappedBranches) {
+      if (b.name.startsWith('refs/'))
+        throw new Error(`Full ref leaked into visible name "${b.name}"`);
+    }
+  },
+);
+
+Then('local branches appear before cached remote branches', (world: GitContextAdapterWorld) => {
+  const refs = world.mappedBranches.map((b) => b.canonicalRef);
+  const firstRemote = refs.findIndex((r) => r.startsWith('refs/remotes/'));
+  const lastLocal = refs
+    .map((r, i) => (r.startsWith('refs/heads/') ? i : -1))
+    .reduce((m, i) => Math.max(m, i), -1);
+  if (firstRemote >= 0 && lastLocal > firstRemote)
+    throw new Error('Local branches must appear before cached remote branches');
+});
+
+Then(
+  'within a group branches are ordered by committerDate descending',
+  (world: GitContextAdapterWorld) => {
+    const groups = new Map<string, typeof world.mappedBranches>();
+    for (const b of world.mappedBranches) {
+      const key = b.isRemote ? 'remote' : 'local';
+      const list = groups.get(key) ?? [];
+      list.push(b);
+      groups.set(key, list);
+    }
+    for (const [key, list] of groups) {
+      const dated = list.filter((b) => b.committerDate);
+      for (let i = 1; i < dated.length; i++) {
+        const prev = Date.parse(dated[i - 1].committerDate!);
+        const curr = Date.parse(dated[i].committerDate!);
+        if (curr > prev) throw new Error(`Group "${key}" not ordered by committerDate descending`);
+      }
+    }
+  },
+);
+
+Then(
+  'branches with equal committerDate tie-break by canonicalRef ascending',
+  (world: GitContextAdapterWorld) => {
+    const seen = new Map<string, string>();
+    for (const b of world.mappedBranches) {
+      if (!b.committerDate) continue;
+      const prev = seen.get(b.committerDate);
+      if (prev !== undefined && prev.localeCompare(b.canonicalRef) > 0)
+        throw new Error(`Tie-break violated for date "${b.committerDate}"`);
+      seen.set(b.committerDate, b.canonicalRef);
+    }
+  },
+);
+
+Then(
+  'the branch entry without a date has no committerDate property',
+  (world: GitContextAdapterWorld) => {
+    const undated = world.mappedBranches.find((b) => b.name === 'undated');
+    if (!undated) throw new Error('Branch "undated" not found');
+    if (undated.committerDate !== undefined) throw new Error('Expected no committerDate');
+  },
+);
+
+Then('the dated branch is sorted before the undated branch', (world: GitContextAdapterWorld) => {
+  const undatedIndex = world.mappedBranches.findIndex((b) => b.name === 'undated');
+  const datedIndex = world.mappedBranches.findIndex((b) => b.name === 'dated');
+  if (undatedIndex < 0 || datedIndex < 0)
+    throw new Error('Expected branches "dated" and "undated"');
+  if (undatedIndex < datedIndex) throw new Error('Undated branch must sort after the dated branch');
+});
+
+Then('the BranchDto list is empty', (world: GitContextAdapterWorld) => {
+  if (world.mappedBranches.length !== 0)
+    throw new Error(`Expected empty branch list, got ${world.mappedBranches.length}`);
+});
+
+Then(
+  'the BranchDto list does not contain {string}',
+  (world: GitContextAdapterWorld, name: string) => {
+    if (world.mappedBranches.some((b) => b.name === name))
+      throw new Error(`Branch "${name}" should not be in the list`);
+  },
+);
+
+Then('the BranchDto list contains {string}', (world: GitContextAdapterWorld, name: string) => {
+  if (!world.mappedBranches.some((b) => b.name === name))
+    throw new Error(
+      `Branch "${name}" not in branch list: [${world.mappedBranches.map((b) => b.name).join(', ')}]`,
+    );
+});
+
+Then('no git fetch, pull, push, or ls-remote operation is available in the reader', () => {
+  const readerSrc = fs.readFileSync(
+    path.resolve(__dirname, '../../src/lib/server/infrastructure/git/simple-git-context-reader.ts'),
+    'utf-8',
+  );
+  if (/\bgit\.(fetch|pull|push|ls-remote)\b|\.fetch\(/.test(readerSrc)) {
+    throw new Error('Context reader must never fetch, pull, push, or run ls-remote');
+  }
+});

@@ -63,29 +63,66 @@ test.describe('File list — list and tree views', () => {
     await expect(treeToggle).toHaveAttribute('aria-pressed', 'true');
   });
 
-  test('tree view groups files by directory with expandable directories', async ({ page }) => {
+  test('tree view groups files by directory with directories expanded by default', async ({
+    page,
+  }) => {
     await openPanelWithNestedFiles(page);
     await page.getByTestId('file-list-view-tree').click();
 
     const tree = page.getByTestId('file-list-tree');
     await expect(tree).toBeVisible();
 
-    // Directories start collapsed; the src node exposes an expand toggle.
+    // Directories are expanded by default; files are visible without a click.
     const srcToggle = page.getByTestId('file-tree-toggle-src');
     await expect(srcToggle).toBeVisible();
-    await expect(srcToggle).toHaveAttribute('aria-expanded', 'false');
-    await expect(page.getByTestId('file-tree-node-src/app.ts')).toHaveCount(0);
-
-    // Expanding reveals the files and nested directories.
-    await srcToggle.click();
     await expect(srcToggle).toHaveAttribute('aria-expanded', 'true');
     await expect(page.getByTestId('file-tree-node-src/app.ts')).toBeVisible();
     await expect(page.getByTestId('file-tree-node-src/components')).toBeVisible();
 
-    // Collapsing hides them again.
+    // Nested directories are expanded too.
+    const componentsToggle = page.getByTestId('file-tree-toggle-src/components');
+    await expect(componentsToggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByTestId('file-tree-node-src/components/Button.tsx')).toBeVisible();
+  });
+
+  test('directories can be collapsed and expanded manually', async ({ page }) => {
+    await openPanelWithNestedFiles(page);
+    await page.getByTestId('file-list-view-tree').click();
+
+    const srcToggle = page.getByTestId('file-tree-toggle-src');
+    await expect(srcToggle).toHaveAttribute('aria-expanded', 'true');
+
+    // Collapse hides the files and nested directories.
     await srcToggle.click();
     await expect(srcToggle).toHaveAttribute('aria-expanded', 'false');
     await expect(page.getByTestId('file-tree-node-src/app.ts')).toHaveCount(0);
+
+    // Expanding reveals them again.
+    await srcToggle.click();
+    await expect(srcToggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByTestId('file-tree-node-src/app.ts')).toBeVisible();
+    await expect(page.getByTestId('file-tree-node-src/components')).toBeVisible();
+  });
+
+  test('directory expansion is not persisted across reloads', async ({ page }) => {
+    await openPanelWithNestedFiles(page);
+    await page.getByTestId('file-list-view-tree').click();
+
+    const srcToggle = page.getByTestId('file-tree-toggle-src');
+    await srcToggle.click();
+    await expect(srcToggle).toHaveAttribute('aria-expanded', 'false');
+
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+    await page.getByTestId('rail-tab-git').click();
+    const fileList = page.locator('#file-list-panel');
+    await expect(fileList).toBeVisible({ timeout: 8000 });
+    await page.getByTestId('file-list-view-tree').click();
+
+    // Directories are expanded by default again after the reload.
+    const reloadedToggle = page.getByTestId('file-tree-toggle-src');
+    await expect(reloadedToggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByTestId('file-tree-node-src/app.ts')).toBeVisible();
   });
 
   test('chosen view persists across reloads', async ({ page }) => {
@@ -109,8 +146,8 @@ test.describe('File list — list and tree views', () => {
   test('selecting a file inside a directory opens the diff viewer', async ({ page }) => {
     await openPanelWithNestedFiles(page);
     await page.getByTestId('file-list-view-tree').click();
-    await page.getByTestId('file-tree-toggle-src').click();
 
+    // Directories are expanded by default, so the file is directly reachable.
     const fileRow = page.getByTestId('file-tree-node-src/app.ts');
     await expect(fileRow).toBeVisible();
     await clickAndWaitForDiff(page, fileRow);

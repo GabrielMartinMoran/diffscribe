@@ -223,6 +223,7 @@ initial fallback:
 
 | Token             | Size / Line-height | Use                                |
 | ----------------- | ------------------ | ---------------------------------- |
+| `--text-2xs`      | `0.625rem / 1rem`  | Rail and strip labels (ellipsis)   |
 | `--text-xs`       | `0.75rem / 1rem`   | Line numbers, badges, timestamps   |
 | `--text-sm`       | `0.8125rem / 1.25rem` | Diff code, file list            |
 | `--text-base`     | `0.875rem / 1.5rem` | UI text, observations             |
@@ -300,7 +301,8 @@ initial fallback:
 | `--z-base`             | 0     | Content                       |
 | `--z-dropdown`         | 100   | Dropdowns, selects            |
 | `--z-sticky`           | 200   | Fixed headers                 |
-| `--z-overlay`          | 300   | Overlays, backdrops           |
+| `--z-backdrop`         | 299   | Mobile backdrop (below overlays) |
+| `--z-overlay`          | 300   | Overlays: right sheet, mobile toggle column |
 | `--z-modal`            | 400   | Modals                        |
 | `--z-toast`            | 500   | Notifications                 |
 | `--z-tooltip`          | 600   | Tooltips                      |
@@ -396,6 +398,7 @@ initial fallback:
   --line-height-code: 1.25rem;
   --line-height-normal: 1.5rem;
   --line-height-relaxed: 1.75rem;
+  --text-2xs: 0.625rem;
   --text-xs: 0.75rem;
   --text-sm: 0.8125rem;
   --text-base: 0.875rem;
@@ -465,6 +468,7 @@ initial fallback:
   --text-tertiary: #6C757D;
   --text-inverse: #1A1A2E;
   --text-link: #60A5FA;
+  --text-2xs: 0.625rem;
 
   --border-subtle: #2D2D44;
   --border-default: #3D3D5C;
@@ -568,6 +572,7 @@ controlled opacity.
   --text-tertiary: #7a6a9a;
   --text-inverse: #0d0221;
   --text-link: #2de2e6;
+  --text-2xs: 0.625rem;
 
   --border-subtle: #2e2157;
   --border-default: #540d6e;
@@ -640,7 +645,10 @@ There is no "desktop-only" version that later adapts to mobile.
 
 - **Compact (mobile):** the left rail shrinks to icons without visible labels.
   The contextual panel and right panel appear as overlay drawers or bottom
-  sheets, never permanent. Only one zone visible at a time.
+  sheets, never permanent. Only one zone visible at a time. The mobile shell
+  grid is `48px 1fr 32px`: rail, center, and a deliberate right toggle column
+  that spans the full center height (target >= 24x24) and never creates an
+  implicit second grid row.
 - **Tablet:** rail with icons; contextual panel is collapsible. The right panel
   appears as an overlay when activating a tab.
 - **Desktop and wide:** rail + contextual panel visible. The right panel is
@@ -718,6 +726,15 @@ Compact rail of icons (Lucide) that allows toggling between global views:
 Workspaces, settings, and preferences. It is fixed, does not scroll. Its width
 is designed for icons without labels on compact desktop and expands on wide.
 
+#### Rail labels
+
+Rail tab labels use the `--text-2xs` caption token (`0.625rem`) with
+`white-space: nowrap`, `max-width: 100%`, `overflow: hidden`, and
+`text-overflow: ellipsis`. Labels never use `word-break` or `overflow-wrap`;
+long labels truncate with an ellipsis instead of clipping or wrapping (RAIL-02,
+TOKEN-02). The token is declared in every theme block (`:root`, Dark Deep,
+Synthwave '84).
+
 ### Contextual panel
 
 Collapsible and resizable panel to the right of the rail. Contains three tabs:
@@ -732,6 +749,18 @@ Collapsible and resizable panel to the right of the rail. Contains three tabs:
 
 The contextual panel scrolls its content independently per the active tab.
 
+#### Invalid workspace (tranche)
+
+An invalid workspace (missing or non-Git repository path) no longer renders
+the ACTIVE/INVALID text badges. Instead, the sidebar item shows a warning icon
+(`TriangleAlert`) in an icon button with the accessible name "Invalid
+workspace, repair required". Activating it opens the generic `Dialog` with
+Close and Repair actions; Repair closes the dialog and reuses the existing
+repair form (WS-INVALID-01/02/03). The warning button uses
+`--state-error-*` tokens and visible focus. The overflow menu still exposes
+Repair for invalid workspaces, and its popup is portaled to the overlay host so
+it paints above later rows.
+
 ### Central area
 
 Shows the main content:
@@ -740,6 +769,71 @@ Shows the main content:
   between two Git states.
 - **Source View** (from the Project tab): source of the selected file with
   syntax highlighting and affected line markers.
+
+#### Line-number gutter (48 px per cell)
+
+Every `.line-number` cell — in the Diff Viewer and in the Source View —
+measures exactly **48 px outer width including its internal padding**
+(`padding-inline: var(--space-2)`, 8 px on each side). The cell rule uses
+`box-sizing: border-box` so the declared `width: 48px` is the total rendered
+width. There is no global box-sizing reset and no breakpoint-specific value.
+
+- **Unified diff:** each row renders two cells (old + new), so the combined
+  old/new gutter is exactly 96 px. The row structure is never changed.
+- **Source View:** the 1 px divider (`border-right`) stays inside the 48 px
+  cell, the change marker remains 4 px wide, and `.line-content` keeps its
+  12 px inline padding (`--space-3`).
+- **Legibility:** numbers are right-aligned; up to five digits fit inside the
+  cell (mono 11 px in the diff viewer, `--text-xs` 12 px in the source view).
+  Real bounding-box coverage lives in `tests/e2e/gutter-geometry.spec.ts`
+  (tolerance <= 1 px, viewports 320/375/768/1280).
+- **Interaction:** selection, hover, hunk focus, wrapping, and scroll
+  behavior are unaffected by the gutter geometry.
+
+#### Open files tabs (multi-tab viewer)
+
+The central viewer shows a tab strip above the work area (32 px high,
+`--surface-secondary` background, `--border-subtle` bottom border). Contract:
+
+- **Active vs inactive:** the active tab renders with the file-tab chrome on
+  `--surface-primary` and full `--text-primary` color; inactive tabs are
+  visibly dimmed (`--text-tertiary`, reduced opacity on the close affordance)
+  but remain readable. The active tab is the only one with `aria-selected`
+  and `tabindex="0"`.
+- **Close:** every tab exposes a close button with an accessible name
+  ("Close <label>"); closing the active tab selects next, else previous, else
+  the empty viewer ("No file selected"). Closing an inactive tab preserves
+  the active tab.
+- **Keyboard:** roving tabindex; ArrowLeft/ArrowRight move focus, Home/End
+  jump to first/last, focus-visible ring per token. Enter/Space on a tree or
+  file-list row stays a normal click (reuse active tab), never a new tab.
+- **Modifiers:** Ctrl/Cmd-click on a Project tree file or Git/file-list row
+  opens an additional tab (or activates the already-open tab); modifier
+  clicks on diff lines remain line selection and never create tabs.
+
+#### Quick Open dialog
+
+Ctrl/Cmd+P opens a product modal centered over the workbench. Layout and
+behavior contract:
+
+- **Structure:** native `dialog` semantics (`role="dialog"`, `aria-modal`)
+  with a filter input (`role="combobox"`, `aria-expanded`, `aria-controls`),
+  a result list (`role="listbox"`, `aria-activedescendant`, active result
+  scrolls into view), and loading/empty/error states.
+- **Shortcuts:** ArrowUp/ArrowDown move with wrap, Home/End jump to
+  first/last, Enter opens the current tab, Ctrl/Cmd+Enter opens a new tab,
+  mouse click opens the current tab, Escape closes without changing the
+  active file and restores focus to the previously focused element.
+- **Capture rules:** Ctrl/Cmd+P is captured only without Alt/Shift; the
+  browser print shortcut is prevented only when handled; Ctrl/Cmd+Shift+P
+  stays unclaimed; repeated keypresses are guarded; composing IME events
+  (`isComposing`) never accept, navigate, or close the dialog.
+- **Routing:** every acceptance activates the Project rail before opening, so
+  the Source Viewer is shown regardless of the current rail.
+- **Index:** the dialog searches the shared Project tree (tracked files by
+  default; the `diffscribe-quick-open-include-untracked` setting exposes
+  untracked files) and highlights fuzzy matches. See
+  `docs/architecture.md` → Quick Open index.
 
 ### Right panel
 
@@ -751,13 +845,30 @@ Collapsible and resizable panel with two tabs:
 Both panels (contextual and right) can be collapsed and resized within
 predefined minimum and maximum limits.
 
+#### Collapsed right strip (desktop)
+
+When the right panel is collapsed on desktop it renders a 48 px vertical strip
+(`box-sizing: border-box`) with the Comments and Review tabs using the `Tabs`
+kit in `orientation="vertical"`. Activating a strip tab expands the panel and
+selects the tab at once (PANEL-STRIP-02). Collapsing returns focus to the
+active strip tab (PANEL-STRIP-03). On compact, the bottom sheet keeps its
+slide-up behavior and the toggle lives in the dedicated right column of the
+mobile shell (see Responsive behavior), sitting above the backdrop so it
+stays usable to open and close the sheet. Scroll ownership and the persisted
+expanded width are unaffected; the collapsed grid column is 48 px
+wide so the strip is a real column, not an overflow.
+
 ### Scroll ownership
 
 Each zone handles its own scroll independently:
 
 - The **left rail** is fixed (does not scroll).
 - The **contextual panel** scrolls vertically its content (Project tree,
-  Workspaces list, Git context). Each tab has its own scroll.
+  Workspaces list, Git context). Each tab has its own scroll. The **Git
+  context panel is the single scroll owner** for its content: status,
+  comparison slots, file list, commits, and footer all scroll inside one
+  scrollport (`min-height: 0`), and the file list inside it is content-sized
+  (`height: auto`) so it never creates a nested uncontrolled scroll.
 - The **central area** (Diff Viewer or Source View) scrolls vertically and
   horizontally (for long lines in side-by-side or extensive source files).
 - The **right panel** scrolls vertically its content (Comments and Review).
@@ -804,10 +915,48 @@ not part of the server-side domain model.
 ### Git panel — branches and comparisons (tranche)
 
 The Git contextual panel lists **local branches** and **cached remote
-branches** (`refs/remotes/*` read with `git for-each-ref`, read-only). No
-`git fetch`, tags, or network operation is ever executed; remote refs are
-whatever the local clone already has on disk. Remote branches are marked
-with a "remote" tag and are selectable as comparison refs.
+branches** (`refs/heads/*` and `refs/remotes/*` read with one read-only
+`git for-each-ref`, no network). No `git fetch`, tags, or network operation
+is ever executed; remote refs are whatever the local clone already has on
+disk. Remote branches carry a "remote" marker and appear in their own
+**Cached remote** group.
+
+**Visible label convention:** the UI never shows full refs. Local branches
+render as `<name>` (e.g. `dev`); cached remote branches render as
+`<remote>/<name>` (e.g. `origin/dev`). The canonical ref
+(`refs/heads/dev`, `refs/remotes/origin/dev`) is the selection value/key, so
+a local branch and a cached remote branch with the same visible name never
+collide.
+
+**Ordering:** Local group first, Cached remote second; within a group,
+committer date descending (newest first); branches without a date last;
+equal dates tie-break by canonical ref ascending. The sort is pure
+TypeScript (server-side `branch-sort.ts`); the client preserves the
+server order.
+
+**Base/Target triggers and popup:** Base and Target are two independent
+triggers. Each opens a product-specific inline **non-modal popup**
+(`branch-select-popup.svelte`) inside the panel — no portal, no dialog,
+internal vertical scroll. Opening one closes the other. On open the search
+input autofocuses; Escape closes without changing the draft and restores
+focus to the trigger. Mouse selection is supported.
+
+**Popup groups and states:** the popup shows the Local and Cached remote
+groups (group headers sticky), a fuzzy filter across both groups, and
+explicit empty / no-match / loading / error+Retry states.
+
+**ARIA contract:** the search input is a combobox with
+aria-expanded/controls/activedescendant; options are listbox options.
+`aria-selected` reflects **only** the selected slot value (the canonical
+ref). The current branch has a separate visual and accessibility marker
+("current" badge) and is never forced to the top of the list.
+
+**Keyboard and IME:** ArrowUp/ArrowDown navigate with wrap, Home/End jump,
+Enter accepts, Escape dismisses. `isComposing` input (IME) never accepts,
+navigates, or closes.
+
+**Responsive:** at 320/375/768 px the popup fits the panel/drawer width,
+scrolls internally, and never causes horizontal overflow.
 
 The **Base/Target selector** works on the ephemeral comparison draft:
 
@@ -1073,6 +1222,19 @@ passes on migrated consumers.
   ArrowUp/ArrowDown (or Left/Right for submenus — not used in Stage 1),
   Home/End, Enter/Space activates, Escape closes and returns focus to the
   trigger.
+
+#### Menu popup portal (tranche)
+
+The Menu popup is portaled via the `portal` action
+(`src/lib/web/actions/portal.ts`) to the in-mount overlay host declared by the
+root layout (`[data-overlay-host]`). This escapes ancestor stacking contexts
+(for example an invalid workspace item with `opacity < 1`) and overflow
+clipping, so the popup always paints above later rows (WS-OVERFLOW-06).
+`document.body` is never used; the popup keeps `position: fixed`, viewport
+clamping, focus management, Escape, scroll close, ARIA roles, and light
+dismiss (the dismiss hit-test covers both the trigger wrapper and the portaled
+list). The overlay host must not apply `transform`, `filter`, or `contain`,
+which would break fixed positioning.
 - Popover: Escape closes, focus moves predictably (first focusable or
   trigger), light dismiss (click outside) is part of the contract.
 - Dialog: native `showModal()`; Escape closes natively; the browser returns
@@ -1266,11 +1428,31 @@ ranges.
 
 **ObservationForm:**
 - Type select, severity select (only for issue/risk)
-- Title input (required, 1-200 chars)
-- Body textarea (≤5000 chars)
+- Body textarea (required, 1-5000 chars; there is no title)
 - Scope info (filePath, lines, side) when there is an active selection
 - Client-side validation before submit
 - SHA-256 computed via Web Crypto API with canonical format
+
+#### Observation draft (tranche)
+
+The draft is backed by a per-instance `ObservationDraftStore`
+(`src/lib/web/stores/observation-draft-store.svelte.ts`) owned by the page
+shell, so body, type, and severity survive switching between the Comments and
+Review tabs (the form unmounts). The store has explicit states: `pristine`,
+`dirty`, `submitting`, and `confirm`.
+
+- A normal (replace) selection click or Cancel with a dirty draft opens the
+  "Discard draft?" dialog (generic `Dialog`). **Keep draft** preserves the
+  draft and restores the previous viewer selection; **Discard** drops it and
+  adopts the new selection (replace) or clears the form and selection
+  (cancel).
+- Ctrl/Cmd toggle and Shift extend selections carry `kind: 'toggle'` /
+  `'extend'` in the diff-viewer payload and never touch the draft or the
+  active tab. Only `kind: 'replace'` may switch to Comments and trigger the
+  discard flow.
+- A successful create clears the draft; a failed create or a missing context
+  (no active review, no comparison draft) shows an inline error with
+  `role="alert"` (OBS-DRAFT-*, OBS-ERR-*).
 
 **Panel states:**
 - Loading: spinner + "Loading observations..." text

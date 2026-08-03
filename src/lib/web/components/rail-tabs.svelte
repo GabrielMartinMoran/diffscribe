@@ -107,10 +107,15 @@
   }
 
   .rail-tabs :global(.ui-tabs__label) {
-    font-size: 8px;
+    /* Compact caption token: 0.625rem. Labels never wrap or break; long
+       labels truncate with an ellipsis inside the 40px rail tab. */
+    font-size: var(--text-2xs);
     line-height: 1;
     letter-spacing: 0.02em;
     white-space: nowrap;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .rail-reopen-btn {

@@ -6,11 +6,14 @@ import { defineConfig } from 'vitest/config';
 const libAlias = path.resolve('./src/lib');
 
 export default defineConfig({
-  plugins: [sveltekit()],
+  // The SvelteKit plugin is applied per project below: Vitest projects do not
+  // inherit root-level plugins, and .svelte.ts runes modules (e.g.
+  // observation-draft-store) need the Svelte transform in the unit project.
   test: {
     exclude: ['tests/e2e/**', 'node_modules/**', '.svelte-kit/**', 'build/**'],
     projects: [
       {
+        plugins: [sveltekit()],
         resolve: {
           alias: {
             $lib: libAlias,
@@ -24,6 +27,7 @@ export default defineConfig({
         },
       },
       {
+        plugins: [sveltekit()],
         resolve: {
           alias: {
             $lib: libAlias,

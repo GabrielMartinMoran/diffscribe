@@ -17,6 +17,13 @@ Feature: Git branches — cached remotes and inferred comparisons
     Then the branch list shows the local branches
     And the branch list shows the cached remote branch with a remote marker
 
+  @product @git @p2 @e2e
+  Scenario: Cached remote branches appear in their own group with a remote marker
+    Given a workspace with a cached remote branch
+    When the user views the Git branch list
+    Then the branch list shows the local branches
+    And the cached remote branch appears in the Cached remote group with a remote marker
+
   @product @git @p1 @e2e
   Scenario: Selecting a target auto-activates the Base slot
     Given the Git comparison selector is open

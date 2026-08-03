@@ -11,6 +11,122 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Post-tranche C hardening: real refresh states wired into the Base/Target
+  branch popup — the popup shows a loading state only while a refresh is in
+  flight with no branches known, a failed refresh inside an open popup shows
+  an inline error with Retry, and the global error banner is gated behind
+  `!openSlot` so exactly one alert owner exists at a time. Real IME
+  composition events (compositionstart/end + `isComposing` Enter) are
+  covered by executable E2E, and the responsive popup contract is verified
+  at 320/375/768 px.
+- Targeted pending-safe Project tree invalidation
+  (`projectTreeLoader.invalidate(workspaceId)`): drops only the given
+  workspace's cached snapshot; while a request is pending the in-flight
+  promise is shared (no overlapping fetches) and the first load after it
+  settles starts one fresh request. Called only after a successful Git
+  context refresh and after a successful workspace repair; rail switches,
+  comparison changes, and file-list refreshes never invalidate, so switching
+  tabs stays request-free.
+- BDD/E2E: `project-tree-invalidation.spec.ts` (new) plus hardening
+  scenarios in `git-ref-popup.feature`, `git-context-panel.feature`,
+  `project-tree.feature`, and `quick-open.feature`; docs:
+  `docs/architecture.md` (popup refresh states, loader invalidation call
+  sites).
+- Tranche C (branch selector): `BranchDto` extended additively with
+  `canonicalRef` (full Git ref as selection value/key) and optional
+  `committerDate` (ISO-8601 UTC). Local heads and cached remote refs are
+  read with ONE read-only `git for-each-ref` invocation (`%(HEAD)` +
+  `%(committerdate:iso8601)`); no fetch/pull/push/ls-remote; remote HEAD
+  pseudo-refs excluded. Ordering is pure TypeScript (`branch-sort.ts`):
+  Local group first, Cached remote second, committer date descending,
+  missing dates last, canonical ref ascending tie-break.
+- Product-specific non-modal branch popup (`branch-select-popup.svelte`)
+  for the Base/Target triggers: inline inside the panel (no portal/dialog),
+  mutual exclusion between triggers, autofocused search, Local/Cached
+  remote groups ordered by recency, fuzzy filter across both groups,
+  combobox ARIA contract (aria-selected = slot value only; separate current
+  branch marker), Arrow/Home/End/Enter/Escape keyboard with IME guard and
+  focus return, empty/no-match/loading/error/retry states, and compact
+  viewport fit with internal scroll. Selection stores the canonical ref and
+  shows the short visible label (`dev`, `origin/dev`); no checkout.
+- Async/error safety: Git panel refresh and file-list fetch run under
+  monotonic request guards (`request-guard.ts`); a failed refresh preserves
+  the last good context with a visible error and Retry; project tree
+  comparison/status fetch discards stale responses.
+- BDD features: `git-ref-popup.feature` (new) plus tranche-C scenarios in
+  `git-context-adapter.feature`, `git-context-panel.feature`, and
+  `git-branches.feature`; E2E specs `git-ref-popup.spec.ts` and
+  `git-context-race.spec.ts` (new), updated `git-branches.spec.ts` and
+  `git-context-panel.spec.ts`.
+- Docs: `docs/architecture.md` (combined for-each-ref reader, canonical
+  refs, product composite vs generic UI), `docs/design.md` (popup triggers,
+  groups/order, current vs selected, keyboard/ARIA/IME/focus, states,
+  responsive, visible label convention), `docs/domain.md` (canonical ref
+  convention for GitRef branch values).
+
+### Changed
+
+- Mobile hardening (H1-H4): the file list controls wrap in narrow panels
+  (`flex-wrap: wrap`, `min-width: 0` on the filter input; the status select
+  keeps its readability minimum) so List/Tree stay inside the panel and
+  hit-testable at 320/375/768/1280 with view persistence intact. The mobile
+  backdrop drops to `--z-backdrop: 299` below the right sheet (300) and left
+  drawer (301); modal stays 400. The mobile right toggle is a deliberate
+  third grid column (`48px 1fr 32px`, full center height, >= 24x24) instead
+  of an implicit ~18px second row, sits above the backdrop, and keeps opening
+  and closing the sheet. The Git context panel is the single scroll owner
+  (`flex: 1 1 auto; min-height: 0`) and the file list panel is content-sized
+  (`height: auto`) with its `overflow: hidden` guard, so commits, rows,
+  pagination, and footer are reachable by one scroll. Gherkin scenarios
+  merged into `responsive-mobile.feature`, `file-list-panel.feature`, and
+  `git-context-panel.feature`; real-geometry E2E in
+  `tests/e2e/mobile-hardening.spec.ts` (elementFromPoint, bounding boxes,
+  scroll ownership, real clicks).
+
+### Fixed
+
+- Line-number gutter geometry: every `.line-number` cell now measures
+  exactly 48 px outer width including its `--space-2` (8 px) inline padding
+  (`box-sizing: border-box` on the cell rule in `diff-viewer.svelte` and
+  `source-viewer.svelte`; previously the content-box padding pushed the cell
+  to ~64/65 px). Unified diff rows keep two cells (old + new, 96 px
+  combined); the source divider (1 px, inside the 48 px), the change marker
+  (4 px), and `.line-content` padding (12 px) are unchanged. Selection,
+  hover, hunk focus, wrapping, and scroll behavior are preserved. Gherkin
+  scenarios merged into `diff-viewer.feature`, `source-view.feature`, and
+  `line-wrapping.feature`; real-geometry E2E in
+  `tests/e2e/gutter-geometry.spec.ts` (bounding boxes, tolerance <= 1 px,
+  viewports 320/375/768/1280, 1/4/5-digit numbers); docs:
+  `docs/design.md` (Line-number gutter contract).
+
+### Added
+
+- UI/UX tranche A: in-mount overlay host (`[data-overlay-host]` in the root
+  layout) plus a typed `portal` action (`src/lib/web/actions/portal.ts`)
+  applied to the Menu popup, so overflow menus paint above later rows even
+  for invalid workspaces (stacking contexts from `opacity < 1`) without
+  `document.body` (WS-OVERFLOW-06).
+- Invalid workspace affordance: the ACTIVE/INVALID text badges are gone; an
+  invalid workspace shows a warning icon button with an accessible name that
+  opens the generic Dialog with Close and Repair, reusing the existing repair
+  form (WS-INVALID-01/02/03).
+- `--text-2xs: 0.625rem` token declared in `:root`, Dark Deep, and
+  Synthwave '84 blocks and documented in `docs/design.md`; rail labels use it
+  with `nowrap`, `max-width`, and ellipsis (RAIL-02, TOKEN-02).
+- Collapsed desktop right panel now renders a 48 px vertical Comments/Review
+  strip using the Tabs kit (`orientation="vertical"`); clicking a strip tab
+  expands and selects it; collapsing returns focus to the active strip tab
+  (PANELS-UI-05, PANEL-STRIP-01/02/03). Mobile branch unchanged.
+- Per-instance observation draft store
+  (`src/lib/web/stores/observation-draft-store.svelte.ts`) with explicit
+  states (pristine/dirty/submitting/confirm); the draft survives Comments to
+  Review tab switches; dirty drafts ask for confirmation on replace clicks
+  and Cancel (generic Dialog with Keep draft/Discard); Ctrl/Cmd toggle and
+  Shift extend preserve the draft; selection payloads carry
+  `kind: replace|toggle|extend`; missing context (no review / no comparison)
+  and failed creates show inline accessible errors (OBS-DRAFT-*, OBS-ERR-*,
+  LINE-SEL-10/11).
+
 - Base UI kit in `src/lib/web/components/ui/`: Button, IconButton, TextInput,
   Select, Checkbox, Switch, Menu, Popover, Dialog, Tabs, Tooltip, Badge, and
   StatusBadge. Generic, stateless, token-driven primitives with native HTML
@@ -109,6 +225,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   step definitions.
 - E2E specs `file-list-tree.spec.ts` and `git-branches.spec.ts`, plus a
   rail-fit check in `viewport-scroll.spec.ts`.
+
+### Multi-tab viewer and Quick Open (Tranche B)
+
+- Multi-tab central viewer: the open-files tab strip now holds a session-only
+  collection of open files. A normal click on a Project tree file or a
+  Git/file-list row reuses the active tab; Ctrl-click (Windows/Linux) or
+  Cmd-click (macOS) opens an additional tab or activates the existing tab when
+  the path is already open. Tabs are unique by repo-relative path within the
+  active workspace, are never persisted, and are cleared on workspace switch
+  so stale paths cannot leak into the next workspace. Modifier clicks on diff
+  lines keep line selection and never open tabs.
+- Tab UI/ARIA: roving tabindex, ArrowLeft/ArrowRight/Home/End and
+  focus-visible behavior, `role="tablist"`/`tab`/`tabpanel`, `aria-selected`
+  and `aria-controls`, accessible close buttons; the active tab is
+  highlighted and inactive tabs are dimmed but readable; closing the active
+  tab selects next, else previous, else the empty viewer; closing an inactive
+  tab preserves the active tab. File-list Enter/Space keeps acting as a
+  normal click.
+- `active-file-store.ts` extended in place with the tab collection API
+  (`openFileTab`, `activateTab`, `closeTab`, `resetTabs`); existing exports
+  (`activeFile`, `activeFilePath`, `activeFileLabel`, `setActiveFile`,
+  `clearActiveFile`) remain compatible.
+- Shared client tree loader (`src/lib/web/services/project-tree-loader.ts`):
+  one fetch per workspace for `/api/workspaces/[id]/tree` with caching and a
+  file flattening helper; the Project tree component now delegates to it.
+- Quick Open (`Ctrl/Cmd+P`): product modal (`quick-open-dialog.svelte`) with
+  autofocused combobox filter, listbox results with `aria-activedescendant`
+  and active-result scroll, loading/empty/error states, ArrowUp/Down with
+  wrap, Home/End, Enter (current tab), Ctrl/Cmd+Enter (new tab), mouse click
+  (current tab), Escape (closes, preserves the active file, restores focus).
+  Capture rules: plain Ctrl/Cmd+P only (no Alt/Shift), browser print
+  prevented only when handled, Ctrl/Cmd+Shift+P unclaimed, repeated-key guard,
+  composing IME events never commit/navigate/close. Every acceptance routes
+  to the Project rail so the Source Viewer is shown.
+- Pure fuzzy scorer (`src/lib/web/services/quick-open-scorer.ts`, unit-tested):
+  exact path > basename prefix > basename subsequence > path fuzzy, boosts for
+  consecutive/case/start-of-word/separator matches, compactness,
+  deterministic lexical tie-break, all whitespace-separated terms required,
+  highlight ranges, result cap 512, query normalization (case and path
+  separators). Inspired by VS Code fuzzyScorer principles without
+  transplanting its internals; no server-side search endpoint in this
+  tranche (deferred).
+- Quick Open setting: `diffscribe-quick-open-include-untracked` (localStorage,
+  default `false`) exposed as "Include untracked files in Quick Open" in the
+  Settings Editor section via `quick-open-store.ts`; it affects only Quick
+  Open, never the Git/file list.
+- Async safety: monotonic request-generation guard in Source Viewer and Diff
+  Viewer so stale responses cannot overwrite newer tab/file content
+  (`src/lib/web/utils/request-guard.ts`).
+- BDD features `open-files-tabs.feature` and `quick-open.feature` (new) and a
+  Quick Open scenario added to `settings-panel.feature`, with matching step
+  definitions; E2E specs `open-files-tabs.spec.ts` and `quick-open.spec.ts`
+  plus Settings coverage for the untracked switch.
+- Docs: PRD Stage 1 (multi-tabs, Quick Open, setting), architecture (client
+  tab state, shared tree loader, client Quick Open index, server-search
+  deferral), design (tab active/inactive, close/focus, Quick Open layout,
+  shortcut and combobox/listbox/IME contracts), changelog.
 
 ### Changed
 
@@ -280,6 +453,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   375 px contract, and localStorage NaN/Infinity corruption resilience.
 - Added diagnostic guide for blank/white screen troubleshooting in
   `docs/design.md` (Visual Debugging section).
+
+### Removed
+
+- Observation `title` field removed entirely (destructive, approved
+  2026-08-01):
+  - Migration `006_drop_observation_title_require_body`: deletes rows with
+    empty/whitespace-only bodies, drops the `observations.title` column,
+    rebuilds the table so `body` is `NOT NULL` with
+    `CHECK (length(trim(body)) > 0)`, and recreates the exact indexes and the
+    review FK. Atomic per the migration runner; `reviews.title` untouched.
+    **Backup `~/.diffscribe/diffscribe.db` before upgrading.**
+  - `Observation` entity, command/result DTOs, use cases, mapper, repository,
+    POST/PATCH endpoints, web store type, form, card, tests, and Gherkin
+    features no longer reference a title. The body (1..5000, mandatory) is the
+    single description field.
+
+### Changed
+
+- Observation creation flow (click-to-comment):
+  - A normal click on a diff line selects it, switches to the Comments panel,
+    opens the observation form in creation mode, and focuses the body field.
+  - Ctrl/Cmd-click toggles individual lines on/off without moving the anchor;
+    Shift-click still selects a contiguous range.
+  - Cancelling the draft closes the form and clears the selection in the diff
+    viewer.
+  - The observation form now propagates the real active Comparison (from the
+    Git context panel) into `comparisonSnapshotJson` instead of hardcoding
+    `working-tree-vs-head`.
+  - Observation card shows the type with a Lucide icon, text, and color;
+    severity badges unchanged; the body is always displayed.
+- Overflow menu (workspace actions) popup now uses fixed positioning clamped
+  to the viewport, so it stays fully visible when the workspace sits near the
+  bottom edge of the sidebar. ARIA, keyboard navigation, Escape, focus
+  return, and light dismiss are preserved.
+- Git file list tree view: all directories are expanded by default when the
+  tree opens; directories can be collapsed manually; expansion is not
+  persisted.
+- Source viewer: honors the Settings wrapping default and exposes a contextual
+  Wrap toggle; one horizontal scroll container per file, no per-line
+  scrollbars.
+- Annotation form fit: inputs use `box-sizing: border-box`, long paths and
+  long body text no longer create horizontal overflow in the panel.
+- Resize alignment measurement E2E (`PANELS-UI-01`): measures
+  `gridTemplateColumns`, CSS vars, and bounding boxes of handle/panel/center
+  after drags, sampling the layout mid-drag and after release. The right panel
+  was confirmed not to follow its grid column (fixed `width: 320px` inside a
+  resized column left a gap at the viewport edge and overflow when shrinking).
+  Fixed `right-panel-tabs.svelte` so the desktop panel fills its grid column
+  (`width: 100%`, `min-width: 240px`); the mobile bottom sheet keeps its own
+  `width: 100%` fixed layout. Left panel untouched.
 
 ### Security
 

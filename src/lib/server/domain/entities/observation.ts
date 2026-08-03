@@ -16,8 +16,7 @@ export interface ObservationProps {
   severity?: ObservationSeverity | null;
   origin?: ObservationOrigin;
   status?: ObservationStatus;
-  title: string;
-  body?: string;
+  body: string;
   agentInstruction?: string;
   filePath?: string | null;
   lineRange?: LineRange | null;
@@ -49,7 +48,6 @@ export class Observation {
   public readonly createdAt: Date;
 
   private _status: ObservationStatus;
-  private _title: string;
   private _body: string;
   private _agentInstruction: string;
   private _updatedAt: Date;
@@ -72,10 +70,7 @@ export class Observation {
     // Severity rules
     this.severity = this.validateSeverity(props.type, props.severity);
 
-    // Title validation
-    this._title = this.validateTitle(props.title);
-
-    // Body validation
+    // Body validation (single mandatory description field)
     this._body = (props.body ?? '').trim();
     this.validateBody(this._body);
 
@@ -96,10 +91,6 @@ export class Observation {
     this._status = props.status ?? ObservationStatus.OPEN;
   }
 
-  get title(): string {
-    return this._title;
-  }
-
   get body(): string {
     return this._body;
   }
@@ -114,11 +105,6 @@ export class Observation {
 
   get updatedAt(): Date {
     return this._updatedAt;
-  }
-
-  editTitle(newTitle: string): void {
-    this._title = this.validateTitle(newTitle);
-    this._updatedAt = new Date();
   }
 
   editBody(newBody: string): void {
@@ -177,18 +163,10 @@ export class Observation {
     return severity ?? null;
   }
 
-  private validateTitle(title: string): string {
-    const trimmed = (title ?? '').trim();
-    if (trimmed.length === 0) {
-      throw new Error('title must not be empty');
-    }
-    if (trimmed.length > 200) {
-      throw new Error('title exceeds 200 characters');
-    }
-    return trimmed;
-  }
-
   private validateBody(body: string): void {
+    if (body.length === 0) {
+      throw new Error('body must not be empty');
+    }
     if (body.length > 5000) {
       throw new Error('body exceeds 5000 characters');
     }

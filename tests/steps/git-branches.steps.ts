@@ -11,6 +11,10 @@ const READER_PATH = path.resolve(
   '../../src/lib/server/infrastructure/git/simple-git-context-reader.ts',
 );
 const PANEL_PATH = path.resolve(__dirname, '../../src/lib/web/components/git-context-panel.svelte');
+const POPUP_PATH = path.resolve(
+  __dirname,
+  '../../src/lib/web/components/branch-select-popup.svelte',
+);
 const DTO_PATH = path.resolve(
   __dirname,
   '../../src/lib/server/application/dto/results/git-context-results.ts',
@@ -55,7 +59,8 @@ Given('the Git comparison selector is open', (_w: World) => {
 // ────────────────────────────────────────────────────────────────────────────
 
 When('the user views the Git branch list', (_w: World) => {
-  requireMarker(PANEL_PATH, 'aria-label="Local branches"');
+  requireMarker(POPUP_PATH, 'role="listbox"');
+  requireMarker(POPUP_PATH, 'Branches');
 });
 
 When('the user selects the target branch {string}', (_w: World) => {
@@ -67,7 +72,8 @@ When('the user selects the target commit {string}', (_w: World) => {
 });
 
 When('the user selects the cached remote branch as target', (_w: World) => {
-  requireMarker(PANEL_PATH, 'remote-tag');
+  requireMarker(POPUP_PATH, 'Cached remote');
+  requireMarker(POPUP_PATH, 'canonicalRef');
 });
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -82,7 +88,12 @@ Then('the branch list shows the local branches', (_w: World) => {
 });
 
 Then('the branch list shows the cached remote branch with a remote marker', (_w: World) => {
-  requireMarker(PANEL_PATH, 'remote');
+  requireMarker(POPUP_PATH, 'remote');
+});
+
+Then('the cached remote branch appears in the Cached remote group with a remote marker', () => {
+  requireMarker(POPUP_PATH, 'Cached remote');
+  requireMarker(POPUP_PATH, 'remote');
 });
 
 Then('the Base slot is filled with the current branch', (_w: World) => {

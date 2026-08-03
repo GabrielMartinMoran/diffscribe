@@ -105,3 +105,39 @@ Feature: Responsive layout — desktop four-region layout and mobile-optimized d
     When the user opens the diff viewer
     Then the diff is displayed in unified layout
     And no side-by-side toggle is available
+
+  # ────── Mobile overlay stacking (hardening H2) ──────
+
+  @delta-added @product @responsive @p1 @ui @e2e
+  Scenario: Right sheet controls stay clickable above the backdrop on mobile
+    Given the viewport width is 375 px
+    And the right panel sheet is open
+    When the user inspects the sheet controls
+    Then the sheet controls are clickable above the backdrop
+    And the backdrop does not intercept sheet clicks
+
+  @delta-added @product @responsive @p1 @ui @e2e
+  Scenario: Left drawer controls stay clickable above the backdrop on mobile
+    Given the viewport width is 375 px
+    And the left panel drawer is open
+    When the user inspects the drawer controls
+    Then the drawer controls are clickable above the backdrop
+
+  # ────── Mobile right panel toggle (hardening H3) ──────
+
+  @delta-added @product @responsive @p1 @ui @e2e
+  Scenario: Collapsed right panel toggle is at least 24x24 and spans the center height at 320 px
+    Given the viewport width is 320 px
+    When the user inspects the right panel toggle
+    Then the right panel toggle is at least 24 by 24 pixels
+    And the right panel toggle spans the full center content height
+    And the mobile shell has no extra grid row
+
+  @delta-added @product @responsive @p1 @ui @e2e
+  Scenario: Right panel toggle opens and closes the sheet at 375 px
+    Given the viewport width is 375 px
+    And the right panel is hidden
+    When the user taps the right panel toggle
+    Then the right panel opens as an overlay sheet
+    When the user taps the right panel toggle again
+    Then the right panel is hidden again

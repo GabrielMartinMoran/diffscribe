@@ -239,6 +239,22 @@ Automatic migration rollback is not supported. If a migration fails, the
 application does not start and reports the error. The user must resolve the
 problem manually or restore a backup.
 
+### Destructive migrations
+
+During `0.x`, migrations may be breaking between MINOR versions (consistent
+with SemVer for the `0.x` phase). Destructive migrations delete data and must
+be called out explicitly:
+
+- **`006_drop_observation_title_require_body` (2026-08-01):** removes the
+  `title` column from `observations` and deletes rows whose `body` is empty or
+  whitespace-only. The body becomes the single mandatory description field
+  (1..5000 characters, `CHECK (length(trim(body)) > 0)` at the DB level).
+  `reviews.title` is untouched.
+- **Backup requirement:** before upgrading to a release that includes a
+  destructive migration, back up `~/.diffscribe/diffscribe.db` (or the
+  configured `DIFFSCRIBE_DB_DIR`). The migration is atomic: if it fails, the
+  whole transaction rolls back and `_migrations` is not updated.
+
 ---
 
 ## References

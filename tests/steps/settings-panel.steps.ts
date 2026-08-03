@@ -126,3 +126,41 @@ Then('no theme switcher is present in the header', (_w: World) => {
     }
   }
 });
+
+// ────────────────────────────────────────────────────────────────────────────
+//  Quick Open untracked setting (Tranche B)
+// ────────────────────────────────────────────────────────────────────────────
+
+const QUICK_OPEN_STORE_PATH = path.resolve(
+  __dirname,
+  '../../src/lib/web/stores/quick-open-store.ts',
+);
+const FILE_LIST_PATH = path.resolve(__dirname, '../../src/lib/web/components/file-list.svelte');
+
+When('the user enables "Include untracked files in Quick Open" inside Settings', (_w: World) => {
+  requireMarker(SETTINGS_PATH, 'Include untracked files in Quick Open');
+  requireMarker(QUICK_OPEN_STORE_PATH, 'writeStoredQuickOpenIncludeUntracked');
+});
+
+Then(
+  'the Quick Open setting "diffscribe-quick-open-include-untracked" is stored in localStorage',
+  (_w: World) => {
+    requireMarker(
+      QUICK_OPEN_STORE_PATH,
+      "QUICK_OPEN_INCLUDE_UNTRACKED_STORAGE_KEY = 'diffscribe-quick-open-include-untracked'",
+    );
+    requireMarker(QUICK_OPEN_STORE_PATH, 'writeStoredQuickOpenIncludeUntracked');
+  },
+);
+
+Then('the Quick Open untracked switch is enabled after reload', (_w: World) => {
+  requireMarker(SETTINGS_PATH, 'readStoredQuickOpenIncludeUntracked');
+});
+
+Then('the setting affects Quick Open only, not the Git file list', (_w: World) => {
+  // The Git/File list must never read the Quick Open key.
+  const fileList = fs.readFileSync(FILE_LIST_PATH, 'utf-8');
+  if (fileList.includes('diffscribe-quick-open-include-untracked')) {
+    throw new Error('File list must not consume the Quick Open untracked setting');
+  }
+});

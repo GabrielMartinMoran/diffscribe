@@ -91,7 +91,7 @@ Given(
     const result = await services.createObservationUseCase.execute({
       reviewId: world.activeReviewId!,
       type: ObservationType.NOTE,
-      title: 'Stale test',
+      body: 'Stale test',
       filePath: file,
       lineRangeStart: line,
       lineRangeEnd: line,
@@ -126,7 +126,7 @@ Given(
     const result = await services.createObservationUseCase.execute({
       reviewId: world.activeReviewId!,
       type: ObservationType.NOTE,
-      title: 'Range stale test',
+      body: 'Range stale test',
       filePath: file,
       lineRangeStart: s,
       lineRangeEnd: e,
@@ -160,7 +160,7 @@ Given(
     const result = await services.createObservationUseCase.execute({
       reviewId: world.activeReviewId!,
       type: ObservationType.NOTE,
-      title: 'Range stale test',
+      body: 'Range stale test',
       filePath: file,
       lineRangeStart: start,
       lineRangeEnd: end,
@@ -344,7 +344,7 @@ Given('an observation exists on {string}', async (world: StaleWorld, file: strin
   const result = await services.createObservationUseCase.execute({
     reviewId: world.activeReviewId!,
     type: ObservationType.NOTE,
-    title: 'File staleness',
+    body: 'File staleness',
     filePath: file,
     comparisonSnapshotJson: JSON.stringify(compJson()),
     diffSnapshot: 'content',
@@ -370,7 +370,7 @@ Given(
     const result = await services.createObservationUseCase.execute({
       reviewId: world.activeReviewId!,
       type: ObservationType.NOTE,
-      title: 'Binary staleness',
+      body: 'Binary staleness',
       filePath: file,
       comparisonSnapshotJson: JSON.stringify(compJson()),
       diffSnapshot: 'content',
@@ -391,7 +391,7 @@ Given(
     const result = await services.createObservationUseCase.execute({
       reviewId: world.activeReviewId!,
       type: ObservationType.QUESTION,
-      title: 'Comp-change test',
+      body: 'Comp-change test',
       comparisonSnapshotJson: JSON.stringify(compJson()),
     });
     world.lastObservation = result;
@@ -416,7 +416,7 @@ Given(
     const result = await services.createObservationUseCase.execute({
       reviewId: world.activeReviewId!,
       type: ObservationType.NOTE,
-      title: 'Commit-vs-commit',
+      body: 'Commit-vs-commit',
       filePath: file,
       lineRangeStart: line,
       lineRangeEnd: line,

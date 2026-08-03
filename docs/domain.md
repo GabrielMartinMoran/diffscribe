@@ -87,8 +87,7 @@ reviewId:             ReviewId
 type:                 ObservationType (issue|risk|suggestion|question|praise|note)
 severity:             ObservationSeverity | null (critical|major|minor|nitpick)
 status:               ObservationStatus (open|resolved|dismissed|pending)
-title:                string (1-200 characters)
-body:                 string (≤5000 characters)
+body:                 string (1-5000 characters, single mandatory description)
 agentInstruction:     string (≤2000 characters, optional)
 filePath:             string | null (repo-relative, required for file/range)
 lineRange:            LineRange | null (start≥1, end≥start)
@@ -103,8 +102,12 @@ origin:               ObservationOrigin (human in Stage 1; DB forward-compatib
 
 **Invariants:**
 
-- `title` must not be empty, max 200 characters.
-- `body` max 5000 characters; `agentInstruction` max 2000.
+- `body` is the single mandatory description field: must not be empty (trimmed)
+  and max 5000 characters. There is no `title` — migration
+  `006_drop_observation_title_require_body` (destructive) deleted rows with
+  empty bodies, dropped the `title` column, and enforces
+  `body TEXT NOT NULL CHECK (length(trim(body)) > 0)`.
+- `agentInstruction` max 2000.
 - `severity` is required for `Issue` and `Risk`. Is `null` for `Praise` and `Note`. Optional for `Suggestion` and `Question`.
 - `filePath` and `lineRange` are optional (review-level observations do not have them).
 - If `lineRange` is present, `filePath` must also be present. If `filePath` is present, `diffSnapshot` and `contentHash` are required.
@@ -217,6 +220,16 @@ working tree. Base/Target selection is local and does not execute checkout or
 repository mutation. The `ComparisonSerialized` and `GitRefSerialized` types
 provide serializable representations for client transport without exposing
 class instances.
+
+**Canonical ref convention (tranche C):** when a branch is selected as a
+comparison ref, the draft `value` is the **canonical Git ref**
+(`refs/heads/<name>` for local branches, `refs/remotes/<remote>/<name>` for
+cached remote branches) and the `label` is the short visible name (`dev`,
+`origin/dev`). Full refs are never displayed. The canonical value is a stable
+selection key that prevents collisions between a local branch and a cached
+remote branch that share the same visible name (e.g. local `origin/main` vs
+cached remote `origin/main`). Branch refs are resolved by Git by their full
+ref name, so the existing file-list/diff readers accept them without change.
 
 ### FileChangeStatus
 

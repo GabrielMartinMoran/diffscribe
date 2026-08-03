@@ -114,3 +114,85 @@ Then('diff lines wrap in the viewer', (_w: World) => {
 Then('the diff lines wrap without a manual toggle', (_w: World) => {
   requireMarker(VIEWER_PATH, 'readStoredWrap');
 });
+
+// ── Source viewer wrapping ──
+
+Given('the user opens a source file in the Source viewer', (_w: World) => {
+  const sourcePath = path.resolve(__dirname, '../../src/lib/web/components/source-viewer.svelte');
+  requireMarker(sourcePath, 'wrapLines');
+});
+
+When('the user disables wrapping in the Source viewer header', (_w: World) => {
+  const sourcePath = path.resolve(__dirname, '../../src/lib/web/components/source-viewer.svelte');
+  requireMarker(sourcePath, 'toggleWrap');
+});
+
+Then('the source lines wrap in the viewer', (_w: World) => {
+  const sourcePath = path.resolve(__dirname, '../../src/lib/web/components/source-viewer.svelte');
+  const src = fs.readFileSync(sourcePath, 'utf-8');
+  const styleMatch = src.match(/<style[^>]*>([\s\S]*?)<\/style>/);
+  const styleSource = styleMatch ? styleMatch[1] : '';
+  if (!styleSource.includes('white-space: pre-wrap;')) {
+    throw new Error('Source wrap mode must use white-space: pre-wrap');
+  }
+});
+
+Then('the Source viewer exposes a single horizontal scroll container', (_w: World) => {
+  const sourcePath = path.resolve(__dirname, '../../src/lib/web/components/source-viewer.svelte');
+  const src = fs.readFileSync(sourcePath, 'utf-8');
+  const styleMatch = src.match(/<style[^>]*>([\s\S]*?)<\/style>/);
+  const styleSource = styleMatch ? styleMatch[1] : '';
+  if (!styleSource.includes('overflow-x: auto')) {
+    throw new Error('The source viewer must own the horizontal scroll');
+  }
+  if (
+    styleSource.includes('overflow-wrap:anywhere') ||
+    styleSource.includes('word-break:break-all')
+  ) {
+    throw new Error('Forbidden wrapping utilities in source viewer');
+  }
+});
+
+Then('the source lines render no-wrap with a single horizontal scroll container', (_w: World) => {
+  const sourcePath = path.resolve(__dirname, '../../src/lib/web/components/source-viewer.svelte');
+  const src = fs.readFileSync(sourcePath, 'utf-8');
+  const styleMatch = src.match(/<style[^>]*>([\s\S]*?)<\/style>/);
+  const styleSource = styleMatch ? styleMatch[1] : '';
+  if (!styleSource.includes('white-space: pre;')) {
+    throw new Error('Source no-wrap must use white-space: pre');
+  }
+  if (!styleSource.includes('overflow-x: auto')) {
+    throw new Error('The source viewer must own the horizontal scroll');
+  }
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+//  Line-number gutter geometry (CSS contract; real geometry is measured in
+//  tests/e2e/gutter-geometry.spec.ts with real fonts, tolerance <= 1 px)
+// ────────────────────────────────────────────────────────────────────────────
+
+const SOURCE_VIEWER_PATH = path.resolve(
+  __dirname,
+  '../../src/lib/web/components/source-viewer.svelte',
+);
+
+function requireCssRuleMarker(file: string, selector: string, marker: string): void {
+  const src = fs.readFileSync(file, 'utf-8');
+  const styleMatch = src.match(/<style[^>]*>([\s\S]*?)<\/style>/);
+  const styleSource = styleMatch ? styleMatch[1] : '';
+  const rules = styleSource.replace(/\/\*[\s\S]*?\*\//g, '').match(/[^{}]+\{[^}]*\}/g) ?? [];
+  const rule = rules.find((r) => r.replace(/\{[\s\S]*$/, '').trim() === selector);
+  if (!rule || !rule.includes(marker)) {
+    throw new Error(`${path.basename(file)}: rule ${selector} missing marker: ${marker}`);
+  }
+}
+
+Then(
+  'the line-number cells keep a width of 48 px including their internal padding',
+  (_w: World) => {
+    for (const viewerPath of [VIEWER_PATH, SOURCE_VIEWER_PATH]) {
+      requireCssRuleMarker(viewerPath, '.line-number', 'width: 48px');
+      requireCssRuleMarker(viewerPath, '.line-number', 'box-sizing: border-box');
+    }
+  },
+);

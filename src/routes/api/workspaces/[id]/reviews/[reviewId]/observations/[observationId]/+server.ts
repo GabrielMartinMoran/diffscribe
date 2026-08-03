@@ -65,12 +65,9 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
       return json({ error: 'Observation not found' }, { status: 404 });
     }
 
-    // Validate title
-    if (body.title !== undefined && body.title.trim().length === 0) {
-      return json({ error: '"title" must not be empty' }, { status: 400 });
-    }
-    if (body.title && body.title.length > 200) {
-      return json({ error: '"title" exceeds 200 characters' }, { status: 400 });
+    // Validate body
+    if (body.body !== undefined && body.body.trim().length === 0) {
+      return json({ error: '"body" must not be empty' }, { status: 400 });
     }
     if (body.body && body.body.length > 5000) {
       return json({ error: '"body" exceeds 5000 characters' }, { status: 400 });
@@ -80,7 +77,6 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
     }
 
     const result = await services.updateObservationUseCase.execute(params.observationId, {
-      title: body.title,
       body: body.body,
       agentInstruction: body.agentInstruction,
     });

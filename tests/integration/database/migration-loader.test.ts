@@ -38,6 +38,7 @@ describe('Migration loader (integration)', () => {
     expect(names).toContain('003_create_reviews');
     expect(names).toContain('004_create_review_files');
     expect(names).toContain('005_create_observations');
+    expect(names).toContain('006_drop_observation_title_require_body');
     db.close();
   });
 
@@ -50,7 +51,7 @@ describe('Migration loader (integration)', () => {
     const rows = db.prepare('SELECT name FROM _migrations ORDER BY name').all() as {
       name: string;
     }[];
-    expect(rows).toHaveLength(5);
+    expect(rows).toHaveLength(6);
     db.close();
   });
 
@@ -96,7 +97,7 @@ describe('Migration loader (integration)', () => {
     const rows = db.prepare('SELECT name FROM _migrations ORDER BY name').all() as {
       name: string;
     }[];
-    expect(rows).toHaveLength(5);
+    expect(rows).toHaveLength(6);
     db.close();
   });
 
@@ -232,7 +233,7 @@ describe('Observation foreign key cascades (integration)', () => {
 
     const observationId = '660e8400-e29b-41d4-a716-446655440000';
     db.prepare(
-      'INSERT INTO observations (id, review_id, type, title, comparison_snapshot_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO observations (id, review_id, type, body, comparison_snapshot_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
     ).run(
       observationId,
       reviewId,
@@ -278,7 +279,7 @@ describe('Observation foreign key cascades (integration)', () => {
 
     const observationId = '660e8400-e29b-41d4-a716-446655440000';
     db.prepare(
-      'INSERT INTO observations (id, review_id, type, title, comparison_snapshot_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO observations (id, review_id, type, body, comparison_snapshot_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
     ).run(
       observationId,
       reviewId,

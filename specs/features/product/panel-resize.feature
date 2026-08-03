@@ -118,3 +118,45 @@ Feature: Panel resize and collapse — collapsible panels with bounded resize an
     Then the left rail is visible
     And the center region fills the remaining width
     And no empty panel frames are displayed
+
+  # ────── Resize alignment measurement ──────
+
+  @delta-added @product @layout @p1 @ui @e2e
+  Scenario: Resizing keeps the panel edge, the handle, and the grid column aligned without a gap
+    Given the left panel width is 300 px
+    When the user drags the left resize handle by 80 px
+    Then the left panel edge moves to the same x position as the resize handle
+    And the grid template column for the left panel matches the handle x position
+    And the center column starts exactly at the handle x position
+    When the user drags the right resize handle by -60 px
+    Then the right panel edge moves to the same x position as the resize handle
+    And the grid template column for the right panel matches the handle x position
+    And the center column ends exactly at the handle x position
+
+  # ────── Collapsed right panel strip ──────
+
+  @product @layout @panels @etapa-1
+  Scenario: PANELS-UI-05 — collapsed right panel renders a vertical strip
+    Given the right panel is collapsed
+    When the user views the collapsed right panel
+    Then a vertical strip with Comments and Review tabs is visible
+    And the strip is 48 px wide
+
+  @product @layout @panels @etapa-1
+  Scenario: PANEL-STRIP-01 — collapsed desktop shows a vertical Comments/Review tablist
+    Given the right panel is collapsed on desktop
+    Then the collapsed panel exposes a vertical tablist with Comments and Review tabs
+    And each strip tab has an accessible label
+
+  @product @layout @panels @etapa-1
+  Scenario: PANEL-STRIP-02 — clicking a strip tab expands the panel and selects the tab
+    Given the right panel is collapsed
+    When the user clicks the Review strip tab
+    Then the right panel expands
+    And the Review tab is selected in the expanded panel
+
+  @product @layout @panels @etapa-1
+  Scenario: PANEL-STRIP-03 — collapsing returns focus to the active strip tab
+    Given the right panel is expanded with the Comments tab active
+    When the user collapses the right panel
+    Then focus returns to the active strip tab

@@ -33,7 +33,7 @@
     expandedDirs: Set<string>;
     activeFile: string | null;
     onToggleDir: (node: FileTreeNode) => void;
-    onSelect: (path: string) => void;
+    onSelect: (path: string, newTab?: boolean) => void;
   } = $props();
 
   const isExpanded = $derived(expandedDirs.has(node.path));
@@ -73,7 +73,7 @@
     role="treeitem"
     aria-selected={activeFile === node.path}
     data-testid="file-tree-node-{node.path}"
-    onclick={() => onSelect(node.path)}
+    onclick={(e) => onSelect(node.path, e.ctrlKey || e.metaKey)}
   >
     <span class="tree-name">{node.name}</span>
     <StatusBadge tone={statusTone(entry.status)}>{statusLabel(entry.status)}</StatusBadge>

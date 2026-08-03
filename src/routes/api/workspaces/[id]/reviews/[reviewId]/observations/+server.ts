@@ -80,11 +80,8 @@ export const POST: RequestHandler = async ({ params, request }) => {
     if (!body.type) {
       return json({ error: '"type" is required' }, { status: 400 });
     }
-    if (!body.title || body.title.trim().length === 0) {
-      return json({ error: '"title" must not be empty' }, { status: 400 });
-    }
-    if (body.title && body.title.length > 200) {
-      return json({ error: '"title" exceeds 200 characters' }, { status: 400 });
+    if (!body.body || body.body.trim().length === 0) {
+      return json({ error: '"body" must not be empty' }, { status: 400 });
     }
     if (body.body && body.body.length > 5000) {
       return json({ error: '"body" exceeds 5000 characters' }, { status: 400 });
@@ -141,8 +138,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
       reviewId: params.reviewId,
       type: body.type,
       severity: body.severity ?? null,
-      title: body.title,
-      body: body.body ?? '',
+      body: body.body,
       agentInstruction: body.agentInstruction ?? '',
       filePath: body.filePath ?? null,
       side: body.side ?? 'new',

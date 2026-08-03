@@ -83,6 +83,36 @@ Then('directories expand to reveal their files', (_w: World) => {
   requireMarker(branch, 'onToggleDir');
 });
 
+Then('all directories are expanded by default to reveal their files', (_w: World) => {
+  requireMarker(FILE_LIST_PATH, 'expandedDirs');
+  // Default expansion must be driven by the directory set, not persisted.
+  if (!fs.readFileSync(FILE_LIST_PATH, 'utf-8').includes('collectDirPaths')) {
+    throw new Error('File list must expand every directory by default via collectDirPaths');
+  }
+});
+
+When('collapses a directory', (_w: World) => {
+  requireMarker(FILE_LIST_PATH, 'toggleDir');
+});
+
+When('the user expands the directory again', (_w: World) => {
+  requireMarker(FILE_LIST_PATH, 'toggleDir');
+});
+
+Then('the directory files are hidden', (_w: World) => {
+  const branch = path.resolve(__dirname, '../../src/lib/web/components/file-tree-branch.svelte');
+  requireMarker(branch, 'isExpanded');
+});
+
+Then('the directory files are visible again', (_w: World) => {
+  const branch = path.resolve(__dirname, '../../src/lib/web/components/file-tree-branch.svelte');
+  requireMarker(branch, 'isExpanded');
+});
+
+Then('the directories are expanded by default again', (_w: World) => {
+  requireMarker(FILE_LIST_PATH, 'collectDirPaths');
+});
+
 Then('the tree view remains active', (_w: World) => {
   const storePath = path.resolve(__dirname, '../../src/lib/web/stores/file-list-view-store.ts');
   requireMarker(storePath, FILE_LIST_VIEW_STORAGE_KEY);

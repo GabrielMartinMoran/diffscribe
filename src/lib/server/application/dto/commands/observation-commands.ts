@@ -7,8 +7,7 @@ export interface CreateObservationCommand {
   reviewId: string;
   type: ObservationType;
   severity?: ObservationSeverity | null;
-  title: string;
-  body?: string;
+  body: string;
   agentInstruction?: string;
   filePath?: string | null;
   side?: string;
@@ -21,7 +20,6 @@ export interface CreateObservationCommand {
 
 export interface UpdateObservationCommand {
   observationId: string;
-  title?: string;
   body?: string;
   agentInstruction?: string;
 }

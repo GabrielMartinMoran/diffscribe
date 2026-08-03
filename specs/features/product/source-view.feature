@@ -112,3 +112,18 @@ Feature: Source view — working-tree file content with change markers, syntax h
     When the user views the source
     Then the repository index is unchanged
     And no git add, checkout, or commit has been executed
+
+  # ────── Line-number gutter geometry ──────
+
+  @product @source @p2 @ui @e2e
+  Scenario: Source line-number cells are 48 px wide including padding
+    Given the working tree version of "src/app.ts" contains "console.log('hello')"
+    When the user opens "src/app.ts" in the source view
+    Then each line-number cell in the source view is 48 px wide including its internal padding
+    And the 1 px divider, the 4 px change marker, and the 12 px content padding remain unchanged
+
+  @product @source @p2 @ui @e2e
+  Scenario: Source line numbers with up to five digits stay inside their cell
+    Given the working tree version of "src/app.ts" contains "console.log('hello')"
+    When the user opens "src/app.ts" in the source view
+    Then every rendered source line number stays inside its 48 px line-number cell

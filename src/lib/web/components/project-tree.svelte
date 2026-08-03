@@ -2,25 +2,15 @@
   import { SvelteMap } from 'svelte/reactivity';
   import { Folder, Info, LoaderCircle } from 'svelte-lucide';
 
-  import { setActiveFile } from '$lib/web/stores/active-file-store';
+  import {
+    projectTreeLoader,
+    type ProjectTreeNode as LoadedTreeNode,
+  } from '$lib/web/services/project-tree-loader';
+  import { openFileTab, setActiveFile } from '$lib/web/stores/active-file-store';
   import type { ComparisonDraft } from '$lib/web/types/comparison-draft';
+  import { createRequestGuard, type RequestGuard } from '$lib/web/utils/request-guard';
 
   import ProjectTreeNode from './project-tree-node.svelte';
-
-  // Client-side mirror of server WorkspaceTreeNode — no server dependency
-  interface TreeNode {
-    name: string;
-    path: string;
-    kind: 'file' | 'directory';
-    children?: TreeNode[];
-    tracked?: boolean;
-  }
-
-  interface TreeResult {
-    tree: TreeNode[];
-    readAt: string;
-    error?: { message: string; errorCode: string };
-  }
 
   interface FileEntry {
     path: string;
@@ -42,12 +32,17 @@
     comparisonDraft: ComparisonDraft | null;
   } = $props();
 
-  let treeData = $state<TreeNode[]>([]);
+  let treeData = $state<LoadedTreeNode[]>([]);
   let loading = $state(false);
   let error = $state<string | null>(null);
   let changeStatusMap = new SvelteMap<string, string>();
 
-  // Fetch tree when workspace changes
+  // Request guards: comparison/status fetches race when the comparison
+  // changes; stale responses must never overwrite newer tree state.
+  const treeGuard: RequestGuard = createRequestGuard();
+  const statusGuard: RequestGuard = createRequestGuard();
+
+  // Fetch tree when workspace changes (shared loader caches per workspace).
   $effect(() => {
     if (activeWorkspaceId) {
       fetchTree();
@@ -61,33 +56,36 @@
 
   async function fetchTree(): Promise<void> {
     if (!activeWorkspaceId) return;
+    const generation = treeGuard.begin();
     loading = true;
     error = null;
     try {
-      const res = await fetch(`/api/workspaces/${activeWorkspaceId}/tree`);
-      const data: TreeResult = await res.json();
-      if (data.error) {
-        error = data.error.message;
-        treeData = [];
+      const snapshot = await projectTreeLoader.load(activeWorkspaceId);
+      if (!treeGuard.isCurrent(generation)) return;
+      if (snapshot) {
+        treeData = snapshot.tree;
       } else {
-        treeData = data.tree;
+        error = 'Failed to load project tree';
+        treeData = [];
       }
-    } catch (e: unknown) {
-      error = e instanceof Error ? e.message : 'Failed to load project tree';
-      treeData = [];
     } finally {
-      loading = false;
+      if (treeGuard.isCurrent(generation)) {
+        loading = false;
+      }
     }
   }
 
   async function fetchChangeStatus(): Promise<void> {
     if (!activeWorkspaceId || !comparisonDraft) return;
+    const generation = statusGuard.begin();
     try {
       const comparisonParam = encodeURIComponent(JSON.stringify(comparisonDraft));
       const res = await fetch(
         `/api/workspaces/${activeWorkspaceId}/file-list?comparison=${comparisonParam}`,
       );
+      if (!statusGuard.isCurrent(generation)) return;
       const data: FileListResult = await res.json();
+      if (!statusGuard.isCurrent(generation)) return;
       if (!data.error) {
         changeStatusMap.clear();
         for (const entry of data.entries) {
@@ -103,8 +101,12 @@
     return changeStatusMap.get(path);
   }
 
-  function handleFileClick(path: string): void {
-    setActiveFile(path);
+  function handleFileClick(path: string, newTab = false): void {
+    if (newTab) {
+      openFileTab(path, undefined, true);
+    } else {
+      setActiveFile(path);
+    }
   }
 </script>
 

@@ -477,3 +477,54 @@ Then('the effective duration is zero', (w: World) => {
     throw new Error('Reduced motion block must zero the duration tokens');
   }
 });
+
+// ── TOKEN-02: --text-2xs declared in every theme block and used with ellipsis ──
+
+Given('the global token contract', (_w: World) => {
+  const css = fs.readFileSync(TOKENS_PATH, 'utf-8');
+  if (!css.includes(':root')) {
+    throw new Error('tokens.css must declare the :root block');
+  }
+});
+
+When('the text token family is enumerated', (_w: World) => {
+  // The declared token sets are read in the Then steps below.
+});
+
+Then('--text-2xs is declared in the :root token block', (_w: World) => {
+  const css = fs.readFileSync(TOKENS_PATH, 'utf-8');
+  const root = css.match(/:root\s*\{[^}]+}/);
+  if (!root || !root[0].includes('--text-2xs: 0.625rem')) {
+    throw new Error(':root block must declare --text-2xs: 0.625rem');
+  }
+});
+
+Then('--text-2xs is declared in the Dark Deep token block', (_w: World) => {
+  const css = fs.readFileSync(TOKENS_PATH, 'utf-8');
+  const block = css.match(/\[data-theme='dark'\]\s*\{[^}]+}/);
+  if (!block || !block[0].includes('--text-2xs: 0.625rem')) {
+    throw new Error('Dark Deep block must declare --text-2xs: 0.625rem');
+  }
+});
+
+Then("--text-2xs is declared in the Synthwave '84 token block", (_w: World) => {
+  const css = fs.readFileSync(TOKENS_PATH, 'utf-8');
+  const block = css.match(/\[data-theme='synthwave-84'\]\s*\{[^}]+}/);
+  if (!block || !block[0].includes('--text-2xs: 0.625rem')) {
+    throw new Error('Synthwave block must declare --text-2xs: 0.625rem');
+  }
+});
+
+Then('the rail label styles use --text-2xs with nowrap and ellipsis truncation', (_w: World) => {
+  const rail = path.resolve(__dirname, '../../src/lib/web/components/rail-tabs.svelte');
+  const src = fs.readFileSync(rail, 'utf-8');
+  if (!src.includes('var(--text-2xs)')) {
+    throw new Error('Rail labels must use var(--text-2xs)');
+  }
+  if (!src.includes('white-space: nowrap') || !src.includes('text-overflow: ellipsis')) {
+    throw new Error('Rail labels must use nowrap with ellipsis truncation');
+  }
+  if (src.includes('overflow-wrap') || src.includes('word-break')) {
+    throw new Error('Rail labels must never use word-break or overflow-wrap');
+  }
+});

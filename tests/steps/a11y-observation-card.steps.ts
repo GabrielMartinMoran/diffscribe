@@ -8,7 +8,7 @@ interface A11yObservationCardWorld {
   actionsInDOM: boolean;
 }
 
-Given('an observation of type {string} exists with title {string}', () => {
+Given('an observation of type {string} exists with body {string}', () => {
   // No-op: context — observation exists
 });
 

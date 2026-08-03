@@ -64,11 +64,15 @@ function entriesAreFlat(): boolean {
 }
 
 describe('UI kit import boundary', () => {
-  it('kit files import only relative modules or svelte itself', () => {
+  it('kit files import only relative modules, svelte itself, or the overlay portal action', () => {
     const offenders: string[] = [];
     for (const file of kitFiles()) {
       for (const spec of importsOf(file)) {
-        if (!spec.startsWith('.') && spec !== 'svelte') {
+        // The portal action (src/lib/web/actions/portal.ts) is a tranche
+        // contract: Menu popups are portaled to the in-mount overlay host
+        // declared by the root layout. It is the kit's only app-root
+        // dependency and it never references product modules.
+        if (!spec.startsWith('.') && spec !== 'svelte' && spec !== '$lib/web/actions/portal') {
           offenders.push(`${path.basename(file)} -> ${spec}`);
         }
       }

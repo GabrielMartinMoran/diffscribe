@@ -240,3 +240,76 @@ Feature: Git context panel — status, branches, commits, and comparison draft
     When the user presses ArrowDown to move to the second branch
     And the user presses Enter
     Then the selected branch is assigned to the active slot
+
+  # ────── Async refresh safety (tranche C) ──────
+  #
+  # The Git context refresh and the file-list fetch run under request guards
+  # so stale responses cannot overwrite newer state, and a failed refresh
+  # never discards the last good context.
+
+  @p2 @ui @e2e
+  Scenario: Refresh failure preserves the last good context with a visible error and retry
+    Given the Git context panel shows status "clean"
+    When the Git context refresh fails with a network error
+    Then the panel keeps showing the last good status
+    And the panel shows a visible error with a Retry action
+
+  @p2 @ui @e2e
+  Scenario: Stale refresh responses are discarded
+    Given the user starts a slow refresh
+    And the user starts a second refresh that finishes first
+    When the slow refresh finally responds
+    Then the panel reflects the second refresh, not the stale one
+
+  @p2 @ui @e2e
+  Scenario: Stale file-list responses are discarded when the comparison changes
+    Given the file list for the default comparison is slow to respond
+    When the user selects a branch for the Target slot
+    And the newer file list response arrives before the stale one
+    Then the panel shows the file list for the selected branch
+    And the stale response does not overwrite it
+
+  @p3 @ui @e2e
+  Scenario: Existing Target commit selection is preserved across refresh
+    Given the Target slot is set to commit "def5678"
+    When the user refreshes the Git context
+    Then the Target slot still shows "def5678"
+
+  # ────── Retry recovery and tree invalidation (post-tranche C hardening) ──────
+  #
+  # Retry after a failed refresh clears the error and restores the refreshed
+  # context. A successful refresh invalidates the cached Project tree for the
+  # active workspace so external file changes become visible, without
+  # clearing other workspaces and without refetching on tab switches.
+
+  @p2 @ui @e2e
+  Scenario: Retry success clears the error and restores the refreshed context
+    Given the Git context panel shows an error after a failed refresh
+    When the user clicks Retry
+    And the refresh succeeds
+    Then the error disappears
+    And the panel shows the refreshed Git context
+
+  @p2 @ui @e2e
+  Scenario: Successful refresh invalidates the cached Project tree
+    Given the Project tree is loaded and cached
+    When a file is added outside DiffScribe
+    And the user clicks the refresh button in the Git context panel
+    And the user opens the Project tab
+    Then the Project tree shows the added file
+
+  # ────── Single scroll owner (hardening H4) ──────
+
+  @delta-added @p2 @ui @e2e
+  Scenario Outline: Git panel is the single scroll owner at narrow and wide widths
+    Given the user views the Git context panel at <width> px
+    Then the Git panel is the only scrollable region for its content
+    And the file list panel does not take the full panel height
+    When the user scrolls the Git panel to the bottom
+    Then the commits, file rows, pagination, and footer are reachable
+    And the user can paginate the file list from the scroll position
+
+    Examples:
+      | width |
+      | 320   |
+      | 1280  |

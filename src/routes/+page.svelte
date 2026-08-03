@@ -11,18 +11,17 @@
   import OpenFilesTabs from '$lib/web/components/open-files-tabs.svelte';
   import OpenWorkspaceForm from '$lib/web/components/open-workspace-form.svelte';
   import ProjectTree from '$lib/web/components/project-tree.svelte';
+  import QuickOpenDialog from '$lib/web/components/quick-open-dialog.svelte';
   import type { RailTabKey } from '$lib/web/components/rail-tabs.svelte';
   import RailTabs from '$lib/web/components/rail-tabs.svelte';
   import ReviewPanel from '$lib/web/components/review-panel.svelte';
   import RightPanelTabs from '$lib/web/components/right-panel-tabs.svelte';
   import SettingsPanel from '$lib/web/components/settings-panel.svelte';
   import SourceViewer from '$lib/web/components/source-viewer.svelte';
+  import Dialog from '$lib/web/components/ui/Dialog.svelte';
   import WorkspaceSidebar from '$lib/web/components/workspace-sidebar.svelte';
-  import {
-    activeFilePath,
-    clearActiveFile,
-    setActiveFile,
-  } from '$lib/web/stores/active-file-store';
+  import { activeFilePath, openFileTab, resetTabs } from '$lib/web/stores/active-file-store';
+  import { ObservationDraftStore } from '$lib/web/stores/observation-draft-store.svelte';
   import {
     LEFT_PANEL_MAX,
     LEFT_PANEL_MIN,
@@ -36,6 +35,7 @@
     toggleRight,
   } from '$lib/web/stores/panel-layout-store';
   import type { ComparisonDraft } from '$lib/web/types/comparison-draft';
+  import type { SelectionPayload } from '$lib/web/types/selection-payload';
 
   let { data } = $props();
   let workspaces: WorkspaceListItem[] = $derived(data.workspaces ?? []);
@@ -44,6 +44,39 @@
   // ─── Shell state ───
   let activeRailTab = $state<RailTabKey>('workspaces');
   let activeRightTab = $state<'comments' | 'review'>('comments');
+  let quickOpenOpen = $state(false);
+
+  // ─── Quick Open (Ctrl/Cmd+P) ───
+  $effect(() => {
+    if (!browser) return;
+    const handler = (e: KeyboardEvent) => {
+      // Composing IME events must never open or navigate.
+      if (e.isComposing) return;
+      // Capture plain Ctrl/Cmd+P only (no Alt/Shift): Ctrl/Cmd+Shift+P stays
+      // unclaimed, and the browser print shortcut is prevented only when we
+      // actually handle the key.
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key === 'p') {
+        e.preventDefault();
+        if (!quickOpenOpen) {
+          quickOpenOpen = true;
+        }
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  });
+
+  // Every Quick Open acceptance routes to the Project rail so the Source
+  // Viewer is shown, then opens the file in the current or a new tab.
+  function handleQuickOpenAccept(path: string, newTab: boolean) {
+    activeRailTab = 'project';
+    openFileTab(path, undefined, newTab);
+    quickOpenOpen = false;
+  }
+
+  function handleQuickOpenClose() {
+    quickOpenOpen = false;
+  }
 
   // ─── Responsive state ───
   let isMobileViewport = $state(false);
@@ -110,13 +143,19 @@
   let showOpenForm = $state(false);
   let comparisonDraft = $state<ComparisonDraft | null>(null);
   let reviewedFilePaths = $state<string[]>([]);
-  let lineSelection = $state<{
-    filePath: string;
-    side: string;
-    startLine: number;
-    endLine: number;
-    rawSnapshot: string;
-  } | null>(null);
+  let lineSelection = $state<SelectionPayload | null>(null);
+  // Incremented to ask the DiffViewer to clear its internal selection when a
+  // draft is cancelled (the selection state lives in the viewer).
+  let selectionClearRequest = $state(0);
+  // Keep-draft flow: when a replace click is rejected, the viewer restores
+  // the previous selection.
+  let restoreSelection = $state<SelectionPayload | null>(null);
+  let restoreRequest = $state(0);
+  // The selection that triggered the discard confirmation (replace flow).
+  let pendingSelection = $state<SelectionPayload | null>(null);
+  // Per-instance observation draft: survives Comments/Review tab switches
+  // that unmount the form.
+  const observationDraft = new ObservationDraftStore();
 
   // Initialize comparison draft from default on first load
   $effect(() => {
@@ -137,27 +176,79 @@
     invalidateAll();
   }
 
-  function handleSelectionChange(
-    sel: {
-      filePath: string;
-      side: string;
-      startLine: number;
-      endLine: number;
-      rawSnapshot: string;
-    } | null,
-  ) {
-    lineSelection = sel;
-  }
-
-  function handleFileSelect(path: string) {
-    setActiveFile(path);
-  }
-
-  function handleCloseFile(path: string) {
-    if (path) {
-      clearActiveFile();
+  function handleSelectionChange(sel: SelectionPayload | null) {
+    if (!sel) {
+      lineSelection = null;
+      return;
+    }
+    // Only a replace selection may switch to Comments and start the discard
+    // flow. Modifier selections (Ctrl/Cmd toggle, Shift extend) update the
+    // selection range but preserve the current draft and the current tab.
+    if (sel.kind === 'replace') {
+      if (observationDraft.isDirty) {
+        // Keep the previous selection until the user decides; the dialog
+        // (confirm state) resolves the discard.
+        pendingSelection = sel;
+        observationDraft.requestReplacement();
+      } else {
+        observationDraft.reset();
+        lineSelection = sel;
+      }
+      activeRightTab = 'comments';
+    } else {
+      lineSelection = sel;
     }
   }
+
+  function handleCancelSelection() {
+    // A dirty draft asks for confirmation (keep vs discard) before being
+    // dropped; a pristine draft closes and clears the selection directly.
+    if (observationDraft.isDirty) {
+      observationDraft.requestReplacement();
+      return;
+    }
+    observationDraft.reset();
+    lineSelection = null;
+    selectionClearRequest += 1;
+  }
+
+  function keepDraft() {
+    observationDraft.keepDraft();
+    // The replace click changed the viewer selection; restore the previous
+    // one so the draft keeps its context.
+    if (pendingSelection) {
+      restoreSelection = lineSelection;
+      restoreRequest += 1;
+    }
+    pendingSelection = null;
+  }
+
+  function discardDraft() {
+    observationDraft.discardDraft();
+    if (pendingSelection) {
+      // Replace flow: adopt the new selection and start a fresh draft.
+      lineSelection = pendingSelection;
+      pendingSelection = null;
+    } else {
+      // Cancel flow: close the form and clear the viewer selection.
+      lineSelection = null;
+      selectionClearRequest += 1;
+    }
+  }
+
+  function handleFileSelect(path: string, newTab = false) {
+    openFileTab(path, undefined, newTab);
+  }
+
+  // Switching workspace clears the tab collection so stale paths from the
+  // previous workspace cannot appear in the new one.
+  let lastWorkspaceId = $state<string | null | undefined>(undefined);
+  $effect(() => {
+    if (activeWorkspaceId !== lastWorkspaceId) {
+      lastWorkspaceId = activeWorkspaceId;
+      resetTabs();
+    }
+  });
 
   function handleComparisonChange(draft: ComparisonDraft) {
     comparisonDraft = draft;
@@ -277,7 +368,7 @@
     : '--left-panel-width: ' +
       ($panelLayout.leftCollapsed ? '0px' : $panelLayout.leftWidth + 'px') +
       '; --right-panel-width: ' +
-      ($panelLayout.rightCollapsed ? '0px' : $panelLayout.rightWidth + 'px')}
+      ($panelLayout.rightCollapsed ? '48px' : $panelLayout.rightWidth + 'px')}
 >
   <!-- Left rail -->
   <RailTabs
@@ -361,7 +452,7 @@
 
   <!-- Center content -->
   <main data-testid="center-content" class="center-content">
-    <OpenFilesTabs onCloseFile={handleCloseFile} />
+    <OpenFilesTabs />
 
     <div class="work-area">
       {#if $activeFilePath && activeRailTab === 'project'}
@@ -374,6 +465,9 @@
             selectedFile={$activeFilePath ?? null}
             {comparisonDraft}
             {activeWorkspaceId}
+            clearRequest={selectionClearRequest}
+            {restoreRequest}
+            {restoreSelection}
             onSelectionChange={handleSelectionChange}
           />
         </div>
@@ -440,7 +534,10 @@
       <ObservationPanel
         {activeWorkspaceId}
         activeReview={data.activeReview ?? null}
+        {comparisonDraft}
+        draft={observationDraft}
         selectionInfo={lineSelection}
+        onCancelSelection={handleCancelSelection}
       />
     {/snippet}
     {#snippet review()}
@@ -465,6 +562,26 @@
   label="Close panel"
 />
 
+<!-- Dirty draft discard confirmation (replace click or Cancel with edits). -->
+{#if observationDraft.isConfirming}
+  <Dialog open={true} id="discard-draft" title="Discard draft?" onclose={keepDraft}>
+    <p>Your draft has unsaved changes. Keep it or discard it to continue.</p>
+
+    {#snippet actions()}
+      <button type="button" class="btn-secondary" onclick={keepDraft}>Keep draft</button>
+      <button type="button" class="btn-primary" onclick={discardDraft}>Discard</button>
+    {/snippet}
+  </Dialog>
+{/if}
+
+<!-- Quick Open modal (Ctrl/Cmd+P). -->
+<QuickOpenDialog
+  open={quickOpenOpen}
+  {activeWorkspaceId}
+  onAccept={handleQuickOpenAccept}
+  onClose={handleQuickOpenClose}
+/>
+
 <style>
   .shell-layout {
     position: relative;
@@ -477,10 +594,12 @@
     background: var(--surface-primary);
   }
 
-  /* ── Mobile grid: rail + center only ── */
-
+  /* ── Mobile grid: rail + center + right toggle column ──
+     The right panel toggle is a deliberate third column of the single grid
+     row: it spans the full center height and never creates an implicit
+     second grid row. */
   .shell-layout.is-mobile {
-    grid-template-columns: 48px 1fr;
+    grid-template-columns: 48px 1fr 32px;
   }
 
   /* ─── Left panel (desktop) ─── */
@@ -698,6 +817,32 @@
 
   .shell-layout {
     max-width: 100vw;
+  }
+
+  /* ─── Discard draft dialog buttons ─── */
+
+  .btn-primary {
+    padding: var(--space-1) var(--space-3);
+    border: none;
+    border-radius: var(--radius-sm);
+    background: var(--accent);
+    color: var(--text-inverse);
+    cursor: pointer;
+    font-size: var(--text-sm);
+  }
+
+  .btn-primary:hover {
+    opacity: 0.9;
+  }
+
+  .btn-secondary {
+    padding: var(--space-1) var(--space-3);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    background: var(--surface-primary);
+    color: var(--text-primary);
+    cursor: pointer;
+    font-size: var(--text-sm);
   }
 
   /* ─── Reduced motion ─── */

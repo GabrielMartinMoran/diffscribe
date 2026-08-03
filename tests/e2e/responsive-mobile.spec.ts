@@ -173,9 +173,10 @@ test.describe('Responsive layout (RESPONSIVE-UI-01)', () => {
     await expect(page.locator('[data-testid="left-contextual-panel"]')).toBeVisible();
 
     // Click backdrop to close — click at a position outside the drawer area
-    // The drawer is max 320px wide; click at x=360 (right side) on a 375px viewport
+    // (drawer is max 320px wide) and outside the right toggle column
+    // (343px+ at 375px): the 330px strip is pure backdrop.
     const backdrop = page.locator('[data-testid="mobile-backdrop"]');
-    await backdrop.click({ position: { x: 360, y: 200 } });
+    await backdrop.click({ position: { x: 330, y: 200 } });
 
     // Drawer should close
     await expect(page.locator('[data-testid="left-contextual-panel"]')).not.toBeVisible();

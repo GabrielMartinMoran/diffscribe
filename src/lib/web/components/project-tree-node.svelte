@@ -18,13 +18,13 @@
     depth = 0,
     status = undefined as string | undefined,
     statusMap = undefined as Map<string, string> | undefined,
-    onFileClick = undefined as ((path: string) => void) | undefined,
+    onFileClick = undefined as ((path: string, newTab?: boolean) => void) | undefined,
   }: {
     node: TreeNode;
     depth: number;
     status?: string;
     statusMap?: Map<string, string>;
-    onFileClick?: (path: string) => void;
+    onFileClick?: (path: string, newTab?: boolean) => void;
   } = $props();
 
   let expanded = $state(false);
@@ -34,18 +34,21 @@
     expanded = !expanded;
   }
 
-  function handleClick(): void {
+  function handleClick(event: MouseEvent): void {
     if (isDirectory) {
       toggleExpand();
     } else {
-      onFileClick?.(node.path);
+      // Ctrl-click (Windows/Linux) or Cmd-click (macOS) opens an additional
+      // tab; a plain click reuses the active tab.
+      onFileClick?.(node.path, event.ctrlKey || event.metaKey);
     }
   }
 
   function handleKeydown(e: KeyboardEvent): void {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      handleClick();
+      // Keyboard activation keeps normal-click semantics (reuse active tab).
+      onFileClick?.(node.path, false);
     }
   }
 

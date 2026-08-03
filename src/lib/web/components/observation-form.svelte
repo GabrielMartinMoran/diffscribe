@@ -1,5 +1,7 @@
 <script lang="ts">
+  import type { ObservationDraftStore } from '$lib/web/stores/observation-draft-store.svelte';
   import type { SelectionInfo } from '$lib/web/stores/observation-store';
+  import type { ComparisonDraft } from '$lib/web/types/comparison-draft';
 
   import Select from './ui/Select.svelte';
 
@@ -7,47 +9,74 @@
     activeWorkspaceId,
     activeReviewId,
     selectionInfo = null as SelectionInfo | null,
+    comparisonDraft = null as ComparisonDraft | null,
+    draft,
+    autofocusBody = false,
     onCreated = () => {},
     onCancel = () => {},
   }: {
     activeWorkspaceId: string | null;
     activeReviewId: string | null;
     selectionInfo: SelectionInfo | null;
+    comparisonDraft: ComparisonDraft | null;
+    /** Per-instance draft store owned by the page shell (survives unmount). */
+    draft: ObservationDraftStore;
+    autofocusBody: boolean;
     onCreated: () => void;
     onCancel: () => void;
   } = $props();
 
-  let obsType = $state('note');
-  let obsSeverity = $state<string | null>(null);
-  let obsTitle = $state('');
-  let obsBody = $state('');
-  let submitting = $state(false);
-  let error = $state<string | null>(null);
-
   // Show severity selector only for issue/risk
-  let showSeverity = $derived(obsType === 'issue' || obsType === 'risk');
+  let showSeverity = $derived(draft.type === 'issue' || draft.type === 'risk');
+
+  // Form bindings promote pristine → dirty on the first user edit. The reset
+  // flow restores the default values, so a pristine draft never re-marks
+  // itself dirty after a clear.
+  $effect(() => {
+    void draft.body;
+    void draft.type;
+    void draft.severity;
+    const hasEdits = draft.body !== '' || draft.type !== 'note' || draft.severity !== null;
+    if (hasEdits && draft.status === 'pristine') {
+      draft.markEdited();
+    }
+  });
+
+  // Focus the body field when the form opens for a new selection so the
+  // reviewer can type immediately (click-to-comment flow).
+  $effect(() => {
+    if (!autofocusBody) return;
+    requestAnimationFrame(() => {
+      document.getElementById('obs-body')?.focus();
+    });
+  });
 
   async function handleSubmit(e: Event) {
     e.preventDefault();
-    if (!obsTitle.trim() || !activeWorkspaceId || !activeReviewId) return;
+    if (!draft.hasContent || !activeWorkspaceId || draft.isSubmitting) return;
 
-    submitting = true;
-    error = null;
+    // Missing context surfaces an inline accessible error instead of a
+    // doomed request.
+    if (!activeReviewId) {
+      draft.showError('Start a review before creating observations');
+      return;
+    }
+    if (!comparisonDraft) {
+      draft.showError('Choose a comparison before creating observations');
+      return;
+    }
+
+    draft.beginSubmit();
 
     try {
       const body: Record<string, unknown> = {
         reviewId: activeReviewId,
-        type: obsType,
-        severity: showSeverity ? obsSeverity : null,
-        title: obsTitle.trim(),
-        body: obsBody.trim(),
+        type: draft.type,
+        severity: showSeverity ? draft.severity : null,
+        body: draft.body.trim(),
         agentInstruction: '',
-        comparisonSnapshotJson: JSON.stringify({
-          base: { type: 'head', value: 'HEAD', label: 'HEAD' },
-          target: { type: 'working-tree', value: 'working-tree', label: 'working tree' },
-          comparisonType: 'working-tree-vs-head',
-          createdAt: new Date().toISOString(),
-        }),
+        // The real active Comparison, propagated from the Git context panel.
+        comparisonSnapshotJson: JSON.stringify(comparisonDraft),
       };
 
       if (selectionInfo) {
@@ -88,30 +117,25 @@
 
       if (!res.ok) {
         const data = await res.json();
-        error = data.error ?? 'Failed to create observation';
+        draft.endSubmit(false, data.error ?? 'Failed to create observation');
         return;
       }
 
-      obsTitle = '';
-      obsBody = '';
-      obsType = 'note';
-      obsSeverity = null;
+      draft.endSubmit(true);
       onCreated();
     } catch (e: unknown) {
-      error = e instanceof Error ? e.message : 'Failed to create observation';
-    } finally {
-      submitting = false;
+      draft.endSubmit(false, e instanceof Error ? e.message : 'Failed to create observation');
     }
   }
 </script>
 
 <form class="obs-form" onsubmit={handleSubmit}>
-  {#if error}
-    <div class="form-error" role="alert">{error}</div>
+  {#if draft.error}
+    <div class="form-error" role="alert">{draft.error}</div>
   {/if}
 
   <div class="form-group">
-    <Select id="obs-type" label="Type" bind:value={obsType} disabled={submitting}>
+    <Select id="obs-type" label="Type" bind:value={draft.type} disabled={draft.isSubmitting}>
       <option value="note">Note</option>
       <option value="issue">Issue</option>
       <option value="risk">Risk</option>
@@ -124,7 +148,7 @@
   {#if showSeverity}
     <div class="form-group">
       <label for="obs-severity">Severity</label>
-      <select id="obs-severity" bind:value={obsSeverity} disabled={submitting}>
+      <select id="obs-severity" bind:value={draft.severity} disabled={draft.isSubmitting}>
         <option value={null}>-- Select severity --</option>
         <option value="critical">Critical</option>
         <option value="major">Major</option>
@@ -135,27 +159,15 @@
   {/if}
 
   <div class="form-group">
-    <label for="obs-title">Title <span class="required">*</span></label>
-    <input
-      id="obs-title"
-      type="text"
-      bind:value={obsTitle}
-      maxlength="200"
-      required
-      disabled={submitting}
-      placeholder="Observation title (1-200 characters)"
-    />
-  </div>
-
-  <div class="form-group">
-    <label for="obs-body">Body</label>
+    <label for="obs-body">Body <span class="required">*</span></label>
     <textarea
       id="obs-body"
-      bind:value={obsBody}
+      bind:value={draft.body}
       maxlength="5000"
       rows="3"
-      disabled={submitting}
-      placeholder="Optional details (up to 5000 characters)"></textarea>
+      required
+      disabled={draft.isSubmitting}
+      placeholder="Observation body (1-5000 characters)"></textarea>
   </div>
 
   {#if selectionInfo}
@@ -166,108 +178,11 @@
   {/if}
 
   <div class="form-actions">
-    <button type="submit" class="btn-primary" disabled={submitting || !obsTitle.trim()}>
-      {submitting ? 'Creating...' : 'Create Observation'}
+    <button type="submit" class="btn-primary" disabled={draft.isSubmitting || !draft.hasContent}>
+      {draft.isSubmitting ? 'Creating...' : 'Create Observation'}
     </button>
-    <button type="button" class="btn-secondary" onclick={onCancel} disabled={submitting}>
+    <button type="button" class="btn-secondary" onclick={onCancel} disabled={draft.isSubmitting}>
       Cancel
     </button>
   </div>
 </form>
-
-<style>
-  .obs-form {
-    padding: var(--space-3);
-    border: 1px solid var(--border-default);
-    border-radius: var(--radius-md);
-    background: var(--surface-secondary);
-    margin-bottom: var(--space-3);
-  }
-
-  .form-error {
-    padding: var(--space-2);
-    margin-bottom: var(--space-2);
-    background: var(--surface-error);
-    border: 1px solid var(--text-error);
-    border-radius: var(--radius-sm);
-    color: var(--text-error);
-    font-size: var(--text-sm);
-  }
-
-  .form-group {
-    margin-bottom: var(--space-2);
-  }
-
-  .form-group label {
-    display: block;
-    margin-bottom: var(--space-1);
-    font-size: var(--text-sm);
-    font-weight: 500;
-    color: var(--text-secondary);
-  }
-
-  .required {
-    color: var(--text-error);
-  }
-
-  .form-group select,
-  .form-group input,
-  .form-group textarea {
-    width: 100%;
-    padding: var(--space-1) var(--space-2);
-    border: 1px solid var(--border-default);
-    border-radius: var(--radius-sm);
-    font-size: var(--text-sm);
-    font-family: inherit;
-    background: var(--surface-primary);
-    color: var(--text-primary);
-  }
-
-  .form-group :global(.ui-select) {
-    padding: var(--space-1) var(--space-2);
-  }
-
-  .selection-info {
-    padding: var(--space-2);
-    margin-bottom: var(--space-2);
-    background: var(--selection-bg, rgba(66, 133, 244, 0.1));
-    border-radius: var(--radius-sm);
-    font-size: var(--text-xs);
-    color: var(--text-secondary);
-  }
-
-  .form-actions {
-    display: flex;
-    gap: var(--space-2);
-    justify-content: flex-end;
-  }
-
-  .btn-primary {
-    padding: var(--space-1) var(--space-3);
-    border: none;
-    border-radius: var(--radius-sm);
-    background: var(--accent);
-    color: var(--text-inverse);
-    cursor: pointer;
-    font-size: var(--text-sm);
-  }
-
-  .btn-primary:hover:not(:disabled) {
-    opacity: 0.9;
-  }
-
-  .btn-primary:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .btn-secondary {
-    padding: var(--space-1) var(--space-3);
-    border: 1px solid var(--border-default);
-    border-radius: var(--radius-sm);
-    background: var(--surface-primary);
-    color: var(--text-primary);
-    cursor: pointer;
-    font-size: var(--text-sm);
-  }
-</style>

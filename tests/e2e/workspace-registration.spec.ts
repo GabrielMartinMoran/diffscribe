@@ -110,7 +110,7 @@ test.describe('Workspace Registration UI (E2E)', () => {
       fixtureA.cleanup();
       await page.reload();
       await page.waitForLoadState('networkidle');
-      await expect(wsItem.locator('.invalid-badge')).toBeVisible();
+      await expect(wsItem.locator('[data-testid="invalid-warning-btn"]')).toBeVisible();
 
       // 4. Repair: create new repo and use the in-UI Repair action
       initRepo(fixtureB);
@@ -135,7 +135,7 @@ test.describe('Workspace Registration UI (E2E)', () => {
 
       // 5. Confirm workspace is valid again
       await expect(wsItem.locator('.status-dot.status-valid')).toBeVisible();
-      await expect(wsItem.locator('.invalid-badge')).toHaveCount(0);
+      await expect(wsItem.locator('[data-testid="invalid-warning-btn"]')).toHaveCount(0);
     } finally {
       fixtureA.cleanup();
       fixtureB.cleanup();

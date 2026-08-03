@@ -1,7 +1,10 @@
 <script lang="ts">
   /* eslint-disable svelte/no-at-html-tags */
   import type { FileDiffResult } from '$lib/server/application/dto/results/file-diff-results';
+  import type { SelectionKind } from '$lib/web/stores/observation-draft-store.svelte';
   import { readStoredWrap, resolveWrap } from '$lib/web/stores/wrap-store';
+  import type { SelectionPayload } from '$lib/web/types/selection-payload';
+  import { createRequestGuard } from '$lib/web/utils/request-guard';
 
   interface ComparisonDraft {
     base: { type: string; value: string; label: string };
@@ -14,32 +17,20 @@
     selectedFile = null as string | null,
     comparisonDraft = null as ComparisonDraft | null,
     activeWorkspaceId = null as string | null,
-    onSelectionChange = null as
-      | ((
-          selection: {
-            filePath: string;
-            side: string;
-            startLine: number;
-            endLine: number;
-            rawSnapshot: string;
-          } | null,
-        ) => void)
-      | null,
+    clearRequest = 0 as number,
+    restoreRequest = 0 as number,
+    restoreSelection = null as SelectionPayload | null,
+    onSelectionChange = null as ((selection: SelectionPayload | null) => void) | null,
   }: {
     selectedFile: string | null;
     comparisonDraft: ComparisonDraft | null;
     activeWorkspaceId: string | null;
-    onSelectionChange?:
-      | ((
-          selection: {
-            filePath: string;
-            side: string;
-            startLine: number;
-            endLine: number;
-            rawSnapshot: string;
-          } | null,
-        ) => void)
-      | null;
+    /** Increment to ask the viewer to clear its selection (e.g. form cancel). */
+    clearRequest?: number;
+    /** Increment to re-apply a previous selection (e.g. keep dirty draft). */
+    restoreRequest?: number;
+    restoreSelection?: SelectionPayload | null;
+    onSelectionChange?: ((selection: SelectionPayload | null) => void) | null;
   } = $props();
 
   let diffResult = $state<FileDiffResult | null>(null);
@@ -53,6 +44,9 @@
   let selectedLineSide = $state<Record<number, string>>({});
   let anchorLine = $state<number | null>(null);
   let ariaMessage = $state('');
+  // Monotonic guard: stale responses must not overwrite newer file content
+  // when the user switches tabs/files quickly.
+  const requestGuard = createRequestGuard();
 
   // Track viewport width for responsive toggle
   $effect(() => {
@@ -82,6 +76,25 @@
     selectedLines = [];
     selectedLineSide = {};
     anchorLine = null;
+  });
+
+  // External clear request (e.g. the observation draft was cancelled).
+  $effect(() => {
+    if (clearRequest === 0) return;
+    clearSelection();
+  });
+
+  // External restore request: re-apply a previous selection after the user
+  // kept a dirty draft (the new replace click was rejected).
+  $effect(() => {
+    if (restoreRequest === 0) return;
+    if (!restoreSelection) return;
+    const { startLine, endLine, side } = restoreSelection;
+    const restored: number[] = [];
+    for (let i = startLine; i <= endLine; i++) restored.push(i);
+    selectedLines = restored;
+    selectedLineSide = { [endLine]: side };
+    anchorLine = startLine;
   });
 
   // Per-file wrap state: start from the global Settings default whenever a
@@ -120,6 +133,7 @@
 
   async function fetchDiff() {
     if (!selectedFile || !comparisonDraft || !activeWorkspaceId) return;
+    const generation = requestGuard.begin();
     loading = true;
     error = null;
     diffResult = null;
@@ -132,6 +146,7 @@
       );
       const data: FileDiffResult = await res.json();
 
+      if (!requestGuard.isCurrent(generation)) return;
       if (data.error) {
         error = data.error.message;
         diffResult = null;
@@ -144,10 +159,13 @@
         notifySelectionChange();
       }
     } catch (e: unknown) {
+      if (!requestGuard.isCurrent(generation)) return;
       error = e instanceof Error ? e.message : 'Failed to load diff';
       diffResult = null;
     } finally {
-      loading = false;
+      if (requestGuard.isCurrent(generation)) {
+        loading = false;
+      }
     }
   }
 
@@ -167,8 +185,29 @@
 
   // ── Line selection ──
 
+  let lastSelectionKind = $state<SelectionKind>('replace');
+
   function selectLine(lineNum: number, side: string, event?: MouseEvent) {
+    // Ctrl/Cmd-click toggles individual lines without moving the anchor.
+    if (event?.ctrlKey || event?.metaKey) {
+      lastSelectionKind = 'toggle';
+      if (selectedLines.includes(lineNum)) {
+        selectedLines = selectedLines.filter((n) => n !== lineNum);
+        const rest = { ...selectedLineSide };
+        delete rest[lineNum];
+        selectedLineSide = rest;
+      } else {
+        selectedLines = [...selectedLines, lineNum];
+        selectedLineSide = { ...selectedLineSide, [lineNum]: side };
+      }
+      if (anchorLine === null) anchorLine = lineNum;
+      announceSelection(lineNum, lineNum);
+      notifySelectionChange();
+      return;
+    }
+
     if (event?.shiftKey && anchorLine !== null) {
+      lastSelectionKind = 'extend';
       const start = Math.min(anchorLine, lineNum);
       const end = Math.max(anchorLine, lineNum);
       const arr: number[] = [];
@@ -177,6 +216,7 @@
       selectedLineSide = { ...selectedLineSide, [lineNum]: side };
       announceSelection(start, end);
     } else {
+      lastSelectionKind = 'replace';
       selectedLines = [lineNum];
       selectedLineSide = { [lineNum]: side };
       anchorLine = lineNum;
@@ -230,11 +270,13 @@
       startLine: sorted[0],
       endLine: sorted[sorted.length - 1],
       rawSnapshot,
+      kind: lastSelectionKind,
     });
   }
 
   function extendSelectionUp() {
     if (anchorLine === null) return;
+    lastSelectionKind = 'extend';
     const newEnd = Math.max(1, anchorLine - 1);
     const start = Math.min(anchorLine, newEnd);
     const end = Math.max(anchorLine, newEnd);
@@ -248,6 +290,7 @@
 
   function extendSelectionDown() {
     if (anchorLine === null) return;
+    lastSelectionKind = 'extend';
     const maxLine = getMaxLineNumber();
     const newEnd = Math.min(maxLine, anchorLine + 1);
     const start = Math.min(anchorLine, newEnd);
@@ -317,6 +360,7 @@
   function handleLineKeydown(lineNum: number, side: string, e: KeyboardEvent) {
     if (e.key === 'l' || e.key === 'L') {
       e.preventDefault();
+      lastSelectionKind = 'replace';
       anchorLine = lineNum;
       selectedLines = [lineNum];
       selectedLineSide = { [lineNum]: side };
@@ -749,6 +793,9 @@
   .line-number {
     display: inline-block;
     width: 48px;
+    /* 48 px is the outer cell width: padding is included via border-box,
+       so each old/new cell keeps exactly 48 px (96 px combined). */
+    box-sizing: border-box;
     text-align: right;
     padding: 0 var(--space-2);
     color: var(--text-secondary);

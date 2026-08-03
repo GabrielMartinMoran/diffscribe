@@ -18,8 +18,8 @@ Feature: Observation ownership — workspace-scoped isolation, completed-review 
 
   @p1 @api @bdd @e2e
   Scenario: Observation list is scoped to the active workspace
-    Given an observation with title "Alpha observation" exists on the active review for workspace "Alpha"
-    And an observation with title "Beta observation" exists on the active review for workspace "Beta"
+    Given an observation with body "Alpha observation" exists on the active review for workspace "Alpha"
+    And an observation with body "Beta observation" exists on the active review for workspace "Beta"
     When the user queries the observation list for workspace "Alpha"
     Then the list contains "Alpha observation"
     And the list does not contain "Beta observation"
@@ -37,7 +37,7 @@ Feature: Observation ownership — workspace-scoped isolation, completed-review 
   Scenario: Reject updating an observation on a completed review
     Given a completed review exists for workspace "Alpha"
     And an observation exists on the completed review
-    When the user attempts to edit the observation title
+    When the user attempts to edit the observation body
     Then the operation is rejected with status 409
     And the error indicates the review is completed and read-only
 

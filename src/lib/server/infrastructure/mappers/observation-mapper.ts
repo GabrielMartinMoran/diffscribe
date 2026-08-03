@@ -16,7 +16,6 @@ export interface ObservationRow {
   severity: string | null;
   origin: string;
   status: string;
-  title: string;
   body: string;
   agent_instruction: string;
   file_path: string | null;
@@ -38,7 +37,6 @@ export function toRow(observation: Observation): ObservationRow {
     severity: observation.severity ?? null,
     origin: observation.origin,
     status: observation.status,
-    title: observation.title,
     body: observation.body,
     agent_instruction: observation.agentInstruction,
     file_path: observation.filePath,
@@ -65,7 +63,6 @@ export function toDomain(row: ObservationRow): Observation {
     type: row.type as ObservationType,
     severity: row.severity ? (row.severity as ObservationSeverity) : null,
     origin: row.origin as ObservationOrigin,
-    title: row.title,
     body: row.body,
     agentInstruction: row.agent_instruction,
     filePath: row.file_path,

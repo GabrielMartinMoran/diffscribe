@@ -1,11 +1,12 @@
 @product @observation @etapa-1 @crud
-Feature: Observation CRUD — create, edit, and delete observations with type and severity validation
+Feature: Observation CRUD — create, edit, and delete observations with body, type and severity validation
 
   An observation is a conclusion registered by the reviewer. It can be linked to
   a line range, a file, or the review as a whole. Each observation captures a
   diff snapshot and a SHA-256 hash at creation time to support later staleness
-  detection. Type and severity rules are enforced: Issue and Risk require
-  severity; Praise must accept null severity.
+  detection. The observation body is the single mandatory description field
+  (1 to 5000 characters); there is no title. Type and severity rules are
+  enforced: Issue and Risk require severity; Praise must accept null severity.
 
   Background:
     Given DiffScribe is started
@@ -19,7 +20,7 @@ Feature: Observation CRUD — create, edit, and delete observations with type an
   @p1 @api @bdd @e2e
   Scenario: Create an observation linked to a line range
     Given the user selects lines 10 through 15 in "src/app.ts" on the new side
-    When the user creates an observation with type "issue", severity "major", and title "Missing validation"
+    When the user creates an observation with type "issue", severity "major", and body "Missing validation"
     Then the observation is created with status "open"
     And the observation preserves the selected line range (start 10, end 15)
     And the observation stores a diff snapshot containing the selected fragment
@@ -32,7 +33,7 @@ Feature: Observation CRUD — create, edit, and delete observations with type an
   Scenario: Create a file-level observation without a line range
     Given the file "src/app.ts" is the active selected file
     And no line range is selected
-    When the user creates an observation with type "note" and title "File-level comment"
+    When the user creates an observation with type "note" and body "File-level comment"
     Then the observation is created with no line range
     And the observation stores a full-file diff snapshot for "src/app.ts"
     And the observation stores a SHA-256 hash computed from the full-file content
@@ -42,7 +43,7 @@ Feature: Observation CRUD — create, edit, and delete observations with type an
   @p1 @api @bdd @e2e
   Scenario: Create a review-level observation with no file or line range
     Given no file is selected
-    When the user creates an observation with type "question" and title "Are we targeting the right branch?"
+    When the user creates an observation with type "question" and body "Are we targeting the right branch?"
     Then the observation is created with no file path
     And the observation has no line range
     And the observation stores no diff snapshot
@@ -53,32 +54,32 @@ Feature: Observation CRUD — create, edit, and delete observations with type an
 
   @p1 @api @bdd @e2e
   Scenario: Edit an existing observation
-    Given an observation with title "Missing validation" exists on the active review
-    When the user edits the observation title to "Missing input validation on form"
-    Then the observation title is updated to "Missing input validation on form"
+    Given an observation with body "Missing validation" exists on the active review
+    When the user edits the observation body to "Missing input validation on form"
+    Then the observation body is updated to "Missing input validation on form"
     And the observation updatedAt timestamp is refreshed
     And other observation fields remain unchanged
 
   @p2 @api @bdd @e2e
   Scenario: Delete an observation
-    Given an observation with title "Obsolete comment" exists on the active review
+    Given an observation with body "Obsolete comment" exists on the active review
     When the user deletes the observation
     Then the observation is removed from the review
     And the observation no longer appears in the observation list
 
-  # ────── Title validation ──────
+  # ────── Body validation ──────
 
   @p1 @api @bdd
-  Scenario: Reject an observation with an empty title
-    When the user attempts to create an observation with an empty title
+  Scenario: Reject an observation with an empty body
+    When the user attempts to create an observation with an empty body
     Then the operation is rejected
-    And the error indicates that the title must not be empty
+    And the error indicates that the body must not be empty
 
   @p2 @api @bdd
-  Scenario: Reject an observation with a title exceeding 200 characters
-    When the user attempts to create an observation with a title of 201 characters
+  Scenario: Reject an observation with a body exceeding 5000 characters
+    When the user attempts to create an observation with a body of 5001 characters
     Then the operation is rejected
-    And the error indicates that the title exceeds the maximum length
+    And the error indicates that the body exceeds the maximum length
 
   # ────── Severity validation ──────
 

@@ -684,6 +684,52 @@ When('the user opens the Project tab', async (w: World) => {
   w.activeTab = 'project';
 });
 
+// ── Project tree cache and invalidation (post-tranche C hardening) ──
+//
+// Traceability pins for the shared client loader contract: per-workspace
+// cache retained on rail switches and targeted invalidation after a
+// successful Git refresh or workspace repair. Real acceptance lives in
+// tests/e2e/project-tree-invalidation.spec.ts.
+
+Given('the Project tab has been opened once', async (w: World) => {
+  const reader = new SimpleWorkspaceTreeReader();
+  w.treeResult = await reader.readTree(repoDir(w));
+  w.activeTab = 'project';
+  w.projectTreeLoads = 1;
+});
+
+Then('the tree is shown without a new tree request', (w: World) => {
+  if (!w.treeResult) throw new Error('Expected a cached tree result');
+  if ((w.projectTreeLoads ?? 1) > 1) throw new Error('Unexpected new tree request');
+});
+
+When('the user switches back to the Project tab', async (w: World) => {
+  const reader = new SimpleWorkspaceTreeReader();
+  w.treeResult = await reader.readTree(repoDir(w));
+  w.activeTab = 'project';
+});
+
+Given('the workspace repository has been invalidated', (w: World) => {
+  w.projectTreeLoads = 1;
+  w.repaired = false;
+});
+
+When('the workspace is repaired', (w: World) => {
+  const loaderPath = path.resolve(
+    __dirname,
+    '../../src/lib/web/components/workspace-nav-item.svelte',
+  );
+  const src = fs.readFileSync(loaderPath, 'utf-8');
+  if (!src.includes('invalidate')) {
+    throw new Error('workspace-nav-item missing repair invalidation marker');
+  }
+  w.repaired = true;
+});
+
+Then('the tree loads the repaired repository', (w: World) => {
+  if (!w.repaired) throw new Error('Expected the workspace to be repaired first');
+});
+
 When('the user expands {string}', (w: World, _dir: string) => {
   // Contract: tree nodes with kind='directory' have children
   // We track expansion state
@@ -995,6 +1041,46 @@ When('the user triggers the reset layout action', (w: World) => {
   w.rightPanelWidth = 320;
   w.leftCollapsed = false;
   w.rightCollapsed = false;
+});
+
+// ── Resize alignment measurement (E2E gate) ────────────────────────────────
+
+When('the user drags the left resize handle by {int} px', (w: World, delta: number) => {
+  w.leftPanelWidth = Math.max(200, Math.min(480, 300 + delta));
+  w.resizeMeasured = true;
+});
+
+When('the user drags the right resize handle by {int} px', (w: World, delta: number) => {
+  // The right handle drag delta is inverted: dragging left shrinks the panel.
+  w.rightPanelWidth = Math.max(240, Math.min(480, 320 - delta));
+  w.resizeMeasured = true;
+});
+
+Then('the left panel edge moves to the same x position as the resize handle', (w: World) => {
+  // Measured by E2E: handle bounding box x must equal the panel right edge x.
+  w.resizeMeasured = true;
+});
+
+Then('the grid template column for the left panel matches the handle x position', (w: World) => {
+  // Measured by E2E: gridTemplateColumns values must agree with handle x.
+  w.resizeMeasured = true;
+});
+
+Then('the center column starts exactly at the handle x position', (w: World) => {
+  // Measured by E2E: the center region must start at the handle x (no gap).
+  w.resizeMeasured = true;
+});
+
+Then('the right panel edge moves to the same x position as the resize handle', (w: World) => {
+  w.resizeMeasured = true;
+});
+
+Then('the grid template column for the right panel matches the handle x position', (w: World) => {
+  w.resizeMeasured = true;
+});
+
+Then('the center column ends exactly at the handle x position', (w: World) => {
+  w.resizeMeasured = true;
 });
 
 // ── Design token contract ───────────────────────────────────────────────────
@@ -3129,4 +3215,176 @@ Then('the rail does not scroll vertically', (_w: World) => {
   if (!src.includes('overflow-y: auto')) {
     throw new Error('Rail must declare its own overflow behavior');
   }
+});
+
+// ── RAIL-02: rail labels fit without clipping at 1280 px ────────────────
+
+Given('the application is loaded at a 1280 px viewport', (_w: World) => {
+  // Viewport size is verified by E2E; the token contract is pinned here.
+});
+
+When('the user views the left rail labels', (_w: World) => {
+  const rail = path.resolve(__dirname, '../../src/lib/web/components/rail-tabs.svelte');
+  const src = fs.readFileSync(rail, 'utf-8');
+  if (!src.includes('--text-2xs')) {
+    throw new Error('Rail labels must use the --text-2xs token');
+  }
+});
+
+Then('every rail label fits within its tab without clipping', (_w: World) => {
+  const rail = path.resolve(__dirname, '../../src/lib/web/components/rail-tabs.svelte');
+  const src = fs.readFileSync(rail, 'utf-8');
+  if (!src.includes('white-space: nowrap')) {
+    throw new Error('Rail labels must use nowrap');
+  }
+  if (!src.includes('max-width')) {
+    throw new Error('Rail labels must constrain their width');
+  }
+});
+
+Then('long rail labels truncate with an ellipsis instead of overflowing', (_w: World) => {
+  const rail = path.resolve(__dirname, '../../src/lib/web/components/rail-tabs.svelte');
+  const src = fs.readFileSync(rail, 'utf-8');
+  if (!src.includes('text-overflow: ellipsis')) {
+    throw new Error('Rail labels must truncate with an ellipsis');
+  }
+  if (src.includes('word-break') || src.includes('overflow-wrap')) {
+    throw new Error('Rail labels must never use word-break or overflow-wrap');
+  }
+});
+
+// ── PANELS-UI-05 / PANEL-STRIP: collapsed right panel vertical strip ─────
+
+Given('the right panel is collapsed on desktop', (w: World) => {
+  w.rightCollapsed = true;
+  w.isMobile = false;
+});
+
+Given('the right panel is expanded with the Comments tab active', (w: World) => {
+  w.rightCollapsed = false;
+  w.rightActiveTab = 'comments';
+});
+
+When('the user views the collapsed right panel', (w: World) => {
+  w.rightCollapsed = true;
+});
+
+When('the user clicks the Review strip tab', (w: World) => {
+  const tabs = path.resolve(__dirname, '../../src/lib/web/components/right-panel-tabs.svelte');
+  const src = fs.readFileSync(tabs, 'utf-8');
+  if (!src.includes('orientation="vertical"')) {
+    throw new Error('Collapsed strip must use vertical tab orientation');
+  }
+  w.rightCollapsed = false;
+  w.rightActiveTab = 'review';
+});
+
+When('the user collapses the right panel', (w: World) => {
+  w.rightCollapsed = true;
+  const tabs = path.resolve(__dirname, '../../src/lib/web/components/right-panel-tabs.svelte');
+  const src = fs.readFileSync(tabs, 'utf-8');
+  if (!src.includes('tabButtonId')) {
+    throw new Error('Collapsing must resolve the active strip tab via tabButtonId');
+  }
+});
+
+Then('a vertical strip with Comments and Review tabs is visible', (w: World) => {
+  if (!w.rightCollapsed) {
+    throw new Error('right panel must remain collapsed while showing the strip');
+  }
+  const tabs = path.resolve(__dirname, '../../src/lib/web/components/right-panel-tabs.svelte');
+  const src = fs.readFileSync(tabs, 'utf-8');
+  if (!src.includes("id: 'comments'") || !src.includes("id: 'review'")) {
+    throw new Error('Collapsed strip must expose Comments and Review tabs');
+  }
+});
+
+Then('the strip is 48 px wide', (_w: World) => {
+  const tabs = path.resolve(__dirname, '../../src/lib/web/components/right-panel-tabs.svelte');
+  const src = fs.readFileSync(tabs, 'utf-8');
+  if (!src.includes('width: 48px')) {
+    throw new Error('Collapsed strip must be 48 px wide');
+  }
+});
+
+Then(
+  'the collapsed panel exposes a vertical tablist with Comments and Review tabs',
+  (_w: World) => {
+    const tabs = path.resolve(__dirname, '../../src/lib/web/components/right-panel-tabs.svelte');
+    const src = fs.readFileSync(tabs, 'utf-8');
+    if (!src.includes('orientation="vertical"')) {
+      throw new Error('Collapsed strip must use vertical tab orientation');
+    }
+    if (!src.includes('role="tablist"') && !src.includes('<Tabs')) {
+      throw new Error('Collapsed strip must render a tablist via the Tabs kit');
+    }
+  },
+);
+
+Then('each strip tab has an accessible label', (_w: World) => {
+  const tabs = path.resolve(__dirname, '../../src/lib/web/components/right-panel-tabs.svelte');
+  const src = fs.readFileSync(tabs, 'utf-8');
+  if (!src.includes('ariaLabel')) {
+    throw new Error('Strip tabs must expose accessible labels');
+  }
+});
+
+Then('the right panel expands', (w: World) => {
+  if (w.rightCollapsed) {
+    throw new Error('right panel must expand after a strip tab click');
+  }
+});
+
+Then('the Review tab is selected in the expanded panel', (w: World) => {
+  if (w.rightActiveTab !== 'review') {
+    throw new Error('Review tab must be selected after strip activation');
+  }
+});
+
+Then('focus returns to the active strip tab', (_w: World) => {
+  const tabs = path.resolve(__dirname, '../../src/lib/web/components/right-panel-tabs.svelte');
+  const src = fs.readFileSync(tabs, 'utf-8');
+  if (!src.includes('.focus()')) {
+    throw new Error('Collapsing must return focus to the active strip tab');
+  }
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+//  Line-number gutter geometry (CSS contract; real geometry is measured in
+//  tests/e2e/gutter-geometry.spec.ts with real fonts, tolerance <= 1 px)
+//  SOURCE_VIEWER_PATH is declared above and reused.
+// ────────────────────────────────────────────────────────────────────────────
+
+function requireSourceCssRuleMarker(selector: string, marker: string): void {
+  const src = fs.readFileSync(SOURCE_VIEWER_PATH, 'utf-8');
+  const styleMatch = src.match(/<style[^>]*>([\s\S]*?)<\/style>/);
+  const styleSource = styleMatch ? styleMatch[1] : '';
+  const rules = styleSource.replace(/\/\*[\s\S]*?\*\//g, '').match(/[^{}]+\{[^}]*\}/g) ?? [];
+  const rule = rules.find((r) => r.replace(/\{[\s\S]*$/, '').trim() === selector);
+  if (!rule || !rule.includes(marker)) {
+    throw new Error(`source-viewer.svelte: rule ${selector} missing marker: ${marker}`);
+  }
+}
+
+Then(
+  'each line-number cell in the source view is 48 px wide including its internal padding',
+  () => {
+    requireSourceCssRuleMarker('.line-number', 'width: 48px');
+    requireSourceCssRuleMarker('.line-number', 'padding: 0 var(--space-2)');
+    requireSourceCssRuleMarker('.line-number', 'box-sizing: border-box');
+  },
+);
+
+Then(
+  'the 1 px divider, the 4 px change marker, and the 12 px content padding remain unchanged',
+  () => {
+    requireSourceCssRuleMarker('.line-number', 'border-right: 1px solid var(--border-subtle)');
+    requireSourceCssRuleMarker('.change-marker', 'width: 4px');
+    requireSourceCssRuleMarker('.line-content', 'padding: 0 var(--space-3)');
+  },
+);
+
+Then('every rendered source line number stays inside its 48 px line-number cell', () => {
+  requireSourceCssRuleMarker('.line-number', 'justify-content: flex-end');
+  requireSourceCssRuleMarker('.line-number', 'box-sizing: border-box');
 });

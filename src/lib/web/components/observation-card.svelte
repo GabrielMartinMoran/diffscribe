@@ -1,4 +1,14 @@
 <script lang="ts">
+  import type { Component } from 'svelte';
+  import {
+    CircleAlert,
+    CircleQuestionMark,
+    Lightbulb,
+    StickyNote,
+    ThumbsUp,
+    TriangleAlert,
+  } from 'svelte-lucide';
+
   import type { ObservationResult } from '$lib/web/stores/observation-store';
 
   let {
@@ -41,6 +51,18 @@
     }
   }
 
+  // Lucide icon per observation type: icon + text + color in one badge.
+  const TYPE_ICONS: Record<string, Component> = {
+    issue: CircleAlert,
+    risk: TriangleAlert,
+    suggestion: Lightbulb,
+    question: CircleQuestionMark,
+    praise: ThumbsUp,
+    note: StickyNote,
+  };
+
+  const TypeIcon = $derived(TYPE_ICONS[observation.type] ?? StickyNote);
+
   function severityBadgeClass(severity: string): string {
     switch (severity) {
       case 'critical':
@@ -58,6 +80,7 @@
 <div class="obs-card" class:stale={!!staleStatus}>
   <div class="card-header">
     <span class="badge {badgeClass(observation.type)}">
+      <TypeIcon size={12} strokeWidth={2} aria-hidden="true" />
       {observation.type}
     </span>
     {#if observation.severity}
@@ -69,27 +92,11 @@
       <span class="badge badge-stale" title={staleStatus}>Stale</span>
     {/if}
     <span class="status-dot status-{observation.status}"></span>
-    <span
-      class="card-title"
-      role="button"
-      tabindex="0"
-      onclick={() => onEdit(observation.id)}
-      onkeydown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onEdit(observation.id);
-        }
-      }}
-    >
-      {observation.title}
-    </span>
   </div>
 
-  {#if observation.body}
-    <div class="card-body">
-      {observation.body.length > 200 ? observation.body.slice(0, 200) + '...' : observation.body}
-    </div>
-  {/if}
+  <div class="card-body">
+    {observation.body.length > 200 ? observation.body.slice(0, 200) + '...' : observation.body}
+  </div>
 
   <div class="card-meta">
     {#if observation.filePath}
@@ -144,6 +151,9 @@
     margin-bottom: var(--space-2);
     background: var(--surface-primary);
     transition: box-shadow 0.15s;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
   }
 
   .obs-card:hover {
@@ -168,7 +178,9 @@
   }
 
   .badge {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
     padding: 1px 6px;
     font-size: 10px;
     font-weight: 600;
@@ -228,6 +240,7 @@
     height: 8px;
     border-radius: 50%;
     flex-shrink: 0;
+    margin-left: auto;
   }
   .status-open {
     background: var(--obs-status-open);
@@ -242,22 +255,13 @@
     background: var(--obs-status-pending);
   }
 
-  .card-title {
-    font-weight: 500;
-    font-size: var(--text-sm);
-    cursor: pointer;
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
   .card-body {
     font-size: var(--text-xs);
-    color: var(--text-secondary);
+    color: var(--text-primary);
     margin-bottom: var(--space-1);
     line-height: 1.4;
+    overflow-wrap: break-word;
+    min-width: 0;
   }
 
   .card-meta {
@@ -265,10 +269,14 @@
     color: var(--text-tertiary);
     display: flex;
     gap: var(--space-2);
+    flex-wrap: wrap;
+    min-width: 0;
   }
 
   .meta-file {
     font-family: var(--font-mono);
+    overflow-wrap: break-word;
+    min-width: 0;
   }
 
   .card-actions {

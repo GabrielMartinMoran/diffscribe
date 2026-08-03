@@ -84,10 +84,10 @@ test.describe('Workspace Management UI (E2E)', () => {
       fixture.cleanup();
       await page.reload();
 
-      // The workspace should still be visible but now with invalid badge
+      // The workspace should still be visible but now with the warning affordance
       sidebarItem = page.locator(`#workspace-sidebar li:has-text("${uniqueName}")`).first();
       await expect(sidebarItem).toBeVisible();
-      await expect(sidebarItem.locator('.invalid-badge')).toBeVisible();
+      await expect(sidebarItem.locator('[data-testid="invalid-warning-btn"]')).toBeVisible();
     } finally {
       fixture.cleanup();
     }

@@ -128,17 +128,54 @@ its adapter `SimpleGitContextReader` in
 - The port exposes typed DTOs (`StatusDto`, `BranchDto`, `CommitDto`,
   `GitContextResult`). No `simple-git` type crosses the adapter boundary.
 - The adapter uses exclusively read-only APIs from `simple-git` v3.36.0:
-  `status()`, `branchLocal()`, `log({maxCount})`, `revparse()`, `checkIsRepo()`.
-- No checkout, commit, branch, push, fetch, merge, or reset is executed.
+  `status()`, `log({maxCount})`, `revparse()`, `checkIsRepo()`, and one
+  combined `for-each-ref` invocation for branches (tranche C).
+- No checkout, commit, branch, push, fetch, pull, ls-remote, merge, or reset
+  is executed. Branch reading never touches the network: local heads and
+  cached `refs/remotes/*` are read with a single `git for-each-ref`
+  `--format=%(refname)%00%(HEAD)%00%(committerdate:iso8601)%00` call over
+  `refs/heads` and `refs/remotes`; remote HEAD pseudo-refs are excluded.
+- `isCurrent` comes from the Git `%(HEAD)` marker; in detached/unborn HEAD
+  no branch is current, and an unborn HEAD yields an empty branch list.
+- `BranchDto` carries the canonical ref (`refs/heads/<name>` /
+  `refs/remotes/<remote>/<name>`) as the selection value/key and a short
+  visible `name` for display; `committerDate` is normalized to ISO-8601 UTC
+  and omitted when unavailable. Ordering is applied in pure TypeScript
+  (`branch-sort.ts`: Local group first, Cached remote second, committer date
+  descending within a group, missing dates last, canonical ref ascending
+  tie-break) — never via multiple Git `--sort` keys.
 - The `GetGitContextUseCase` use case returns typed aggregated data +
   read timestamp. No cache.
 - The `GET /api/workspaces/[id]/git-context` endpoint allows manual refresh.
   No polling, watcher, or auto-reload.
 - The UI panel (`GitContextPanel.svelte`) maintains an ephemeral Comparison
   draft in client memory. Base/Target selection updates the draft without
-  mutating the repository.
+  mutating the repository. A failed refresh keeps the last good context
+  visible with an error banner and Retry; the file-list fetch and the
+  refresh run under monotonic request guards (`request-guard.ts`) so stale
+  responses are discarded.
+- Refresh states are wired into the Base/Target branch popup: the popup
+  shows a real loading state only while a refresh is in flight and no
+  branches are known (`refreshing && branches.length === 0`), so existing
+  options stay visible during a background refresh. A failed refresh while
+  the popup is open surfaces the error inline with a Retry action; the
+  global banner is gated behind `!openSlot` so exactly one alert owner
+  exists at a time. Retry revalidates the workspace (`invalidateAll()`) and
+  refreshes the Git context; a successful refresh invalidates the cached
+  Project tree for the active workspace (see below).
 
 **HEAD states covered:** clean, dirty, detached, unborn, conflict, error.
+
+### Branch selector popup (tranche C)
+
+`branch-select-popup.svelte` is a **product composite** for the Base/Target
+branch triggers — not a generic UI primitive. It renders inline inside the
+Git context panel (no portal, no `<dialog>`), one popup at a time, with the
+ARIA combobox pattern (`role=combobox`, listbox/options,
+aria-expanded/controls/activedescendant). Branch grouping and fuzzy
+filtering are pure helpers in `src/lib/web/utils/branch-options.ts`; the
+generic `Select`/`Menu` kit primitives are untouched. Selection stores the
+canonical ref as the draft value and the short label for display.
 
 ### File list reader (Inc-4)
 
@@ -203,6 +240,32 @@ Architecture pattern as the existing readers:
 - **Endpoint:** `GET /api/workspaces/[id]/tree`. Returns the full tree as JSON.
 - **Contract:** the tree is read‑only. No mutation operations.
 
+#### Shared client tree loader
+
+The Project rail and Quick Open consume the same tree endpoint through one
+client loader (`src/lib/web/services/project-tree-loader.ts`). The loader:
+
+- caches the fetched tree per `activeWorkspaceId` and exposes a
+  `flattenFiles()` helper that produces the flat file list used by the Quick
+  Open index;
+- is the single client fetch site for `/api/workspaces/[id]/tree` — the
+  Project tree component delegates to it instead of fetching directly;
+- invalidates on demand with `invalidate(workspaceId)`: targeted (only the
+  given workspace is dropped, other workspaces keep their cache) and
+  pending-safe (while a request is in flight the promise is kept so
+  concurrent loads share it — no overlapping fetches; the first load after
+  it settles starts exactly one fresh request). Failed loads stay uncached;
+- is not a server module and does not paginate: huge repositories are
+  bounded at consumption time (Quick Open caps results at 512), and
+  server-side search/pagination stays deferred (see below).
+
+**Invalidation call sites (post-tranche C hardening):** the cached Project
+tree for the active workspace is invalidated only after a *successful* Git
+context refresh (GitContextPanel) and after a *successful* workspace repair
+(WorkspaceNavItem). Workspace switches, comparison changes, tab switches,
+and file-list refreshes never invalidate and never clear the loader — the
+per-workspace cache is what makes rail switches request-free.
+
 ### Source reader (Source View)
 
 The full source of a file is served through the
@@ -221,14 +284,58 @@ The full source of a file is served through the
 
 ### Client-side preferences
 
-The active theme (`ThemeKey`) and resized panel widths are stored exclusively
-in the browser's `localStorage`. These values:
+The active theme (`ThemeKey`), resized panel widths, and the Quick Open
+untracked-inclusion flag (`diffscribe-quick-open-include-untracked`, default
+`false`) are stored exclusively in the browser's `localStorage`. These values:
 
 - Are not persisted in SQLite or on the server.
 - Are not part of the server-side domain model.
 - Are not synchronized between devices or sessions.
 - Are resolved on the client and applied via the `data-theme` attribute on the
   `<html>` element.
+
+The Quick Open flag follows the `wrap-store` pattern (default `false`,
+defensive `resolve`), lives in `src/lib/web/stores/quick-open-store.ts`, and
+affects only the Quick Open dialog — the Git/file list never reads it.
+
+#### Client tab state
+
+The central viewer tab collection is session-only client state in
+`src/lib/web/stores/active-file-store.ts` (extended in place; existing exports
+`activeFile`, `activeFilePath`, `activeFileLabel`, `setActiveFile`,
+`clearActiveFile` stay available). The store keeps the ordered tab list and
+the active path, and exposes:
+
+- `openFileTab(path, label, newTab)` — normal open reuses the active tab;
+  modifier open appends a tab unless the path is already open (dedup by
+  repo-relative path);
+- `activateTab(path)` — switches the active tab;
+- `closeTab(path)` — active close selects next, else previous, else empty;
+  inactive close preserves the active tab;
+- `resetTabs()` — clears tabs and the active path (workspace switch).
+
+Tabs are never persisted (no localStorage, no SQLite) and are unique within
+`activeWorkspaceId`; switching workspace resets the collection so stale paths
+cannot leak into the next workspace.
+
+#### Quick Open index (client-side)
+
+Quick Open (`src/lib/web/components/quick-open-dialog.svelte`) builds its
+index from the shared tree loader, flattening file nodes only. Matching uses
+a pure TypeScript fuzzy scorer
+(`src/lib/web/services/quick-open-scorer.ts`), inspired by VS Code's
+`fuzzyScorer` principles without transplanting its internals:
+
+- ranking: exact path > basename prefix > basename subsequence > path fuzzy;
+- boosts: consecutive matches, case, start-of-word, and separator matches;
+- compactness, deterministic lexical tie-break, highlights, all
+  whitespace-separated terms required, result cap 512;
+- query normalization handles case and path separators.
+
+The scorer is product logic (not generic UI kit) and is fully unit-tested.
+There is no server-side Quick Open endpoint, search, or pagination in this
+tranche: server search is deferred to a later tranche once real-world repo
+sizes are benchmarked.
 
 ---
 
@@ -556,7 +663,7 @@ Vite/SvelteKit ecosystem.
 | `web/routes/` | REST: `GET/POST /observations`, `GET/PATCH/DELETE /observations/:id`, `POST /observations/:id/status` |
 | `web/components/` | `ObservationPanel`, `ObservationCard`, `ObservationForm`, line selection in `DiffViewer` |
 
-**Migration:** `005_create_observations` with FK `review_id -> reviews(id) ON DELETE CASCADE`, CHECKs for type/status/origin/severity, `json_valid()` on comparison_snapshot_json, diff_snapshot and content_hash null together, indexes on review_id/type/status.
+**Migration:** `005_create_observations` with FK `review_id -> reviews(id) ON DELETE CASCADE`, CHECKs for type/status/origin/severity, `json_valid()` on comparison_snapshot_json, diff_snapshot and content_hash null together, indexes on review_id/type/status. Migration `006_drop_observation_title_require_body` is destructive (approved 2026-08-01): it deletes rows with empty/whitespace-only bodies, drops the `title` column, rebuilds the table so `body` is `NOT NULL` with `CHECK (length(trim(body)) > 0)`, and recreates the indexes and the review FK exactly. It runs atomically inside the migration runner transaction; back up `~/.diffscribe/diffscribe.db` before upgrading.
 
 **Canonical hash:** `SHA-256(filePath + ":" + side + ":" + startLine + ":" + LF-normalized content)` via `node:crypto`. No external dependencies.
 

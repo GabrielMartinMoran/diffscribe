@@ -28,7 +28,9 @@
     width: 100%;
     height: 100%;
     background: rgba(0, 0, 0, 0.5);
-    z-index: var(--z-overlay, 300);
+    /* Below the overlays (sheet 300, drawer 301): the backdrop dims the page
+       without intercepting clicks aimed at overlay controls. */
+    z-index: var(--z-backdrop, 299);
     animation: fadeIn 0.15s ease-out;
   }
 

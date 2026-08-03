@@ -18,8 +18,8 @@ describe('GetGitContextUseCase', () => {
       headState: 'clean',
     });
     fakeReader.setBranches([
-      { name: 'main', isCurrent: true },
-      { name: 'feat/a', isCurrent: false },
+      { name: 'main', canonicalRef: 'refs/heads/main', isCurrent: true },
+      { name: 'feat/a', canonicalRef: 'refs/heads/feat/a', isCurrent: false },
     ]);
     fakeReader.setCommits([
       {
@@ -100,8 +100,8 @@ describe('GetGitContextUseCase', () => {
       detachedCommitHash: 'abc1234',
     });
     fakeReader.setBranches([
-      { name: 'main', isCurrent: false },
-      { name: 'feat/a', isCurrent: false },
+      { name: 'main', canonicalRef: 'refs/heads/main', isCurrent: false },
+      { name: 'feat/a', canonicalRef: 'refs/heads/feat/a', isCurrent: false },
     ]);
     fakeReader.setCommits([]);
     fakeReader.setError(null);
@@ -180,7 +180,7 @@ describe('GetGitContextUseCase', () => {
       currentBranch: 'main',
       headState: 'clean',
     });
-    fakeReader.setBranches([{ name: 'main', isCurrent: true }]);
+    fakeReader.setBranches([{ name: 'main', canonicalRef: 'refs/heads/main', isCurrent: true }]);
     fakeReader.setCommits([]);
     fakeReader.setError(null);
 

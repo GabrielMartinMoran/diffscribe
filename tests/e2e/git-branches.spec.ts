@@ -2,7 +2,7 @@ import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import type { Page } from '@playwright/test';
+import type { APIRequestContext, Page } from '@playwright/test';
 
 import { expect, test } from './fixtures';
 import { createGitFixture } from './helpers/git-fixture';
@@ -14,6 +14,23 @@ import { resetDb } from './helpers/reset-db';
  * fetch, Base auto-activation, and inferred ComparisonType from the real
  * base/target pair.
  */
+
+/**
+ * The worker dev server answers the readiness probe (GET /) before its API
+ * routes finish compiling; the very first reset of a fresh worker can hit a
+ * 404. Retry briefly so first-test resets are reliable.
+ */
+async function resetDbWhenReady(request: APIRequestContext): Promise<void> {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    try {
+      await resetDb(request);
+      return;
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+  await resetDb(request);
+}
 
 function initRepo(fixture: { repoPath: string; runGit(args: readonly string[]): void }): void {
   fs.writeFileSync(path.join(fixture.repoPath, 'README.md'), '# e2e');
@@ -28,7 +45,7 @@ async function openGitPanel(page: Page): Promise<void> {
 
 test.describe('Git branches — cached remotes and inferred comparisons', () => {
   test.beforeEach(async ({ page, request }) => {
-    await resetDb(request);
+    await resetDbWhenReady(request);
     await page.goto('/');
     await page.waitForLoadState('networkidle');
   });
@@ -45,15 +62,17 @@ test.describe('Git branches — cached remotes and inferred comparisons', () => 
       await registerAndSelectWorkspace(page, repoDir, `E2E-GBr-${Date.now()}`, 'git');
       await openGitPanel(page);
 
-      const branchList = page.getByRole('listbox', { name: /branches/i });
+      // Open the Base trigger popup.
+      await page.locator('.slot-base').click();
+      const branchList = page.getByRole('listbox', { name: 'Branches' });
       await expect(branchList).toBeVisible();
 
-      // Local branch present.
-      await expect(branchList.getByText('master', { exact: true })).toBeVisible();
+      // Local branch present (role-based: option names are stable labels).
+      await expect(branchList.getByRole('option', { name: /master/ })).toBeVisible();
       // Cached remote branch present with the remote marker.
-      const remoteItem = branchList.getByText('origin/main', { exact: true });
+      const remoteItem = branchList.getByRole('option', { name: /origin\/main/ });
       await expect(remoteItem).toBeVisible();
-      await expect(branchList.getByText('remote', { exact: true })).toBeVisible();
+      await expect(branchList.locator('[aria-label="Cached remote branch"]')).toBeVisible();
     } finally {
       fixture.cleanup();
     }
@@ -69,10 +88,10 @@ test.describe('Git branches — cached remotes and inferred comparisons', () => 
       await registerAndSelectWorkspace(page, repoDir, `E2E-GBr2-${Date.now()}`, 'git');
       await openGitPanel(page);
 
-      // Open the target slot and pick the feature branch.
+      // Open the target slot popup and pick the feature branch.
       const targetBtn = page.locator('.slot-target');
       await targetBtn.click();
-      const branchList = page.getByRole('listbox', { name: /branches/i });
+      const branchList = page.getByRole('listbox', { name: 'Branches' });
       await branchList.getByText('feature', { exact: true }).click();
 
       // Base slot auto-activated with the current branch (master).
@@ -125,8 +144,10 @@ test.describe('Git branches — cached remotes and inferred comparisons', () => 
       await registerAndSelectWorkspace(page, repoDir, `E2E-GBr4-${Date.now()}`, 'git');
       await openGitPanel(page);
 
-      const branchList = page.getByRole('listbox', { name: /branches/i });
-      await branchList.getByText('origin/main', { exact: true }).click();
+      // Open the target slot popup and select the cached remote branch.
+      await page.locator('.slot-target').click();
+      const branchList = page.getByRole('listbox', { name: 'Branches' });
+      await branchList.getByRole('option', { name: /origin\/main/ }).click();
 
       // The cached remote remains the same after selection: no fetch ran.
       const refs = execSync('git for-each-ref refs/remotes', { cwd: repoDir, stdio: 'pipe' })

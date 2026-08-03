@@ -36,7 +36,7 @@ test.describe('Panel resize and collapse (PANELS-UI-01)', () => {
     // No empty panel frames
     await expect(page.locator('[data-testid="left-contextual-panel"]')).not.toBeVisible();
     const rightPanel = page.locator('[data-testid="right-panel"]');
-    await expect(rightPanel).toHaveAttribute('role', 'button');
+    await expect(rightPanel).toHaveAttribute('role', 'tablist');
   });
 
   // ────── Collapse and expand ──────
@@ -71,12 +71,12 @@ test.describe('Panel resize and collapse (PANELS-UI-01)', () => {
     await expect(collapseBtn).toBeVisible();
     await collapseBtn.click();
 
-    // Right panel switches to collapsed reopen control (role button, not tabpanel)
-    await expect(rightPanel).toHaveAttribute('role', 'button');
-    await expect(rightPanel).toHaveAttribute('aria-label', 'Open right panel');
+    // Right panel switches to the collapsed strip: a vertical tablist.
+    await expect(rightPanel).toHaveAttribute('role', 'tablist');
+    await expect(rightPanel.locator('[role="tab"]').first()).toBeVisible();
 
-    // Reopen by clicking the collapsed panel
-    await rightPanel.click();
+    // Reopen by activating the Comments strip tab.
+    await rightPanel.locator('[data-testid="right-tab-comments"]').click();
 
     // Now back to expanded state with tabs
     await expect(rightPanel).toHaveAttribute('role', 'tabpanel');
@@ -187,9 +187,9 @@ test.describe('Panel resize and collapse (PANELS-UI-01)', () => {
     const leftPanel = page.locator('[data-testid="left-contextual-panel"]');
     await expect(leftPanel).not.toBeVisible();
 
-    // Right panel shows collapsed reopen control
+    // Right panel shows collapsed vertical strip
     const rightPanel = page.locator('[data-testid="right-panel"]');
-    await expect(rightPanel).toHaveAttribute('role', 'button');
+    await expect(rightPanel).toHaveAttribute('role', 'tablist');
 
     // Center content is still visible
     await expect(page.locator('[data-testid="center-content"]')).toBeVisible();
@@ -304,5 +304,267 @@ test.describe('Panel resize and collapse (PANELS-UI-01)', () => {
 
     // Shell must still be visible
     await expect(page.locator('[data-testid="shell-layout"]')).toBeVisible({ timeout: 10000 });
+  });
+});
+
+// ────── Resize alignment measurement (E2E gate) ──────
+// This test measures the resize behavior BEFORE any fix is chosen: the CSS
+// variable, the grid template columns, and the bounding boxes of the handle,
+// the panel edge, and the center column must all agree after a drag. If the
+// measurement confirms a misalignment (gap), a fix is justified; otherwise the
+// Orchestrator is notified and no fix is improvised.
+
+interface ResizeMetrics {
+  gridColumns: string[];
+  leftVar: string;
+  rightVar: string;
+  leftPanelRight: number | null;
+  leftHandleCenterX: number | null;
+  centerLeft: number | null;
+  centerRight: number | null;
+  rightHandleCenterX: number | null;
+  rightPanelLeft: number | null;
+  rightPanelRight: number | null;
+  viewportWidth: number;
+}
+
+async function measureLayout(page: import('@playwright/test').Page): Promise<ResizeMetrics> {
+  return page.evaluate(() => {
+    const shell = document.querySelector('[data-testid="shell-layout"]');
+    const leftPanel = document.querySelector('[data-testid="left-contextual-panel"]');
+    const rightPanel = document.querySelector('[data-testid="right-panel"]');
+    const center = document.querySelector('[data-testid="center-content"]');
+    const leftHandle = document.querySelector('[data-testid="left-resize-handle"]');
+    const rightHandle = document.querySelector('[data-testid="right-resize-handle"]');
+
+    const style = shell ? getComputedStyle(shell) : null;
+    const gridColumns = style ? style.gridTemplateColumns.split(' ').map((s) => parseFloat(s)) : [];
+    const leftPanelRight = leftPanel ? leftPanel.getBoundingClientRect().right : null;
+    const leftHandleCenterX = leftHandle
+      ? leftHandle.getBoundingClientRect().left + leftHandle.getBoundingClientRect().width / 2
+      : null;
+    const centerLeft = center ? center.getBoundingClientRect().left : null;
+    const centerRight = center ? center.getBoundingClientRect().right : null;
+    const rightHandleCenterX = rightHandle
+      ? rightHandle.getBoundingClientRect().left + rightHandle.getBoundingClientRect().width / 2
+      : null;
+    const rightPanelLeft = rightPanel ? rightPanel.getBoundingClientRect().left : null;
+    const rightPanelRight = rightPanel ? rightPanel.getBoundingClientRect().right : null;
+    const shellStyle = shell ? (shell as HTMLElement).style : null;
+
+    return {
+      gridColumns: gridColumns.map((n) => String(Math.round(n))),
+      leftVar: shellStyle?.getPropertyValue('--left-panel-width').trim() ?? '',
+      rightVar: shellStyle?.getPropertyValue('--right-panel-width').trim() ?? '',
+      leftPanelRight,
+      leftHandleCenterX,
+      centerLeft,
+      centerRight,
+      rightHandleCenterX,
+      rightPanelLeft,
+      rightPanelRight,
+      viewportWidth: window.innerWidth,
+    };
+  });
+}
+
+async function dragBy(page: import('@playwright/test').Page, handleSelector: string, dx: number) {
+  const handle = page.locator(handleSelector);
+  const box = (await handle.boundingBox())!;
+  const startX = box.x + box.width / 2;
+  const startY = box.y + box.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + dx, startY, { steps: 6 });
+  await page.mouse.up();
+}
+
+/**
+ * Drag the right handle and return a measurement sampled mid-drag (before the
+ * pointer is released) plus the final measurement. This proves the panel
+ * tracks the column while resizing, not only after the drag ends.
+ */
+async function dragRightWithSample(
+  page: import('@playwright/test').Page,
+  dx: number,
+  sampleDx: number,
+): Promise<{ during: ResizeMetrics; after: ResizeMetrics }> {
+  const handle = page.locator('[data-testid="right-resize-handle"]');
+  const box = (await handle.boundingBox())!;
+  const startX = box.x + box.width / 2;
+  const startY = box.y + box.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + sampleDx, startY, { steps: 3 });
+  const during = await measureLayout(page);
+  await page.mouse.move(startX + dx, startY, { steps: 3 });
+  await page.mouse.up();
+  const after = await measureLayout(page);
+  return { during, after };
+}
+
+test.describe('Resize alignment measurement (PANELS-UI-01)', () => {
+  test.beforeEach(async ({ page, request }) => {
+    await resetDb(request);
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+  });
+
+  test('left: panel edge, handle, and grid column stay aligned after drag', async ({ page }) => {
+    await waitForHydration(page);
+
+    const before = await measureLayout(page);
+
+    await dragBy(page, '[data-testid="left-resize-handle"]', 80);
+
+    const after = await measureLayout(page);
+    const tolerance = 2;
+
+    // Evidence: record the measured values for the Orchestrator.
+    const evidence = { before, after };
+    expect(evidence.after.leftPanelRight).not.toBeNull();
+
+    // The CSS variable must reflect the drag.
+    expect(after.leftVar).toBe('380px');
+
+    // Grid column 1 (0-indexed) is the left panel width: 48px rail + panel.
+    expect(parseFloat(after.gridColumns[1])).toBeGreaterThan(0);
+
+    // Panel right edge, handle center, and the second grid column boundary
+    // must coincide (no gap between the left panel and the center column).
+    const gridLeftBoundary = 48 + parseFloat(after.gridColumns[1]);
+    expect(Math.abs(after.leftPanelRight! - after.leftHandleCenterX!)).toBeLessThanOrEqual(
+      tolerance,
+    );
+    expect(Math.abs(after.centerLeft! - after.leftHandleCenterX!)).toBeLessThanOrEqual(tolerance);
+    expect(Math.abs(gridLeftBoundary - after.leftHandleCenterX!)).toBeLessThanOrEqual(tolerance);
+  });
+
+  test('right: panel edge, handle, and grid column stay aligned after drag', async ({ page }) => {
+    await waitForHydration(page);
+
+    await dragBy(page, '[data-testid="right-resize-handle"]', -60);
+
+    const after = await measureLayout(page);
+    const tolerance = 2;
+
+    expect(after.rightVar).toBe('380px');
+
+    // Grid column 3 (0-indexed) is the right panel width.
+    const gridRightBoundary = after.viewportWidth - parseFloat(after.gridColumns[3]);
+
+    expect(Math.abs(after.rightPanelLeft! - after.rightHandleCenterX!)).toBeLessThanOrEqual(
+      tolerance,
+    );
+    expect(Math.abs(after.centerRight! - after.rightHandleCenterX!)).toBeLessThanOrEqual(tolerance);
+    expect(Math.abs(gridRightBoundary - after.rightHandleCenterX!)).toBeLessThanOrEqual(tolerance);
+  });
+
+  test('right panel width tracks the resized grid column without gap or overflow', async ({
+    page,
+  }) => {
+    await waitForHydration(page);
+    const tolerance = 2;
+
+    // Grow the right panel to 380px, sampling the layout mid-drag.
+    const grown = await dragRightWithSample(page, -60, -30);
+    const expectedWide = 380;
+    expect(grown.during.rightVar).toBe('350px');
+    expect(grown.after.rightVar).toBe('380px');
+
+    // DURING the drag the panel must already fill the column.
+    const duringCol = parseFloat(grown.during.gridColumns[3]);
+    const duringPanelWidth = grown.during.rightPanelRight! - grown.during.rightPanelLeft!;
+    expect(Math.abs(duringPanelWidth - duringCol)).toBeLessThanOrEqual(tolerance);
+    expect(
+      Math.abs(grown.during.rightPanelRight! - grown.during.viewportWidth),
+    ).toBeLessThanOrEqual(tolerance);
+
+    // AFTER the drag: the real panel width equals the column width, its
+    // right edge reaches the viewport edge (no gap), and the center column
+    // ends exactly where the panel begins.
+    const afterCol = parseFloat(grown.after.gridColumns[3]);
+    const afterPanelWidth = grown.after.rightPanelRight! - grown.after.rightPanelLeft!;
+    expect(Math.abs(afterPanelWidth - afterCol)).toBeLessThanOrEqual(tolerance);
+    expect(Math.abs(afterPanelWidth - expectedWide)).toBeLessThanOrEqual(tolerance);
+    expect(Math.abs(grown.after.rightPanelRight! - grown.after.viewportWidth)).toBeLessThanOrEqual(
+      tolerance,
+    );
+    expect(Math.abs(grown.after.centerRight! - grown.after.rightPanelLeft!)).toBeLessThanOrEqual(
+      tolerance,
+    );
+
+    // Shrink it below the default: the panel must follow without overflowing
+    // the viewport or the center column.
+    const shrunk = await dragRightWithSample(page, 130, 70);
+    const shrunkCol = parseFloat(shrunk.after.gridColumns[3]);
+    const shrunkPanelWidth = shrunk.after.rightPanelRight! - shrunk.after.rightPanelLeft!;
+    expect(Math.abs(shrunkPanelWidth - shrunkCol)).toBeLessThanOrEqual(tolerance);
+    expect(
+      Math.abs(shrunk.after.rightPanelRight! - shrunk.after.viewportWidth),
+    ).toBeLessThanOrEqual(tolerance);
+    expect(Math.abs(shrunk.after.centerRight! - shrunk.after.rightPanelLeft!)).toBeLessThanOrEqual(
+      tolerance,
+    );
+  });
+});
+
+test.describe('Collapsed right panel strip (PANEL-STRIP / PANELS-UI-05)', () => {
+  test.beforeEach(async ({ page, request }) => {
+    await resetDb(request);
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+    await waitForHydration(page);
+  });
+
+  test('PANELS-UI-05 + PANEL-STRIP-01: collapsed right panel renders a 48px vertical tablist', async ({
+    page,
+  }) => {
+    const collapseBtn = page.locator('[data-testid="right-panel-collapse-btn"]');
+    await expect(collapseBtn).toBeVisible({ timeout: 10000 });
+    await collapseBtn.click();
+
+    const strip = page.locator('[data-testid="right-panel"]');
+    await expect(strip).toHaveAttribute('role', 'tablist', { timeout: 5000 });
+    await expect(strip).toHaveAttribute('aria-orientation', 'vertical');
+
+    const stripBox = (await strip.boundingBox())!;
+    expect(Math.round(stripBox.width)).toBe(48);
+
+    const commentsTab = strip.locator('[data-testid="right-tab-comments"]');
+    const reviewTab = strip.locator('[data-testid="right-tab-review"]');
+    await expect(commentsTab).toBeVisible();
+    await expect(reviewTab).toBeVisible();
+    await expect(commentsTab).toHaveAttribute('aria-label', 'Comments');
+    await expect(reviewTab).toHaveAttribute('aria-label', 'Review');
+  });
+
+  test('PANEL-STRIP-02: clicking the Review strip tab expands the panel and selects Review', async ({
+    page,
+  }) => {
+    await page.locator('[data-testid="right-panel-collapse-btn"]').click();
+    const strip = page.locator('[data-testid="right-panel"]');
+    await expect(strip).toHaveAttribute('role', 'tablist', { timeout: 5000 });
+
+    await strip.locator('[data-testid="right-tab-review"]').click();
+
+    const panel = page.locator('[data-testid="right-panel"]');
+    await expect(panel).toHaveAttribute('role', 'tabpanel', { timeout: 5000 });
+    await expect(page.locator('[data-testid="right-tab-review"]')).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    await expect(page.locator('#review-panel')).toBeVisible({ timeout: 8000 });
+  });
+
+  test('PANEL-STRIP-03: collapsing returns focus to the active strip tab', async ({ page }) => {
+    // Comments is the default active tab; collapse and check focus return.
+    await page.locator('[data-testid="right-panel-collapse-btn"]').click();
+    const strip = page.locator('[data-testid="right-panel"]');
+    await expect(strip).toHaveAttribute('role', 'tablist', { timeout: 5000 });
+
+    const activeStripTab = strip.locator('[data-testid="right-tab-comments"]');
+    await expect(activeStripTab).toHaveAttribute('aria-selected', 'true');
+    await expect(activeStripTab).toBeFocused({ timeout: 5000 });
   });
 });

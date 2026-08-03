@@ -103,6 +103,7 @@
   --line-height-code: 1.25rem;
   --line-height-normal: 1.5rem;
   --line-height-relaxed: 1.75rem;
+  --text-2xs: 0.625rem;
   --text-xs: 0.75rem;
   --text-sm: 0.8125rem;
   --text-md: 0.875rem;
@@ -145,6 +146,9 @@
   --z-base: 0;
   --z-dropdown: 100;
   --z-sticky: 200;
+  /* Backdrop sits below overlays (sheet 300, drawer 301) so overlay controls
+     stay clickable while the backdrop still blocks the page behind them. */
+  --z-backdrop: 299;
   --z-overlay: 300;
   --z-modal: 400;
   --z-toast: 500;
@@ -248,6 +252,7 @@ body {
   --text-tertiary: #7a6a9a;
   --text-inverse: #0d0221;
   --text-link: #2de2e6;
+  --text-2xs: 0.625rem;
 
   --border-subtle: #2e2157;
   --border-default: #540d6e;
@@ -375,6 +380,7 @@ body {
   --text-tertiary: #6c757d;
   --text-inverse: #1a1a2e;
   --text-link: #60a5fa;
+  --text-2xs: 0.625rem;
 
   --border-subtle: #2d2d44;
   --border-default: #3d3d5c;

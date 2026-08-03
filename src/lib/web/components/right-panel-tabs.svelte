@@ -1,6 +1,7 @@
 <script lang="ts">
   import { FileText, MessageCircle, PanelRightClose, PanelRightOpen } from 'svelte-lucide';
 
+  import { tabButtonId } from './ui/ids';
   import type { TabItem } from './ui/Tabs.svelte';
   import Tabs from './ui/Tabs.svelte';
 
@@ -42,6 +43,25 @@
       testId: 'right-tab-review',
     },
   ];
+
+  // Strip tab activation expands the panel and selects the tab at once.
+  function handleStripTabChange(id: string) {
+    onTabChange?.(id as 'comments' | 'review');
+    onToggleRight?.();
+  }
+
+  // When the panel collapses, return focus to the active tab in the strip so
+  // keyboard users keep their position.
+  let wasCollapsed = $state(false);
+  $effect(() => {
+    const collapsed = rightCollapsed;
+    if (collapsed && !wasCollapsed) {
+      requestAnimationFrame(() => {
+        document.getElementById(tabButtonId(activeRightTab))?.focus();
+      });
+    }
+    wasCollapsed = collapsed;
+  });
 </script>
 
 {#if isMobile}
@@ -99,22 +119,17 @@
     <!-- In mobile when closed, render nothing in the grid -->
   {/if}
 {:else if rightCollapsed}
-  <div
+  <!-- Collapsed desktop strip: 48 px vertical tablist. Activating a tab
+       expands the panel and selects the tab (handleStripTabChange). -->
+  <Tabs
+    {tabs}
+    activeId={activeRightTab}
+    orientation="vertical"
+    ariaLabel="Right panel tabs"
     data-testid="right-panel"
-    class="right-panel-collapsed"
-    role="button"
-    tabindex="0"
-    aria-label="Open right panel"
-    onclick={onToggleRight}
-    onkeydown={(e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        onToggleRight?.();
-      }
-    }}
-  >
-    <PanelRightOpen size="16" strokeWidth="1.5" ariaLabel="Open right panel" />
-  </div>
+    class="right-panel-strip"
+    onchange={handleStripTabChange}
+  />
 {:else}
   <div data-testid="right-panel" class="right-panel" role="tabpanel" aria-label="Right panel">
     <div class="right-panel-tabs">
@@ -156,7 +171,11 @@
   .right-panel {
     display: flex;
     flex-direction: column;
-    width: 320px;
+    /* Fill the grid column the shell assigns via --right-panel-width. The
+       panel must follow the resize handle; a fixed pixel width would leave
+       a gap at the viewport edge after growing or overflow after shrinking.
+       The mobile sheet below overrides width for the fixed bottom sheet. */
+    width: 100%;
     min-width: 240px;
     border-left: 1px solid var(--border-subtle);
     background: var(--surface-primary);
@@ -165,27 +184,39 @@
     min-height: 0;
   }
 
-  .right-panel-collapsed {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 24px;
-    min-width: 24px;
+  /* ── Collapsed strip (desktop) ── */
+
+  :global(.right-panel-strip) {
+    flex-direction: column;
+    box-sizing: border-box;
+    width: 48px;
+    min-width: 48px;
     border-left: 1px solid var(--border-subtle);
     background: var(--surface-secondary);
-    color: var(--text-tertiary);
-    cursor: pointer;
-    transition: color 0.15s;
   }
 
-  .right-panel-collapsed:hover {
-    color: var(--accent);
-    background: var(--surface-hover);
+  :global(.right-panel-strip .ui-tabs__tab) {
+    width: 48px;
+    height: 48px;
+    flex-direction: column;
+    gap: 2px;
+    padding: var(--space-1) 0;
+    border-left: 2px solid transparent;
   }
 
-  .right-panel-collapsed:focus-visible {
-    outline: var(--focus-ring-offset) solid var(--focus-ring);
-    outline-offset: -2px;
+  :global(.right-panel-strip .ui-tabs__tab.active) {
+    border-left-color: var(--accent);
+    background: var(--accent-light);
+  }
+
+  :global(.right-panel-strip .ui-tabs__label) {
+    font-size: var(--text-2xs);
+    line-height: 1;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .right-panel-tabs {
@@ -251,6 +282,12 @@
     justify-content: center;
     width: 32px;
     min-width: 32px;
+    /* Grid row stretch + explicit height: the toggle is a full-height right
+       column (>= 24x24 target) and never collapses into an implicit row. */
+    height: 100%;
+    /* Above the backdrop so the toggle stays usable while the sheet is open
+       (the sheet wins over the toggle only inside its own box, later DOM). */
+    z-index: var(--z-overlay, 300);
     border: none;
     border-left: 1px solid var(--border-subtle);
     background: var(--surface-secondary);
@@ -298,7 +335,6 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .right-panel-collapsed,
     .right-collapse-btn,
     .mobile-right-toggle,
     .right-panel.mobile-sheet {

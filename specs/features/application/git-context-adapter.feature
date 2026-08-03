@@ -126,3 +126,55 @@ Feature: Git context adapter — typed DTOs with no raw simple-git leakage
     When the adapter attempts to access the repository
     Then the adapter returns a typed error result with errorCode "PATH_NOT_FOUND"
     And no exception propagates to the caller
+
+  # ────── Canonical branch refs (tranche C) ──────
+  #
+  # The adapter reads local heads and cached remote refs with one combined
+  # read-only `git for-each-ref` invocation and sorts the result in pure
+  # TypeScript. Full refs are never shown to the user; the visible name stays
+  # short while the canonical ref is used as the selection value.
+
+  @p2 @api @bdd
+  Scenario: Map for-each-ref output to BranchDto canonical refs and ISO UTC committer dates
+    Given a workspace with local branch "dev" and cached remote branch "origin/dev"
+    When the adapter maps the combined for-each-ref output
+    Then the branch entry for "dev" has canonicalRef "refs/heads/dev"
+    And the branch entry for "origin/dev" has canonicalRef "refs/remotes/origin/dev"
+    And every branch entry has a committerDate serialized as ISO-8601 UTC
+    And the visible branch names remain short without the full ref prefix
+
+  @p2 @api @bdd
+  Scenario: Branch list is ordered by group and committer date with canonical tie-break
+    Given a workspace with local branches "dev", "old", and "alpha" with known committer dates
+    And a cached remote branch "origin/main" with a known committer date
+    When the adapter maps the combined for-each-ref output
+    Then local branches appear before cached remote branches
+    And within a group branches are ordered by committerDate descending
+    And branches with equal committerDate tie-break by canonicalRef ascending
+
+  @p3 @api @bdd
+  Scenario: Missing committer date is omitted and sorts last
+    Given a workspace with a branch that has no committer date
+    And a branch with a known committer date
+    When the adapter maps the combined for-each-ref output
+    Then the branch entry without a date has no committerDate property
+    And the dated branch is sorted before the undated branch
+
+  @p3 @api @bdd
+  Scenario: Unborn HEAD produces an empty branch list
+    Given simple-git status indicates that the repository has no commits yet
+    When the adapter maps the combined for-each-ref output
+    Then the BranchDto list is empty
+
+  @p2 @api @bdd
+  Scenario: Remote HEAD pseudo-refs are excluded from the branch list
+    Given a workspace with a cached remote branch and a remote HEAD pseudo-ref
+    When the adapter maps the combined for-each-ref output
+    Then the BranchDto list contains "origin/main"
+    And the BranchDto list does not contain "origin/HEAD"
+
+  @p2 @api @bdd
+  Scenario: Branch reading never fetches, pulls, pushes, or runs ls-remote
+    Given the git context adapter is loaded
+    When the adapter reads branches from a workspace with a cached remote branch
+    Then no git fetch, pull, push, or ls-remote operation is available in the reader

@@ -240,3 +240,20 @@ Feature: Diff viewer — unified and side-by-side diff with syntax highlighting,
     Then the diff viewer re-fetches the diff for "src/app.ts"
     And the repository index is unchanged
     And no git add, checkout, or commit has been executed
+
+  # ────── Line-number gutter geometry ──────
+
+  @p2 @ui @e2e
+  Scenario: Unified diff line-number cells are 48 px wide including padding
+    Given the active Comparison includes a modified file "src/app.ts"
+    And the file "src/app.ts" is the active selected file
+    When the user views the diff viewer
+    Then each line-number cell in the unified diff is 48 px wide including its internal padding
+    And the old and new line-number cells together span exactly 96 px
+
+  @p2 @ui @e2e
+  Scenario: Line numbers with up to five digits stay inside their cell
+    Given the active Comparison includes a modified file "src/app.ts"
+    And the file "src/app.ts" is the active selected file
+    When the user views the diff viewer
+    Then every rendered line number stays inside its 48 px line-number cell

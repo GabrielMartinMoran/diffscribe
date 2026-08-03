@@ -1,6 +1,8 @@
 <script lang="ts">
   import { invalidateAll } from '$app/navigation';
+  import type { ObservationDraftStore } from '$lib/web/stores/observation-draft-store.svelte';
   import type { ObservationResult } from '$lib/web/stores/observation-store';
+  import type { ComparisonDraft } from '$lib/web/types/comparison-draft';
 
   import ObservationCard from './observation-card.svelte';
   import ObservationForm from './observation-form.svelte';
@@ -8,6 +10,8 @@
   let {
     activeWorkspaceId = null as string | null,
     activeReview = null as { id: string; status: string } | null,
+    comparisonDraft = null as ComparisonDraft | null,
+    draft,
     selectionInfo = null as {
       filePath: string;
       side: string;
@@ -15,9 +19,12 @@
       endLine: number;
       rawSnapshot: string;
     } | null,
+    onCancelSelection = () => {},
   }: {
     activeWorkspaceId: string | null;
     activeReview: { id: string; status: string } | null;
+    comparisonDraft: ComparisonDraft | null;
+    draft: ObservationDraftStore;
     selectionInfo: {
       filePath: string;
       side: string;
@@ -25,6 +32,7 @@
       endLine: number;
       rawSnapshot: string;
     } | null;
+    onCancelSelection?: () => void;
   } = $props();
 
   let observations = $state<ObservationResult[]>([]);
@@ -42,6 +50,17 @@
       loadObservations();
     } else {
       observations = [];
+    }
+  });
+
+  // A new line selection opens the form in creation mode automatically.
+  // The form stays open while a selection exists; a pristine draft without a
+  // selection closes it (e.g. after a discard).
+  $effect(() => {
+    if (selectionInfo) {
+      showForm = true;
+    } else if (draft.status === 'pristine') {
+      showForm = false;
     }
   });
 
@@ -111,6 +130,19 @@
     invalidateAll();
   }
 
+  function handleCancel() {
+    // A dirty draft asks for confirmation (keep vs discard) before being
+    // dropped; a pristine draft closes and clears the selection directly.
+    if (draft.isDirty) {
+      draft.requestReplacement();
+      return;
+    }
+    draft.reset();
+    showForm = false;
+    // Discarding the draft clears the selection in the diff viewer.
+    onCancelSelection();
+  }
+
   function handleEdit(id: string) {
     // For now, just scroll to the card. Full edit modal can be added later.
     document.querySelector(`[data-obs-id="${id}"]`)?.scrollIntoView({ behavior: 'smooth' });
@@ -137,8 +169,11 @@
       {activeWorkspaceId}
       activeReviewId={activeReview?.id ?? null}
       {selectionInfo}
+      {comparisonDraft}
+      {draft}
+      autofocusBody={!!selectionInfo}
       onCreated={handleCreated}
-      onCancel={() => (showForm = false)}
+      onCancel={handleCancel}
     />
   {/if}
 
@@ -180,7 +215,10 @@
   .obs-panel {
     padding: var(--space-3);
     overflow-y: auto;
+    overflow-x: hidden;
     height: 100%;
+    min-width: 0;
+    box-sizing: border-box;
   }
 
   .panel-header {

@@ -7,7 +7,6 @@ export interface ObservationResult {
   severity: string | null;
   origin: string;
   status: string;
-  title: string;
   body: string;
   agentInstruction: string;
   filePath: string | null;

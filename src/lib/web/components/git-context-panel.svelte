@@ -5,8 +5,16 @@
     FileListResult,
   } from '$lib/server/application/dto/results/file-list-results';
   import type { GitContextAggregate } from '$lib/server/application/services/get-git-context-use-case';
+  import BranchSelectPopup from '$lib/web/components/branch-select-popup.svelte';
   import FileList from '$lib/web/components/file-list.svelte';
+  import { projectTreeLoader } from '$lib/web/services/project-tree-loader';
   import { type GitRefLike, inferComparisonType } from '$lib/web/types/comparison-inference';
+  import { createRequestGuard, type RequestGuard } from '$lib/web/utils/request-guard';
+
+  // Branches arrive pre-sorted by the reader (sortBranches, tranche C):
+  // Local group first, Cached remote second, committerDate descending
+  // within a group, canonicalRef ascending tie-break. The panel never
+  // re-sorts and never shows full refs in the UI.
 
   // Client-safe draft type — no runtime imports from $lib/server.
   // ComparisonSerialized is a server DTO; on the wire, comparisonType is a string.
@@ -21,7 +29,7 @@
     gitContext = null as GitContextAggregate | null,
     activeWorkspaceId = null as string | null,
     comparisonDraft = null as ComparisonDraft | null,
-    onFileSelect = undefined as ((path: string) => void) | undefined,
+    onFileSelect = undefined as ((path: string, newTab?: boolean) => void) | undefined,
     onComparisonChange = undefined as ((draft: ComparisonDraft) => void) | undefined,
     reviewedFilePaths = [] as string[],
     hasActiveReview = false,
@@ -29,17 +37,27 @@
     gitContext: GitContextAggregate | null;
     activeWorkspaceId: string | null;
     comparisonDraft?: ComparisonDraft | null;
-    onFileSelect?: (path: string) => void;
+    onFileSelect?: (path: string, newTab?: boolean) => void;
     onComparisonChange?: (draft: ComparisonDraft) => void;
     reviewedFilePaths?: string[];
     hasActiveReview?: boolean;
   } = $props();
 
-  let branchFilter = $state('');
+  // Base/Target popup state: opening one trigger closes the other.
+  let openSlot = $state<'base' | 'target' | null>(null);
+  let baseTriggerRef = $state<HTMLElement | null>(null);
+  let targetTriggerRef = $state<HTMLElement | null>(null);
   let commitFilter = $state('');
-  let activeSlot = $state<'base' | 'target' | null>(null);
   let refreshing = $state(false);
   let retrying = $state(false);
+  // Visible refresh error (network/HTTP/server failure). The last good
+  // context stays rendered while this banner is shown with a Retry action.
+  let refreshError = $state<string | null>(null);
+
+  // Monotonic request guards: stale responses can never overwrite newer
+  // file-list or refresh state (tranche C).
+  const fileListGuard: RequestGuard = createRequestGuard();
+  const refreshGuard: RequestGuard = createRequestGuard();
 
   // Internal comparison draft — initialized from parent prop or gitContext default
   let internalDraft = $state<ComparisonDraft | null>(null);
@@ -74,6 +92,7 @@
 
   async function fetchFileList(draft: ComparisonDraft) {
     if (!activeWorkspaceId) return;
+    const generation = fileListGuard.begin();
     fileListLoading = true;
     fileListError = null;
     try {
@@ -81,7 +100,9 @@
       const res = await fetch(
         `/api/workspaces/${activeWorkspaceId}/file-list?comparison=${comparisonParam}`,
       );
+      if (!fileListGuard.isCurrent(generation)) return;
       const data: FileListResult = await res.json();
+      if (!fileListGuard.isCurrent(generation)) return;
       if (data.error) {
         fileListError = data.error.message;
         fileListEntries = [];
@@ -89,17 +110,14 @@
         fileListEntries = data.entries;
       }
     } catch (e: unknown) {
+      if (!fileListGuard.isCurrent(generation)) return;
       fileListError = e instanceof Error ? e.message : 'Failed to load file list';
       fileListEntries = [];
     } finally {
-      fileListLoading = false;
+      if (fileListGuard.isCurrent(generation)) {
+        fileListLoading = false;
+      }
     }
-  }
-
-  function filteredBranches() {
-    if (!gitContext?.branches) return [];
-    const filter = branchFilter.toLowerCase();
-    return gitContext.branches.filter((b) => b.name.toLowerCase().includes(filter));
   }
 
   function filteredCommits() {
@@ -110,22 +128,35 @@
     );
   }
 
-  function selectBranch(name: string) {
-    if (!activeSlot || !internalDraft) return;
+  /** Visible label for a canonical ref; falls back to the ref itself. */
+  function branchLabelByCanonical(canonicalRef: string): string {
+    const found = gitContext?.branches.find((b) => b.canonicalRef === canonicalRef);
+    return found?.name ?? canonicalRef;
+  }
+
+  /**
+   * Selects a branch for a slot using its canonical ref as the draft value
+   * (local "origin/main" and cached remote "origin/main" never collide) and
+   * the visible short label for display. Selecting a target auto-activates
+   * the Base slot with the current branch when the draft default (HEAD) has
+   * not been touched; a user-chosen base is preserved. The draft updates in
+   * memory — no checkout or repository mutation happens.
+   */
+  function selectBranchByCanonical(canonicalRef: string, slot: 'base' | 'target') {
+    if (!internalDraft) return;
     const updated = { ...internalDraft };
-    if (activeSlot === 'base') {
-      updated.base = { type: 'branch' as const, value: name, label: name };
+    const label = branchLabelByCanonical(canonicalRef);
+    if (slot === 'base') {
+      updated.base = { type: 'branch' as const, value: canonicalRef, label };
     } else {
-      // Auto-activate the Base slot: picking a target without an explicit
-      // base falls back to the current branch. The draft default (HEAD) is
-      // replaced; a user-chosen base is preserved.
       if (isDefaultBase(updated.base)) {
-        const current = gitContext?.status?.currentBranch;
+        const current = gitContext?.branches.find((b) => b.isCurrent)?.canonicalRef;
+        const currentBranch = gitContext?.status?.currentBranch;
         updated.base = current
-          ? { type: 'branch' as const, value: current, label: current }
+          ? { type: 'branch' as const, value: current, label: currentBranch ?? current }
           : { type: 'head' as const, value: 'HEAD', label: 'HEAD' };
       }
-      updated.target = { type: 'branch' as const, value: name, label: name };
+      updated.target = { type: 'branch' as const, value: canonicalRef, label };
     }
     updated.comparisonType = inferComparisonType(
       { type: updated.base.type as GitRefLike['type'], value: updated.base.value },
@@ -150,9 +181,9 @@
   }
 
   function selectCommit(shortHash: string) {
-    if (!activeSlot || !internalDraft) return;
+    if (!openSlot || !internalDraft) return;
     const updated = { ...internalDraft };
-    if (activeSlot === 'base') {
+    if (openSlot === 'base') {
       updated.base = { type: 'commit' as const, value: shortHash, label: shortHash };
     } else {
       if (isDefaultBase(updated.base)) {
@@ -177,13 +208,35 @@
 
   async function refresh() {
     if (!activeWorkspaceId) return;
+    const generation = refreshGuard.begin();
     refreshing = true;
+    refreshError = null;
     try {
       const res = await fetch(`/api/workspaces/${activeWorkspaceId}/git-context`);
+      if (!refreshGuard.isCurrent(generation)) return;
       const data = await res.json();
+      if (!refreshGuard.isCurrent(generation)) return;
+      if (data.error) {
+        // Server-side failure: keep the last good context visible and
+        // surface the error with a Retry instead of discarding branches
+        // or status (tranche C).
+        refreshError =
+          typeof data.error === 'string' ? data.error : (data.error.message ?? 'Refresh failed');
+        return;
+      }
       gitContext = data;
+      // Successful refresh: the repository content may have changed, so the
+      // cached Project tree for this workspace is invalidated (targeted,
+      // pending-safe; other workspaces untouched). No refetch happens here —
+      // the next Project rail / Quick Open load starts one fresh request.
+      projectTreeLoader.invalidate(activeWorkspaceId);
+    } catch (e: unknown) {
+      if (!refreshGuard.isCurrent(generation)) return;
+      refreshError = e instanceof Error ? e.message : 'Failed to refresh Git context';
     } finally {
-      refreshing = false;
+      if (refreshGuard.isCurrent(generation)) {
+        refreshing = false;
+      }
     }
   }
 
@@ -247,6 +300,19 @@
       </button>
     </div>
   {:else if gitContext}
+    {#if refreshError && !openSlot}
+      <div class="refresh-error" role="alert" aria-label="Refresh error">
+        <span class="refresh-error-text">{refreshError}</span>
+        <button
+          class="retry-btn"
+          onclick={retryContext}
+          disabled={retrying}
+          aria-label="Retry loading Git context"
+        >
+          {retrying ? 'Retrying...' : 'Retry'}
+        </button>
+      </div>
+    {/if}
     <!-- Status bar -->
     <div class="status-bar" role="status" aria-label="Git status: {statusLabel}">
       <span class="status-indicator status-{gitContext.status?.headState ?? 'error'}"
@@ -285,25 +351,67 @@
 
     <!-- Comparison slots -->
     <div class="comparison-slots" role="group" aria-label="Comparison slots">
-      <button
-        class="slot-btn slot-base"
-        class:active={activeSlot === 'base'}
-        aria-pressed={activeSlot === 'base'}
-        onclick={() => (activeSlot = activeSlot === 'base' ? null : 'base')}
-      >
-        <span class="slot-label">Base</span>
-        <span class="slot-value">{internalDraft?.base.label ?? '—'}</span>
-      </button>
+      <div class="slot-wrap">
+        <button
+          bind:this={baseTriggerRef}
+          class="slot-btn slot-base"
+          class:active={openSlot === 'base'}
+          aria-pressed={openSlot === 'base'}
+          aria-haspopup="listbox"
+          aria-expanded={openSlot === 'base'}
+          onclick={() => (openSlot = openSlot === 'base' ? null : 'base')}
+        >
+          <span class="slot-label">Base</span>
+          <span class="slot-value">{internalDraft?.base.label ?? '—'}</span>
+        </button>
+        {#if openSlot === 'base'}
+          <BranchSelectPopup
+            open
+            slotLabel="Base"
+            branches={gitContext.branches}
+            selectedCanonicalRef={internalDraft?.base.type === 'branch'
+              ? internalDraft.base.value
+              : null}
+            loading={refreshing && gitContext.branches.length === 0}
+            error={refreshError}
+            triggerRef={baseTriggerRef}
+            onSelect={(canonicalRef) => selectBranchByCanonical(canonicalRef, 'base')}
+            onRetry={retryContext}
+            onClose={() => (openSlot = null)}
+          />
+        {/if}
+      </div>
       <span class="vs-separator">vs</span>
-      <button
-        class="slot-btn slot-target"
-        class:active={activeSlot === 'target'}
-        aria-pressed={activeSlot === 'target'}
-        onclick={() => (activeSlot = activeSlot === 'target' ? null : 'target')}
-      >
-        <span class="slot-label">Target</span>
-        <span class="slot-value">{internalDraft?.target.label ?? '—'}</span>
-      </button>
+      <div class="slot-wrap">
+        <button
+          bind:this={targetTriggerRef}
+          class="slot-btn slot-target"
+          class:active={openSlot === 'target'}
+          aria-pressed={openSlot === 'target'}
+          aria-haspopup="listbox"
+          aria-expanded={openSlot === 'target'}
+          onclick={() => (openSlot = openSlot === 'target' ? null : 'target')}
+        >
+          <span class="slot-label">Target</span>
+          <span class="slot-value">{internalDraft?.target.label ?? '—'}</span>
+        </button>
+        {#if openSlot === 'target'}
+          <BranchSelectPopup
+            open
+            slotLabel="Target"
+            branches={gitContext.branches}
+            selectedCanonicalRef={internalDraft?.target.type === 'branch'
+              ? internalDraft.target.value
+              : null}
+            loading={refreshing && gitContext.branches.length === 0}
+            error={refreshError}
+            triggerRef={targetTriggerRef}
+            onSelect={(canonicalRef) => selectBranchByCanonical(canonicalRef, 'target')}
+            onRetry={retryContext}
+            onClose={() => (openSlot = null)}
+          />
+        {/if}
+      </div>
       {#if internalDraft?.comparisonType}
         <span class="comparison-type">{comparisonLabel(internalDraft.comparisonType)}</span>
       {/if}
@@ -321,53 +429,6 @@
         if (internalDraft) fetchFileList(internalDraft);
       }}
     />
-
-    <!-- Branches section -->
-    <section class="list-section" aria-label="Branch list">
-      <div class="list-header">
-        <h3>Branches</h3>
-        <input
-          class="filter-input"
-          type="text"
-          placeholder="Filter branches..."
-          bind:value={branchFilter}
-          aria-label="Filter branches"
-        />
-      </div>
-      <ul class="git-list" role="listbox" aria-label="Local branches">
-        {#each filteredBranches() as branch (branch.name)}
-          <li>
-            <button
-              class="git-item"
-              class:current={branch.isCurrent}
-              class:remote={branch.isRemote}
-              role="option"
-              aria-selected={branch.isCurrent}
-              onclick={() => selectBranch(branch.name)}
-              onkeydown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  selectBranch(branch.name);
-                }
-              }}
-            >
-              <span class="item-icon">{branch.isCurrent ? '●' : '○'}</span>
-              <span class="item-name">{branch.name}</span>
-              {#if branch.isRemote}
-                <span class="remote-tag" aria-label="Cached remote branch">remote</span>
-              {/if}
-            </button>
-          </li>
-        {:else}
-          {#if branchFilter}
-            <li class="empty-filter-result">No branches match "{branchFilter}"</li>
-          {:else if gitContext.status?.headState === 'unborn'}
-            <li class="empty-list">No branches yet</li>
-          {:else}
-            <li class="empty-list">No branches</li>
-          {/if}
-        {/each}
-      </ul>
-    </section>
 
     <!-- Commits section -->
     <section class="list-section" aria-label="Commit list">
@@ -411,12 +472,7 @@
 
     <!-- Refresh and last-updated -->
     <div class="panel-footer">
-      <button
-        class="refresh-btn"
-        onclick={refresh}
-        disabled={refreshing}
-        aria-label="Refresh Git context"
-      >
+      <button class="refresh-btn" onclick={refresh} aria-label="Refresh Git context">
         {refreshing ? 'Refreshing...' : 'Refresh'}
       </button>
       {#if gitContext.readAt}
@@ -434,6 +490,11 @@
 
 <style>
   .git-context-panel {
+    /* Single scroll owner for the panel content: flex-fill the drawer/panel,
+       shrink below content (min-height: 0), and scroll internally. The file
+       list inside is content-sized so it never creates a nested scroll. */
+    flex: 1 1 auto;
+    min-height: 0;
     padding: var(--space-4);
     background: var(--surface-primary);
     overflow-y: auto;
@@ -545,7 +606,18 @@
     color: var(--text-primary);
     cursor: pointer;
     min-width: 100px;
+    width: 100%;
     transition: border-color 0.15s;
+  }
+
+  /* Popup anchor: the product branch popup renders inline inside the panel
+     (no portal), absolutely positioned below its trigger. The wrap must not
+     collapse below the trigger width: the absolute popup inherits the wrap
+     width (left:0/right:0), so the wrap keeps a minimum size. */
+  .slot-wrap {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 100px;
   }
 
   .slot-btn:hover {
@@ -671,10 +743,6 @@
     text-align: center;
   }
 
-  .git-item.remote .item-name {
-    color: var(--text-secondary);
-  }
-
   .remote-tag {
     margin-left: auto;
     padding: 0 var(--space-1);
@@ -748,6 +816,31 @@
     color: var(--text-primary);
     font-size: var(--text-sm);
     cursor: pointer;
+  }
+
+  .refresh-error {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin-bottom: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-error, #d32f2f);
+    border-radius: var(--radius-sm);
+    background: var(--surface-secondary);
+    color: var(--color-error, #d32f2f);
+    font-size: var(--text-sm);
+  }
+
+  .refresh-error .retry-btn {
+    margin-top: 0;
+    flex-shrink: 0;
+  }
+
+  .refresh-error-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .retry-btn:hover {

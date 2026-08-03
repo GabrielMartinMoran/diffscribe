@@ -127,3 +127,10 @@ Feature: Rail tabs — compact icon rail, left contextual panel, and right panel
     When the user views the left rail
     Then the Project and Git tabs show an empty state
     And the workspace list is displayed instead
+
+  @product @navigation @layout @etapa-1
+  Scenario: RAIL-02 — rail labels fit without clipping at 1280 px
+    Given the application is loaded at a 1280 px viewport
+    When the user views the left rail labels
+    Then every rail label fits within its tab without clipping
+    And long rail labels truncate with an ellipsis instead of overflowing

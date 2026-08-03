@@ -13,7 +13,7 @@ Feature: Accessibility of observation card — actions visibility via CSS hover 
     And a workspace is registered and active
     And the active Comparison is HEAD vs working tree
     And an active review draft exists for the workspace
-    And an observation of type "issue" exists with title "Check A11y"
+    And an observation of type "issue" exists with body "Check A11y"
     And the observation panel is visible
 
   @p1 @ui @a11y @delta-added

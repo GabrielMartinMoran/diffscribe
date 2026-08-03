@@ -123,4 +123,62 @@ test.describe('Line wrapping', () => {
     expect(whiteSpace).toBe('pre-wrap');
     expect(repoDir).toBeTruthy();
   });
+
+  test('Source viewer honors the wrapping default and the contextual toggle', async ({ page }) => {
+    const fixture = createGitFixture('diffscribe-e2e-srcwrap-');
+    const repoDir = fixture.repoPath;
+    try {
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# e2e');
+      fs.mkdirSync(path.join(repoDir, 'src'), { recursive: true });
+      fs.writeFileSync(path.join(repoDir, 'src', 'app.ts'), LONG_LINE + '\n');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
+
+      await registerAndSelectWorkspace(page, repoDir, `E2E-SrcWrap-${Date.now()}`, 'git');
+
+      // Enable the wrapping default in Settings.
+      await page.getByTestId('rail-tab-settings').click();
+      await page.getByTestId('settings-wrap-switch').locator('..').click();
+      await expect(page.getByTestId('settings-wrap-switch')).toBeChecked();
+
+      // Open the Project tab and select the long file from the project tree.
+      await page.getByTestId('rail-tab-project').click();
+      const projectTree = page.locator('[data-testid="project-tree"]');
+      await expect(projectTree).toBeVisible({ timeout: 8000 });
+      // Expand the src directory to reach app.ts.
+      const srcDir = projectTree.locator('[data-testid="tree-node"]', { hasText: 'src' }).first();
+      await expect(srcDir).toBeVisible({ timeout: 10000 });
+      await srcDir.locator('[data-testid="expand-toggle"]').click();
+      const sourceFile = projectTree.getByText('app.ts', { exact: true }).first();
+      await sourceFile.click();
+
+      const viewer = page.getByTestId('source-viewer');
+      await expect(viewer).toBeVisible({ timeout: 10000 });
+      const content = page.getByTestId('source-content');
+      await expect(content).toBeVisible();
+
+      // Default wrap applies: lines use pre-wrap and the viewer owns one
+      // horizontal scroll container.
+      const line = content.locator('.source-line').first();
+      await expect(line).toBeVisible();
+      expect(
+        await line.evaluate(
+          (el) => getComputedStyle(el.querySelector('.line-content')!).whiteSpace,
+        ),
+      ).toBe('pre-wrap');
+
+      // Contextual toggle disables wrapping for this file.
+      const wrapToggle = viewer.getByRole('button', { name: /wrap/i });
+      await expect(wrapToggle).toBeVisible();
+      await wrapToggle.click();
+      await expect(wrapToggle).toHaveAttribute('aria-pressed', 'false');
+      expect(
+        await line.evaluate(
+          (el) => getComputedStyle(el.querySelector('.line-content')!).whiteSpace,
+        ),
+      ).toBe('pre');
+    } finally {
+      fixture.cleanup();
+    }
+  });
 });

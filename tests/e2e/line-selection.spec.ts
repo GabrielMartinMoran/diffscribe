@@ -9,7 +9,7 @@ import { createGitFixture } from './helpers/git-fixture';
 import { registerAndSelectWorkspace, selectRightPanelTab } from './helpers/register-workspace';
 import { resetDb } from './helpers/reset-db';
 
-async function createReviewAndSelectFile(page: Page): Promise<void> {
+async function createReviewAndSelectFile(page: Page, fileName = 'src/app.ts'): Promise<void> {
   // Right panel defaults to Comments on every page load; select Review first
   await selectRightPanelTab(page, 'review');
 
@@ -42,7 +42,7 @@ async function createReviewAndSelectFile(page: Page): Promise<void> {
 
   const fileRow = page
     .locator('[role="listbox"] [role="option"]')
-    .filter({ hasText: 'src/app.ts' })
+    .filter({ hasText: fileName })
     .first();
   await expect(fileRow).toBeVisible({ timeout: 15000 });
 
@@ -74,12 +74,13 @@ async function setupLineSelectionTest(
   page: Page,
   fixture: GitFixture,
   workspaceName: string,
+  fileName = 'src/app.ts',
 ): Promise<void> {
   const repoDir = fixture.repoPath;
-  fs.mkdirSync(path.join(repoDir, 'src'), { recursive: true });
+  fs.mkdirSync(path.dirname(path.join(repoDir, fileName)), { recursive: true });
   const lines: string[] = [];
   for (let i = 1; i <= 15; i++) lines.push(`line${i}`);
-  fs.writeFileSync(path.join(repoDir, 'src/app.ts'), lines.join('\n') + '\n');
+  fs.writeFileSync(path.join(repoDir, fileName), lines.join('\n') + '\n');
   fixture.runGit(['add', '.']);
   fixture.runGit(['commit', '-m', 'init']);
   const modified = [
@@ -95,11 +96,11 @@ async function setupLineSelectionTest(
     'lineZ',
   ];
   for (let i = 11; i <= 15; i++) modified.push(`line${i}`);
-  fs.writeFileSync(path.join(repoDir, 'src/app.ts'), modified.join('\n') + '\n');
+  fs.writeFileSync(path.join(repoDir, fileName), modified.join('\n') + '\n');
   await resetDb(page.request);
   await page.goto('/', { waitUntil: 'networkidle' });
   await registerAndSelectWorkspace(page, repoDir, workspaceName, 'git');
-  await createReviewAndSelectFile(page);
+  await createReviewAndSelectFile(page, fileName);
 }
 
 test.describe.configure({ mode: 'serial' });
@@ -136,6 +137,40 @@ test.describe('Line selection E2E', () => {
     }
   });
 
+  test('Ctrl-click toggles individual lines', async ({ page }) => {
+    const fixture = createGitFixture();
+    try {
+      await setupLineSelectionTest(page, fixture, 'ls-e2e');
+      const a = page.locator('[data-line-num="3"][data-side="new"]').first();
+      await a.click();
+      const b = page.locator('[data-line-num="6"][data-side="new"]').first();
+      await b.click({ modifiers: ['Control'] });
+      await expect(a).toHaveAttribute('data-selected', 'true');
+      await expect(b).toHaveAttribute('data-selected', 'true');
+
+      await b.click({ modifiers: ['Control'] });
+      await expect(a).toHaveAttribute('data-selected', 'true');
+      await expect(b).toHaveAttribute('data-selected', 'false');
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  test('Command-click toggles an individual line', async ({ page }) => {
+    const fixture = createGitFixture();
+    try {
+      await setupLineSelectionTest(page, fixture, 'ls-e2e');
+      const a = page.locator('[data-line-num="3"][data-side="new"]').first();
+      await a.click();
+      const b = page.locator('[data-line-num="6"][data-side="new"]').first();
+      await b.click({ modifiers: ['Meta'] });
+      await expect(a).toHaveAttribute('data-selected', 'true');
+      await expect(b).toHaveAttribute('data-selected', 'true');
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
   test('clears selection with Escape', async ({ page }) => {
     const fixture = createGitFixture();
     try {
@@ -145,6 +180,85 @@ test.describe('Line selection E2E', () => {
       await expect(line).toHaveAttribute('data-selected', 'true');
       await page.keyboard.press('Escape');
       await expect(line).toHaveAttribute('data-selected', 'false');
+    } finally {
+      fixture.cleanup();
+    }
+  });
+});
+
+test.describe('Observation draft auto-open E2E', () => {
+  test('clicking a line opens the Comments form and focuses the body', async ({ page }) => {
+    const fixture = createGitFixture();
+    try {
+      await setupLineSelectionTest(page, fixture, 'draft-e2e');
+      const line = page.locator('[data-line-num="2"][data-side="new"]').first();
+      await line.click();
+
+      // The Comments panel is visible and shows the observation form.
+      const form = page.locator('#observation-panel .obs-form');
+      await expect(form).toBeVisible({ timeout: 10000 });
+      await expect(page.locator('#obs-body')).toBeFocused();
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  test('clicking a line replaces the previous draft selection', async ({ page }) => {
+    const fixture = createGitFixture();
+    try {
+      await setupLineSelectionTest(page, fixture, 'draft-e2e');
+      const a = page.locator('[data-line-num="2"][data-side="new"]').first();
+      await a.click();
+      await expect(a).toHaveAttribute('data-selected', 'true');
+
+      const b = page.locator('[data-line-num="7"][data-side="new"]').first();
+      await b.click();
+      await expect(a).toHaveAttribute('data-selected', 'false');
+      await expect(b).toHaveAttribute('data-selected', 'true');
+      await expect(page.locator('#observation-panel .obs-form')).toBeVisible();
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  test('cancelling the draft closes the form and clears the selection', async ({ page }) => {
+    const fixture = createGitFixture();
+    try {
+      await setupLineSelectionTest(page, fixture, 'draft-e2e');
+      const a = page.locator('[data-line-num="3"][data-side="new"]').first();
+      await a.click();
+      await expect(a).toHaveAttribute('data-selected', 'true');
+      await expect(page.locator('#observation-panel .obs-form')).toBeVisible();
+
+      await page
+        .locator('#observation-panel .obs-form')
+        .getByRole('button', { name: 'Cancel' })
+        .click();
+      await expect(page.locator('#observation-panel .obs-form')).toHaveCount(0);
+      await expect(a).toHaveAttribute('data-selected', 'false');
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  test('annotation form fits inside the panel with long file paths', async ({ page }) => {
+    const fixture = createGitFixture();
+    try {
+      const longName = 'src/' + 'very-long-directory-name-'.repeat(4) + 'app.ts';
+      await setupLineSelectionTest(page, fixture, 'draft-e2e', longName);
+
+      const line = page.locator('[data-line-num="1"][data-side="new"]').first();
+      await line.click();
+      const form = page.locator('#observation-panel .obs-form');
+      await expect(form).toBeVisible({ timeout: 10000 });
+
+      // Long body text must not push the panel horizontally either.
+      await page.fill('#obs-body', 'a'.repeat(300) + ' ' + 'b'.repeat(300) + ' ' + 'c'.repeat(300));
+
+      const noHorizontalOverflow = await page
+        .locator('#observation-panel')
+        .evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
+      expect(noHorizontalOverflow).toBe(true);
     } finally {
       fixture.cleanup();
     }
@@ -161,10 +275,10 @@ test.describe('Observation CRUD E2E', () => {
       const b = page.locator('[data-line-num="6"][data-side="new"]').first();
       await b.click({ modifiers: ['Shift'] });
 
-      const addBtn = page.locator('#observation-panel').getByRole('button', { name: /Add/ });
-      await expect(addBtn).toBeVisible({ timeout: 10000 });
-      await addBtn.click();
-      await page.fill('#obs-title', 'E2E range observation');
+      // The click already auto-opened the form in creation mode.
+      const form = page.locator('#observation-panel .obs-form');
+      await expect(form).toBeVisible({ timeout: 10000 });
+      await page.fill('#obs-body', 'E2E range observation');
       await page.selectOption('#obs-type', 'issue');
       await page.selectOption('#obs-severity', 'major');
       await page.click('button:has-text("Create")');
@@ -190,9 +304,9 @@ test.describe('Observation CRUD E2E', () => {
       const line = page.locator('[data-line-num="5"][data-side="new"]').first();
       await line.click();
 
-      const addBtn = page.locator('#observation-panel').getByRole('button', { name: /Add/ });
-      await addBtn.click();
-      await page.fill('#obs-title', 'Status test');
+      const form = page.locator('#observation-panel .obs-form');
+      await expect(form).toBeVisible({ timeout: 10000 });
+      await page.fill('#obs-body', 'Status test');
       await page.selectOption('#obs-type', 'note');
       await page.click('button:has-text("Create")');
       await page.waitForLoadState('networkidle');
@@ -209,6 +323,75 @@ test.describe('Observation CRUD E2E', () => {
       await card.getByRole('button', { name: 'Reopen' }).click();
       await page.waitForLoadState('networkidle');
       await expect(card.locator('.status-open')).toBeVisible();
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  test('create observation sends the real active comparison snapshot', async ({ page }) => {
+    const fixture = createGitFixture();
+    try {
+      await setupLineSelectionTest(page, fixture, 'obs-e2e');
+      // Create a branch, commit the working-tree changes onto it, and return
+      // to master so the master vs feature Comparison has a real diff.
+      fixture.runGit(['branch', 'feature']);
+      fixture.runGit(['checkout', 'feature']);
+      fixture.runGit(['add', 'src/app.ts']);
+      fixture.runGit(['commit', '-m', 'feature changes']);
+      fixture.runGit(['checkout', 'master']);
+
+      // Reload so the Git context picks up the new branch.
+      await page.reload();
+      await page.waitForLoadState('networkidle');
+
+      await page.getByTestId('rail-tab-git').click();
+      const gitPanel = page.locator('#git-context-panel');
+      await expect(gitPanel).toBeVisible({ timeout: 10000 });
+      await page.locator('.slot-target').click();
+      const branchList = page.getByRole('listbox', { name: /branches/i });
+      await branchList.getByText('feature', { exact: true }).click();
+      await expect(page.locator('.comparison-type')).toContainText(/branch vs branch/);
+
+      // The diff refetches automatically when the comparison changes; select
+      // the file again (the reload cleared the active file) and wait for the
+      // fresh diff before selecting a line.
+      const fileList = page.locator('#file-list-panel');
+      await expect(fileList).toBeVisible({ timeout: 8000 });
+      const fileRow = fileList.locator('.file-row').filter({ hasText: 'src/app.ts' });
+      await expect(fileRow).toBeVisible({ timeout: 10000 });
+
+      const diffPromise = page.waitForResponse(
+        (resp) =>
+          resp.url().includes('/file-diff') &&
+          resp.request().method() === 'GET' &&
+          resp.status() === 200,
+      );
+      await fileRow.click();
+      const diffResp = await diffPromise;
+      void diffResp;
+      const line = page.locator('[data-line-num="1"][data-side="new"]').first();
+      await expect(line).toBeVisible({ timeout: 10000 });
+      await line.click();
+
+      const postPromise = page.waitForResponse(
+        (resp) =>
+          resp.url().includes('/observations') &&
+          resp.request().method() === 'POST' &&
+          resp.status() === 201,
+      );
+
+      await page.fill('#obs-body', 'Comparison snapshot test');
+      await page.click('button:has-text("Create")');
+      const post = await postPromise;
+      const payload = post.request().postDataJSON() as {
+        comparisonSnapshotJson: string;
+      };
+      const snapshot = JSON.parse(payload.comparisonSnapshotJson) as {
+        comparisonType: string;
+      };
+      expect(snapshot.comparisonType).toBe('branch-vs-branch');
+
+      await expect(page.locator('.obs-card').first()).toContainText('Comparison snapshot test');
     } finally {
       fixture.cleanup();
     }

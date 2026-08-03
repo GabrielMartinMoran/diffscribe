@@ -35,3 +35,18 @@ Feature: Line wrapping — global default and per-file override
     Given line wrapping is enabled in Settings
     When the user opens a diff for another file
     Then the diff lines wrap without a manual toggle
+
+  @product @ui @p1 @e2e
+  Scenario: The Source viewer honors the wrapping default and the contextual toggle
+    Given line wrapping is enabled in Settings
+    When the user opens a source file in the Source viewer
+    Then the source lines wrap in the viewer
+    And the Source viewer exposes a single horizontal scroll container
+    When the user disables wrapping in the Source viewer header
+    Then the source lines render no-wrap with a single horizontal scroll container
+
+  @product @ui @p2 @e2e
+  Scenario: Wrapping preserves the 48 px line-number gutter
+    Given a diff with a long line is open
+    When the user activates the Wrap toggle in the diff header
+    Then the line-number cells keep a width of 48 px including their internal padding

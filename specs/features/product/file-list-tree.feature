@@ -23,6 +23,30 @@ Feature: File list — list and tree views
     And directories expand to reveal their files
 
   @product @ui @p1 @e2e
+  Scenario: Tree view groups files by directory
+    Given the changed file list is available
+    When the user switches to the tree view
+    Then files appear grouped under their directories
+    And all directories are expanded by default to reveal their files
+
+  @product @ui @p1 @e2e
+  Scenario: Directories can be collapsed and expanded manually
+    Given the changed file list is available
+    When the user switches to the tree view
+    And collapses a directory
+    Then the directory files are hidden
+    When the user expands the directory again
+    Then the directory files are visible again
+
+  @product @ui @p1 @e2e
+  Scenario: Directory expansion is not persisted across reloads
+    Given the changed file list is available
+    When the user switches to the tree view
+    And collapses a directory
+    And the application reloads
+    Then the directories are expanded by default again
+
+  @product @ui @p1 @e2e
   Scenario: The chosen view persists across reloads
     Given the changed file list is available
     When the user switches to the tree view

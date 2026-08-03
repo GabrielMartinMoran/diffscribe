@@ -312,6 +312,11 @@ Puede estar vinculada a:
 
 Una observación puede ser positiva, negativa o neutral.
 
+The observation body is the single mandatory description field (1 to 5000
+characters). There is no title: it was removed in migration 006
+(`006_drop_observation_title_require_body`) because the body is the only
+description a reviewer needs and duplicate title/body input adds friction.
+
 Tipos iniciales sugeridos:
 
 * Issue
@@ -962,7 +967,6 @@ reviewId
 type
 severity
 status
-title
 body
 agentInstruction
 filePath
@@ -1058,7 +1062,25 @@ Incluye:
 * rail izquierdo + panel contextual con tabs Workspaces/Project/Git;
 * panel derecho con Comments/Review;
 * paneles colapsables y redimensionables;
-* dos temas globales: Dark Deep (predeterminado) y Synthwave '84';
+* viewer central multi-pestaña (session-only): click normal sobre un archivo
+  del Project tree o de la Git/file list reutiliza la pestaña activa;
+  Ctrl-click (Windows/Linux) o Cmd-click (macOS) abre una pestaña adicional o
+  activa la existente si la ruta ya está abierta; las pestañas son únicas por
+  ruta relativa al workspace y se limpian al cambiar de workspace; los clicks
+  con modificador sobre líneas del diff conservan la selección de línea y no
+  crean pestañas;
+* Quick Open (Ctrl/Cmd+P): modal con filtro autofocalizado que busca el árbol
+  del Project workspace aplanando solo archivos, con scoring fuzzy puro en
+  cliente (ruta exacta > prefijo de basename > subsecuencia de basename >
+  fuzzy de ruta, boosts de consecutividad/case/inicio-de-palabra/separador,
+  desempate léxico determinista, términos por espacios todos requeridos,
+  highlights, tope de 512 resultados); por defecto muestra solo archivos
+  trackeados y el setting local `diffscribe-quick-open-include-untracked`
+  (localStorage, default false) expone los untracked sin afectar a la Git/file
+  list; aceptar un resultado siempre activa el rail Project para mostrar el
+  Source Viewer;
+* setting "Include untracked files in Quick Open" en el panel de Settings;
+* dos temas globales: Dark Deep (predeterminado) y Synthwave '84;
 * experiencia funcional en desktop y mobile desde el inicio.
 
 **Resultado:** DiffScribe ya es útil sin IA.
@@ -1247,7 +1269,7 @@ Estas preguntas no bloquean la definición del producto, pero deberán resolvers
   remotos, IA, colaboración ni sync cross-device.
  * **Etapa 1 completada (Inc‑1 a Inc‑5):** workbench con registro de workspaces, panel de contexto Git (branches/commits/comparación), file list con filtrado y selección, y diff viewer con resaltado Shiki (unified parser custom, hard cap 256 KB/5 000 líneas, side‑by‑side >=900 px, navegación de hunks, shortcut Ctrl+Shift+D). Endpoint seguro `GET /api/workspaces/[id]/file-diff`. Sin IA, sin colaboración, sin mutación de repositorio.
  * **Inc‑6 (Review Foundation):** Review aggregate con ReviewId UUID, ReviewStatus (draft/in_progress/completed/archived), captura de ComparisonSerialized con validación. Migraciones SQL 001‑004 ordenadas con `import.meta.glob`, transacción por migración y `PRAGMA foreign_keys = ON`. Tablas `reviews` y `review_files` con FK CASCADE. Repositorio SQLite con mapper Comparison↔JSON y marcas dinámicas sin inventario total. Casos de uso: create draft, list/reopen, get, set active, mark, unmark, complete. Review completada es read‑only (409 en mark/unmark). Active review en `app_state` key `active_review:<workspaceId>`. REST endpoints bajo `/api/workspaces/[id]/reviews/...`. Panel ReviewPanel con New/Complete/Mark/Unmark, progreso reactivo N/M, confirmación de completado, listado y reopen, keyboard/ARIA/reduced‑motion. Marcador visual de revisado en file‑list cuando hay active review. Propagación de Comparison unificada entre GitContextPanel, DiffViewer y Review. Eliminación de workspace limpia clave active_review y datos por FK cascade. Sin Observation, snapshots, stale detection, portable/export, CLI, IA, colaboración, ni delete individual de review.
-  * **Inc‑7 (Observations):** Observation aggregate con CRUD completo. Tipos issue/risk/suggestion/question/praise/note. Severidad critical/major/minor/nitpick. Estados open/resolved/dismissed/pending con reopen. Scope review/file/range-level. Snapshot híbrido: comparison_snapshot_json (siempre) + diff_snapshot/content_hash SHA-256 canónico (solo file/range). StaleStatus derivado bajo demanda (9 estados). Migración 005, FK CASCADE, CHECKs, índices. REST: CRUD + status transition. Panel responsive right rail (>=1100px) / drawer (<1100px). Form client-side SHA-256 via Web Crypto. Line selection en diff-viewer con ARIA. Guards: completed 409, binary range 422, ownership, cascade. Sin multi-file/tags/AI/remap/polling/export/CLI/Review delete.
+  * **Inc‑7 (Observations):** Observation aggregate con CRUD completo. Tipos issue/risk/suggestion/question/praise/note. Severidad critical/major/minor/nitpick. Estados open/resolved/dismissed/pending con reopen. Scope review/file/range-level. Snapshot híbrido: comparison_snapshot_json (siempre) + diff_snapshot/content_hash SHA-256 canónico (solo file/range). StaleStatus derivado bajo demanda (9 estados). Migración 005, FK CASCADE, CHECKs, índices. Migración destructiva 006 (`006_drop_observation_title_require_body`): elimina filas con body vacío, elimina la columna `title` y exige `body` no vacío (1..5000). REST: CRUD + status transition. Panel responsive right rail (>=1100px) / drawer (<1100px). Form client-side SHA-256 via Web Crypto. Line selection en diff-viewer con ARIA, auto-open del form en creación, Ctrl/Cmd-click toggle, comparación activa real propagada al form. Guards: completed 409, binary range 422, ownership, cascade. Sin multi-file/tags/AI/remap/polling/export/CLI/Review delete.
 
 ---
 

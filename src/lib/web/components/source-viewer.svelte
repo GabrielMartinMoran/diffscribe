@@ -2,7 +2,9 @@
   /* eslint-disable svelte/no-at-html-tags */
   import { File, FileText, Info, LoaderCircle } from 'svelte-lucide';
 
+  import { readStoredWrap, resolveWrap } from '$lib/web/stores/wrap-store';
   import type { ComparisonDraft } from '$lib/web/types/comparison-draft';
+  import { createRequestGuard } from '$lib/web/utils/request-guard';
 
   // Client-side mirror of server FileSourceResult types
   type SourceChangeType = 'added' | 'removed' | 'modified' | 'unchanged' | null;
@@ -40,6 +42,22 @@
   let sourceResult = $state<SourceResult | null>(null);
   let loading = $state(false);
   let error = $state<string | null>(null);
+  let wrapLines = $state(false);
+  // Monotonic guard: stale responses must not overwrite newer file content
+  // when the user switches tabs/files quickly.
+  const requestGuard = createRequestGuard();
+
+  // Per-file wrap state: start from the global Settings default whenever a
+  // different file opens; the contextual toggle overrides it for this file
+  // only (not persisted).
+  $effect(() => {
+    if (!filePath) return;
+    wrapLines = resolveWrap(readStoredWrap(window.localStorage));
+  });
+
+  function toggleWrap() {
+    wrapLines = !wrapLines;
+  }
 
   // Fetch source when file path changes
   $effect(() => {
@@ -53,6 +71,7 @@
 
   async function fetchSource(): Promise<void> {
     if (!filePath || !activeWorkspaceId || !comparisonDraft) return;
+    const generation = requestGuard.begin();
     loading = true;
     error = null;
     sourceResult = null;
@@ -65,6 +84,7 @@
       );
       const data: SourceResult = await res.json();
 
+      if (!requestGuard.isCurrent(generation)) return;
       if (data.error) {
         error = data.error.message;
         sourceResult = null;
@@ -72,10 +92,13 @@
         sourceResult = data;
       }
     } catch (e: unknown) {
+      if (!requestGuard.isCurrent(generation)) return;
       error = e instanceof Error ? e.message : 'Failed to load source';
       sourceResult = null;
     } finally {
-      loading = false;
+      if (requestGuard.isCurrent(generation)) {
+        loading = false;
+      }
     }
   }
 
@@ -174,9 +197,23 @@
       <File size="14" class="header-icon" ariaLabel="File" />
       <span class="header-path">{sourceResult.path}</span>
       <span class="header-lang">{sourceResult.language}</span>
+      <button
+        class="wrap-btn"
+        onclick={toggleWrap}
+        aria-pressed={wrapLines}
+        aria-label={wrapLines ? 'Disable line wrapping' : 'Enable line wrapping'}
+      >
+        Wrap
+      </button>
     </div>
 
-    <div class="source-lines" data-testid="source-content" role="list" aria-label="Source lines">
+    <div
+      class="source-lines"
+      class:wrap-enabled={wrapLines}
+      data-testid="source-content"
+      role="list"
+      aria-label="Source lines"
+    >
       {#each sourceResult.lines as line (line.lineNumber)}
         <div
           class="source-line"
@@ -323,11 +360,45 @@
     text-transform: uppercase;
   }
 
+  .wrap-btn {
+    flex-shrink: 0;
+    padding: var(--space-1) var(--space-2);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    background: var(--surface-secondary);
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+    font-family: inherit;
+    cursor: pointer;
+  }
+
+  .wrap-btn:hover {
+    background: var(--surface-hover);
+  }
+
+  .wrap-btn:focus-visible {
+    outline: var(--focus-ring-offset) solid var(--focus-ring);
+  }
+
+  .wrap-btn[aria-pressed='true'] {
+    background: var(--accent);
+    color: var(--text-inverse);
+    border-color: var(--accent);
+  }
+
   /* ── Lines ── */
   .source-lines {
     flex: 1;
     overflow-y: auto;
     overflow-x: auto;
+  }
+
+  /* Wrap mode: long lines wrap inside the viewer. `pre-wrap` keeps code
+     whitespace; overflow-wrap/word-break utilities are intentionally not
+     used (see docs/design.md — Base UI kit anti-patterns). The viewer owns
+     the single horizontal scroll container for the file. */
+  .source-lines.wrap-enabled .line-content {
+    white-space: pre-wrap;
   }
 
   .source-line {
@@ -359,6 +430,10 @@
     justify-content: flex-end;
     width: 48px;
     min-width: 48px;
+    /* 48 px is the outer cell width: the 1 px divider and the internal
+       padding are included via border-box, keeping the divider inside the
+       total width. */
+    box-sizing: border-box;
     padding: 0 var(--space-2);
     color: var(--text-tertiary);
     font-size: var(--text-xs);

@@ -30,7 +30,6 @@ describe('Observation', () => {
       reviewId,
       type: ObservationType.ISSUE,
       severity: ObservationSeverity.MAJOR,
-      title: 'Missing validation',
       body: 'Should validate input',
       filePath: 'src/app.ts',
       lineRange: new LineRange(10, 15),
@@ -53,7 +52,7 @@ describe('Observation', () => {
       id: ObservationId.generate(),
       reviewId,
       type: ObservationType.NOTE,
-      title: 'File-level comment',
+      body: 'File-level comment',
       filePath: 'src/app.ts',
       comparisonSnapshotJson: JSON.stringify(comparison.toJSON()),
       diffSnapshot: '+added\n unchanged',
@@ -71,7 +70,7 @@ describe('Observation', () => {
       id: ObservationId.generate(),
       reviewId,
       type: ObservationType.QUESTION,
-      title: 'Are we targeting the right branch?',
+      body: 'Are we targeting the right branch?',
       comparisonSnapshotJson: JSON.stringify(comparison.toJSON()),
     });
 
@@ -88,7 +87,7 @@ describe('Observation', () => {
           id: ObservationId.generate(),
           reviewId,
           type: ObservationType.ISSUE,
-          title: 'Missing validation',
+          body: 'Missing validation',
           filePath: 'src/app.ts',
           lineRange: new LineRange(10, 15),
           comparisonSnapshotJson: JSON.stringify(comparison.toJSON()),
@@ -105,7 +104,7 @@ describe('Observation', () => {
           id: ObservationId.generate(),
           reviewId,
           type: ObservationType.RISK,
-          title: 'Risk without severity',
+          body: 'Risk without severity',
           filePath: 'src/app.ts',
           lineRange: new LineRange(1, 2),
           comparisonSnapshotJson: JSON.stringify(comparison.toJSON()),
@@ -120,7 +119,7 @@ describe('Observation', () => {
       id: ObservationId.generate(),
       reviewId,
       type: ObservationType.PRAISE,
-      title: 'Great work',
+      body: 'Great work',
       filePath: 'src/app.ts',
       comparisonSnapshotJson: JSON.stringify(comparison.toJSON()),
       diffSnapshot: 'content',
@@ -130,50 +129,36 @@ describe('Observation', () => {
     expect(obs.severity).toBeNull();
   });
 
-  it('rejects an empty title', () => {
+  it('rejects an empty body', () => {
     expect(
       () =>
         new Observation({
           id: ObservationId.generate(),
           reviewId,
           type: ObservationType.NOTE,
-          title: '',
+          body: '',
           filePath: 'src/app.ts',
           comparisonSnapshotJson: JSON.stringify(comparison.toJSON()),
           diffSnapshot: 'content',
           contentHash: 'abc',
         }),
-    ).toThrow(/title must not be empty/);
+    ).toThrow(/body must not be empty/);
   });
 
-  it('rejects a title exceeding 200 characters', () => {
+  it('rejects a whitespace-only body', () => {
     expect(
       () =>
         new Observation({
           id: ObservationId.generate(),
           reviewId,
           type: ObservationType.NOTE,
-          title: 'x'.repeat(201),
+          body: '   ',
           filePath: 'src/app.ts',
           comparisonSnapshotJson: JSON.stringify(comparison.toJSON()),
           diffSnapshot: 'content',
           contentHash: 'abc',
         }),
-    ).toThrow(/title exceeds 200 characters/);
-  });
-
-  it('rejects a title of exactly 200 characters as valid', () => {
-    const obs = new Observation({
-      id: ObservationId.generate(),
-      reviewId,
-      type: ObservationType.NOTE,
-      title: 'x'.repeat(200),
-      filePath: 'src/app.ts',
-      comparisonSnapshotJson: JSON.stringify(comparison.toJSON()),
-      diffSnapshot: 'content',
-      contentHash: 'abc',
-    });
-    expect(obs.title).toBe('x'.repeat(200));
+    ).toThrow(/body must not be empty/);
   });
 
   it('rejects a body exceeding 5000 characters', () => {
@@ -183,7 +168,6 @@ describe('Observation', () => {
           id: ObservationId.generate(),
           reviewId,
           type: ObservationType.NOTE,
-          title: 'Test',
           body: 'x'.repeat(5001),
           filePath: 'src/app.ts',
           comparisonSnapshotJson: JSON.stringify(comparison.toJSON()),
@@ -193,6 +177,20 @@ describe('Observation', () => {
     ).toThrow(/body exceeds 5000 characters/);
   });
 
+  it('accepts a body of exactly 5000 characters', () => {
+    const obs = new Observation({
+      id: ObservationId.generate(),
+      reviewId,
+      type: ObservationType.NOTE,
+      body: 'x'.repeat(5000),
+      filePath: 'src/app.ts',
+      comparisonSnapshotJson: JSON.stringify(comparison.toJSON()),
+      diffSnapshot: 'content',
+      contentHash: 'abc',
+    });
+    expect(obs.body).toBe('x'.repeat(5000));
+  });
+
   it('rejects an agent instruction exceeding 2000 characters', () => {
     expect(
       () =>
@@ -200,7 +198,7 @@ describe('Observation', () => {
           id: ObservationId.generate(),
           reviewId,
           type: ObservationType.NOTE,
-          title: 'Test',
+          body: 'Test',
           agentInstruction: 'x'.repeat(2001),
           filePath: 'src/app.ts',
           comparisonSnapshotJson: JSON.stringify(comparison.toJSON()),
@@ -215,7 +213,7 @@ describe('Observation', () => {
       id: ObservationId.generate(),
       reviewId,
       type: ObservationType.NOTE,
-      title: 'Test',
+      body: 'Test',
       filePath: 'src/app.ts',
       comparisonSnapshotJson: JSON.stringify(comparison.toJSON()),
       diffSnapshot: 'content',
@@ -229,7 +227,7 @@ describe('Observation', () => {
       id: ObservationId.generate(),
       reviewId,
       type: ObservationType.NOTE,
-      title: 'Test',
+      body: 'Test',
       filePath: 'src/app.ts',
       side: 'old',
       comparisonSnapshotJson: JSON.stringify(comparison.toJSON()),
@@ -246,7 +244,7 @@ describe('Observation', () => {
           id: ObservationId.generate(),
           reviewId,
           type: ObservationType.NOTE,
-          title: 'Test',
+          body: 'Test',
           filePath: 'src/app.ts',
           side: 'invalid',
           comparisonSnapshotJson: JSON.stringify(comparison.toJSON()),
@@ -262,7 +260,7 @@ describe('Observation', () => {
       id: ObservationId.generate(),
       reviewId,
       type: ObservationType.NOTE,
-      title: 'Test',
+      body: 'Test',
       filePath: 'src/app.ts',
       comparisonSnapshotJson: JSON.stringify(comparison.toJSON()),
       diffSnapshot: 'content',
@@ -277,7 +275,7 @@ describe('Observation', () => {
       id: ObservationId.generate(),
       reviewId,
       type: ObservationType.NOTE,
-      title: 'Test',
+      body: 'Test',
       filePath: 'src/app.ts',
       comparisonSnapshotJson: JSON.stringify(comparison.toJSON()),
       diffSnapshot: 'content',
@@ -292,7 +290,7 @@ describe('Observation', () => {
       id: ObservationId.generate(),
       reviewId,
       type: ObservationType.NOTE,
-      title: 'Test',
+      body: 'Test',
       filePath: 'src/app.ts',
       comparisonSnapshotJson: JSON.stringify(comparison.toJSON()),
       diffSnapshot: 'content',
@@ -307,7 +305,7 @@ describe('Observation', () => {
       id: ObservationId.generate(),
       reviewId,
       type: ObservationType.NOTE,
-      title: 'Test',
+      body: 'Test',
       filePath: 'src/app.ts',
       comparisonSnapshotJson: JSON.stringify(comparison.toJSON()),
       diffSnapshot: 'content',
@@ -323,7 +321,7 @@ describe('Observation', () => {
       id: ObservationId.generate(),
       reviewId,
       type: ObservationType.NOTE,
-      title: 'Test',
+      body: 'Test',
       filePath: 'src/app.ts',
       comparisonSnapshotJson: JSON.stringify(comparison.toJSON()),
       diffSnapshot: 'content',
@@ -339,7 +337,7 @@ describe('Observation', () => {
       id: ObservationId.generate(),
       reviewId,
       type: ObservationType.NOTE,
-      title: 'Test',
+      body: 'Test',
       filePath: 'src/app.ts',
       comparisonSnapshotJson: JSON.stringify(comparison.toJSON()),
       diffSnapshot: 'content',
@@ -355,7 +353,7 @@ describe('Observation', () => {
       id: ObservationId.generate(),
       reviewId,
       type: ObservationType.NOTE,
-      title: 'Test',
+      body: 'Test',
       filePath: 'src/app.ts',
       comparisonSnapshotJson: JSON.stringify(comparison.toJSON()),
       diffSnapshot: 'content',
@@ -372,7 +370,7 @@ describe('Observation', () => {
       id: ObservationId.generate(),
       reviewId,
       type: ObservationType.NOTE,
-      title: 'Test',
+      body: 'Test',
       filePath: 'src/app.ts',
       comparisonSnapshotJson: JSON.stringify(comparison.toJSON()),
       diffSnapshot: 'content',
@@ -384,48 +382,33 @@ describe('Observation', () => {
     );
   });
 
-  it('can edit title', () => {
-    const obs = new Observation({
-      id: ObservationId.generate(),
-      reviewId,
-      type: ObservationType.NOTE,
-      title: 'Original',
-      filePath: 'src/app.ts',
-      comparisonSnapshotJson: JSON.stringify(comparison.toJSON()),
-      diffSnapshot: 'content',
-      contentHash: 'abc',
-    });
-    obs.editTitle('Updated title');
-    expect(obs.title).toBe('Updated title');
-  });
-
-  it('rejects editing title to empty', () => {
-    const obs = new Observation({
-      id: ObservationId.generate(),
-      reviewId,
-      type: ObservationType.NOTE,
-      title: 'Original',
-      filePath: 'src/app.ts',
-      comparisonSnapshotJson: JSON.stringify(comparison.toJSON()),
-      diffSnapshot: 'content',
-      contentHash: 'abc',
-    });
-    expect(() => obs.editTitle('')).toThrow(/title must not be empty/);
-  });
-
   it('can edit body', () => {
     const obs = new Observation({
       id: ObservationId.generate(),
       reviewId,
       type: ObservationType.NOTE,
-      title: 'Test',
+      body: 'Original',
       filePath: 'src/app.ts',
       comparisonSnapshotJson: JSON.stringify(comparison.toJSON()),
       diffSnapshot: 'content',
       contentHash: 'abc',
     });
-    obs.editBody('New body');
-    expect(obs.body).toBe('New body');
+    obs.editBody('Updated body');
+    expect(obs.body).toBe('Updated body');
+  });
+
+  it('rejects editing body to empty', () => {
+    const obs = new Observation({
+      id: ObservationId.generate(),
+      reviewId,
+      type: ObservationType.NOTE,
+      body: 'Original',
+      filePath: 'src/app.ts',
+      comparisonSnapshotJson: JSON.stringify(comparison.toJSON()),
+      diffSnapshot: 'content',
+      contentHash: 'abc',
+    });
+    expect(() => obs.editBody('')).toThrow(/body must not be empty/);
   });
 
   it('rejects file-level observation without diff snapshot', () => {
@@ -435,7 +418,7 @@ describe('Observation', () => {
           id: ObservationId.generate(),
           reviewId,
           type: ObservationType.NOTE,
-          title: 'Missing snapshot',
+          body: 'Missing snapshot',
           filePath: 'src/app.ts',
           comparisonSnapshotJson: JSON.stringify(comparison.toJSON()),
         }),
@@ -449,7 +432,7 @@ describe('Observation', () => {
           id: ObservationId.generate(),
           reviewId,
           type: ObservationType.NOTE,
-          title: 'Range without file',
+          body: 'Range without file',
           lineRange: new LineRange(10, 15),
           comparisonSnapshotJson: JSON.stringify(comparison.toJSON()),
           diffSnapshot: 'content',
@@ -465,7 +448,7 @@ describe('Observation', () => {
           id: ObservationId.generate(),
           reviewId,
           type: ObservationType.NOTE,
-          title: 'Snapshot without file',
+          body: 'Snapshot without file',
           comparisonSnapshotJson: JSON.stringify(comparison.toJSON()),
           diffSnapshot: 'content',
           contentHash: 'abc',
@@ -480,7 +463,7 @@ describe('Observation', () => {
           id: ObservationId.generate(),
           reviewId,
           type: ObservationType.NOTE,
-          title: 'File without snapshot',
+          body: 'File without snapshot',
           filePath: 'src/app.ts',
           comparisonSnapshotJson: JSON.stringify(comparison.toJSON()),
         }),
@@ -494,7 +477,7 @@ describe('Observation', () => {
           id: ObservationId.generate(),
           reviewId,
           type: ObservationType.NOTE,
-          title: 'File without hash',
+          body: 'File without hash',
           filePath: 'src/app.ts',
           comparisonSnapshotJson: JSON.stringify(comparison.toJSON()),
           diffSnapshot: 'content',

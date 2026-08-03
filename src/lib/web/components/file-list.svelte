@@ -20,7 +20,7 @@
     entries = [] as FileListEntry[],
     loading = false,
     error = null as string | null,
-    onSelect = undefined as ((path: string) => void) | undefined,
+    onSelect = undefined as ((path: string, newTab?: boolean) => void) | undefined,
     reviewedFilePaths = [] as string[],
     hasActiveReview = false,
     onRetry = undefined as (() => void) | undefined,
@@ -28,7 +28,7 @@
     entries: FileListEntry[];
     loading: boolean;
     error: string | null;
-    onSelect?: (path: string) => void;
+    onSelect?: (path: string, newTab?: boolean) => void;
     reviewedFilePaths?: string[];
     hasActiveReview?: boolean;
     onRetry?: () => void;
@@ -65,6 +65,36 @@
       expandedDirs.add(node.path);
     }
   }
+
+  /**
+   * Collect every directory path in the tree. Used to expand all directories
+   * by default when the tree view is entered for a given file set; manual
+   * collapses are respected until the file set changes. Expansion state is
+   * never persisted.
+   */
+  function collectDirPaths(nodes: FileTreeNode[], into: Set<string>): void {
+    for (const node of nodes) {
+      if (node.kind === 'directory') {
+        into.add(node.path);
+        collectDirPaths(node.children, into);
+      }
+    }
+  }
+
+  // Expand every directory by default each time the tree view opens with a
+  // new file set (entries or filters changed). Manual collapses survive until
+  // the set changes; nothing is persisted.
+  let treeEntriesSignature = $state('');
+  $effect(() => {
+    if (view !== 'tree') return;
+    const signature = filtered.map((e) => e.path).join('\n');
+    if (signature !== treeEntriesSignature) {
+      treeEntriesSignature = signature;
+      // Mutate the reactive set (SvelteSet) so the tree re-renders.
+      expandedDirs.clear();
+      collectDirPaths(treeNodes, expandedDirs);
+    }
+  });
 
   const treeNodes = $derived.by(() => buildFileTree(filtered));
 
@@ -142,9 +172,9 @@
     }
   }
 
-  function selectFile(filePath: string) {
+  function selectFile(filePath: string, newTab = false) {
     activeFile = filePath;
-    onSelect?.(filePath);
+    onSelect?.(filePath, newTab);
   }
 
   function handleRowKeydown(e: KeyboardEvent, idx: number) {
@@ -158,7 +188,8 @@
       focusRow(prev);
     } else if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      selectFile(paginated[idx].path);
+      // Keyboard activation keeps normal-click semantics (reuse active tab).
+      selectFile(paginated[idx].path, false);
     }
   }
 
@@ -310,7 +341,7 @@
             role="option"
             aria-selected={activeFile === entry.path}
             data-file-index={idx}
-            onclick={() => selectFile(entry.path)}
+            onclick={(e) => selectFile(entry.path, e.ctrlKey || e.metaKey)}
             onkeydown={(e) => handleRowKeydown(e, idx)}
           >
             <div class="path-cell">
@@ -371,7 +402,10 @@
   .file-list-panel {
     display: flex;
     flex-direction: column;
-    height: 100%;
+    /* Content-sized height: the Git panel owns the scroll, so the file list
+       must never resolve a percentage height against scroll content (that
+       created a nested uncontrolled scroll). The overflow guard stays. */
+    height: auto;
     overflow: hidden;
     background: var(--surface-primary);
   }
@@ -418,6 +452,7 @@
 
   .controls {
     display: flex;
+    flex-wrap: wrap;
     gap: var(--space-2);
     padding: var(--space-2) var(--space-3);
     border-bottom: 1px solid var(--border-subtle);
@@ -426,6 +461,9 @@
 
   .filter-input {
     flex: 1;
+    /* The input may shrink below its intrinsic width in narrow panels; the
+       select below keeps its readability minimum instead. */
+    min-width: 0;
     padding: var(--space-1) var(--space-2);
     border: 1px solid var(--border-default);
     border-radius: var(--radius-sm);

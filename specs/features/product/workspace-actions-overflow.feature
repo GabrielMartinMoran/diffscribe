@@ -43,3 +43,17 @@ Feature: Workspace action overflow menu
     Given the workspace overflow menu is open
     When the user activates the Delete action in the overflow menu
     Then the delete confirmation dialog appears
+
+  @product @ui @p1 @e2e
+  Scenario: The overflow menu stays fully visible near the bottom edge of the sidebar
+    Given a workspace is registered near the bottom edge of the sidebar
+    When the user opens the workspace overflow menu
+    Then the overflow menu is fully contained within the viewport
+    And every action in the overflow menu is visible
+
+  @product @ui @a11y @etapa-1
+  Scenario: WS-OVERFLOW-06 — invalid workspace menu paints above later rows
+    Given a workspace with status "invalid" is listed above another workspace
+    When the user opens the overflow menu of the invalid workspace
+    Then the topmost element at the center of the menu is the menu itself
+    And every action in the overflow menu is clickable

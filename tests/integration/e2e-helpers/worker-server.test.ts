@@ -191,6 +191,9 @@ describe('WorkerServer lifecycle', () => {
   }, 20_000);
 
   it('kills grandchild process via process-group kill', async () => {
+    // Skip on non-Linux — negative-PID process-group kill is POSIX-only
+    if (process.platform !== 'linux') return;
+
     const pi = portCounter++;
     const port = 18_900 + pi;
     const gcPidFile = join(tmpDir, `gc-pid-${pi}`);
@@ -226,8 +229,30 @@ describe('WorkerServer lifecycle', () => {
 
     await stopWorkerServer(server);
 
-    // Grandchild must be dead after stop (process-group kill killed it)
-    expect(() => process.kill(gcPid, 0)).toThrow();
+    // Grandchild must be dead after stop (process-group kill killed it).
+    // Linux may briefly expose the terminated grandchild as a zombie until
+    // init/subreaper reaps it, so poll with a bounded deadline instead of
+    // asserting the kill result immediately. A truly live grandchild is never
+    // hidden: the deadline error reports it with PID, elapsed time, and the
+    // last observed state.
+    const startedAt = Date.now();
+    const deadline = startedAt + 2_000;
+    const pollIntervalMs = 25;
+    for (;;) {
+      try {
+        process.kill(gcPid, 0);
+      } catch {
+        // kill(gcPid, 0) failed — the grandchild is no longer reachable
+        break;
+      }
+      if (Date.now() >= deadline) {
+        throw new Error(
+          `grandchild process ${gcPid} is still alive ${Date.now() - startedAt} ms after stop; ` +
+            `last observed state: process.kill(${gcPid}, 0) succeeded`,
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+    }
   });
 });
 

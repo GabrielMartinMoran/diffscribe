@@ -10,6 +10,20 @@ import type {
 } from '$lib/server/application/dto/results/git-context-results';
 import type { GitContextReader } from '$lib/server/application/git-context-reader';
 
+import { sortBranches } from './branch-sort';
+
+/**
+ * Normalizes a Git `%(committerdate:iso8601)` value (e.g.
+ * "2026-08-02 10:00:00 +0000") to ISO-8601 UTC. Returns `{}` when the value
+ * is empty or unparsable so the property is omitted from the DTO.
+ */
+function committerDateOf(raw: string): { committerDate: string } | Record<string, never> {
+  if (raw.trim().length === 0) return {};
+  const parsed = Date.parse(raw.trim());
+  if (Number.isNaN(parsed)) return {};
+  return { committerDate: new Date(parsed).toISOString() };
+}
+
 export class SimpleGitContextReader implements GitContextReader {
   async read(repositoryPath: string): Promise<GitContextResult> {
     const now = new Date().toISOString();
@@ -82,7 +96,6 @@ export class SimpleGitContextReader implements GitContextReader {
     readAt: string,
   ): Promise<GitContextResult> {
     const status = await git.status();
-    const branchSummary = await git.branchLocal();
     let commits: CommitDto[] = [];
 
     // Determine head state
@@ -143,38 +156,52 @@ export class SimpleGitContextReader implements GitContextReader {
       ...(detachedCommitHash !== undefined ? { detachedCommitHash } : {}),
     };
 
-    // Map branches — in detached/unborn HEAD, no branch is current
-    const isDetached = status.detached || headState === 'detached' || headState === 'unborn';
-    const branches: BranchDto[] = branchSummary.all.map((name) => ({
-      name,
-      isCurrent: !isDetached && name === branchSummary.current,
-    }));
-
-    // Remote branches: read the locally cached `refs/remotes/*` only. No
-    // `git fetch` is ever executed; remote refs are whatever the local clone
-    // already has on disk.
+    // Branches: local heads and locally cached remote refs are read with ONE
+    // combined read-only `git for-each-ref` invocation. `%(HEAD)` marks the
+    // current branch ('*' when HEAD points at the ref); in detached/unborn
+    // HEAD no ref is marked. `%(committerdate:iso8601)` is normalized to
+    // ISO-8601 UTC; refs without a committer date omit the property. Remote
+    // HEAD pseudo-refs (e.g. "origin/HEAD") are excluded. The ordering is
+    // applied in pure TypeScript (see branch-sort.ts), never via Git --sort.
+    // No fetch, pull, push, or ls-remote is ever executed.
+    const branchRecords: BranchDto[] = [];
     try {
-      const remoteRefs = await git.raw([
+      const rawRefs = await git.raw([
         'for-each-ref',
-        '--format=%(refname:short)',
+        '--format=%(refname)%00%(HEAD)%00%(committerdate:iso8601)%00',
+        'refs/heads',
         'refs/remotes',
       ]);
-      for (const ref of remoteRefs.split('\n')) {
-        const name = ref.trim();
-        if (name.length === 0) continue;
-        // Skip the remote HEAD pseudo-ref (e.g. "origin/HEAD").
-        if (name.endsWith('/HEAD')) continue;
-        const remoteName = name.includes('/') ? name.split('/')[0] : undefined;
-        branches.push({
-          name,
-          isCurrent: false,
-          isRemote: true,
-          ...(remoteName !== undefined ? { remoteName } : {}),
-        });
+      for (const line of rawRefs.split('\n')) {
+        if (line.trim().length === 0) continue;
+        const [refname, headMarker = '', committerRaw = ''] = line.split('\0');
+        if (refname.startsWith('refs/remotes/')) {
+          const name = refname.slice('refs/remotes/'.length);
+          // Skip the remote HEAD pseudo-ref (e.g. "origin/HEAD").
+          if (name.endsWith('/HEAD')) continue;
+          const remoteName = name.includes('/') ? name.split('/')[0] : undefined;
+          branchRecords.push({
+            name,
+            canonicalRef: refname,
+            isCurrent: headMarker === '*',
+            isRemote: true,
+            ...(remoteName !== undefined ? { remoteName } : {}),
+            ...committerDateOf(committerRaw),
+          });
+        } else if (refname.startsWith('refs/heads/')) {
+          const name = refname.slice('refs/heads/'.length);
+          branchRecords.push({
+            name,
+            canonicalRef: refname,
+            isCurrent: headMarker === '*',
+            ...committerDateOf(committerRaw),
+          });
+        }
       }
     } catch {
-      // No remotes configured or refs unreadable — remote list stays empty.
+      // Refs unreadable — branch list stays empty.
     }
+    const branches = sortBranches(branchRecords);
 
     // Map commits (only if we have a HEAD to log from)
     if (headState !== 'unborn') {

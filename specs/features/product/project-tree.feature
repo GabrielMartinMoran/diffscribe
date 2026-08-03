@@ -110,3 +110,25 @@ Feature: Project tree — read-only repository tree with change indicators and s
     And the user clicks on a file entry
     Then the repository index is unchanged
     And no git add, checkout, commit, or branch operation has been executed
+
+  # ────── Tree cache and invalidation (post-tranche C hardening) ──────
+  #
+  # The shared client loader keeps the fetched tree cached per workspace.
+  # Switching rails does not refetch. The cache is invalidated only for the
+  # active workspace after a successful Git context refresh and after a
+  # successful workspace repair, so the next Project tab load shows fresh
+  # files.
+
+  @product @project @p2 @ui @e2e
+  Scenario: Switching tabs keeps the cached tree without a new request
+    Given the Project tab has been opened once
+    When the user switches to the Git tab
+    And the user switches back to the Project tab
+    Then the tree is shown without a new tree request
+
+  @product @project @p2 @ui @e2e
+  Scenario: Repairing an invalid workspace refreshes the tree
+    Given the workspace repository has been invalidated
+    When the workspace is repaired
+    And the user opens the Project tab
+    Then the tree loads the repaired repository

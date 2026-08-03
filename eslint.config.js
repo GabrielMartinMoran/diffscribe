@@ -53,5 +53,14 @@ export default tseslint.config(
       },
     },
   },
+  {
+    // Svelte 5 runes modules (.svelte.ts) are TypeScript sources; the
+    // default parser does not cover them. Required by
+    // src/lib/web/stores/observation-draft-store.svelte.ts.
+    files: ['**/*.svelte.ts'],
+    languageOptions: {
+      parser: tseslint.parser,
+    },
+  },
   eslintConfigPrettier,
 );
