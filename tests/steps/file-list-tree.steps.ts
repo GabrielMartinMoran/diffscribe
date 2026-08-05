@@ -5,19 +5,33 @@ import path from 'node:path';
 import { Given, Then, When } from 'quickpickle';
 
 import {
-  DEFAULT_FILE_LIST_VIEW,
-  FILE_LIST_VIEW_STORAGE_KEY,
-} from '../../src/lib/web/stores/file-list-view-store';
+  DEFAULT_VISUAL_SETTINGS,
+  LEGACY_FILE_LIST_VIEW_STORAGE_KEY,
+  VISUAL_SETTINGS_STORAGE_KEY,
+} from '../../src/lib/web/stores/visual-settings-store';
 
 type World = any;
 
 const FILE_LIST_PATH = path.resolve(__dirname, '../../src/lib/web/components/file-list.svelte');
 const TREE_HELPER_PATH = path.resolve(__dirname, '../../src/lib/web/components/file-list-tree.ts');
+const SETTINGS_PATH = path.resolve(__dirname, '../../src/lib/web/components/settings-panel.svelte');
+const PAGE_PATH = path.resolve(__dirname, '../../src/routes/+page.svelte');
+const GIT_PANEL_PATH = path.resolve(
+  __dirname,
+  '../../src/lib/web/components/git-context-panel.svelte',
+);
 
 function requireMarker(file: string, marker: string): void {
   const src = fs.readFileSync(file, 'utf-8');
   if (!src.includes(marker)) {
     throw new Error(`${path.basename(file)} missing marker: ${marker}`);
+  }
+}
+
+function requireNoMarker(file: string, marker: string): void {
+  const src = fs.readFileSync(file, 'utf-8');
+  if (src.includes(marker)) {
+    throw new Error(`${path.basename(file)} must not contain marker: ${marker}`);
   }
 }
 
@@ -45,12 +59,47 @@ Given('the file list panel shows files in nested directories', (_w: World) => {
 // ────────────────────────────────────────────────────────────────────────────
 
 When('the user inspects the view switcher', (_w: World) => {
-  requireMarker(FILE_LIST_PATH, 'file-list-view-list');
-  requireMarker(FILE_LIST_PATH, 'file-list-view-tree');
+  // 0003: the Git panel no longer renders a local view switcher.
+  requireNoMarker(FILE_LIST_PATH, 'file-list-view-list');
+  requireNoMarker(FILE_LIST_PATH, 'file-list-view-tree');
 });
 
 When('the user switches to the tree view', (_w: World) => {
   requireMarker(FILE_LIST_PATH, 'file-list-tree');
+});
+
+When('the user switches to the list view in Settings', (_w: World) => {
+  requireMarker(SETTINGS_PATH, 'settings-file-list-list');
+  requireMarker(SETTINGS_PATH, 'writeVisualSettings');
+});
+
+Given('the Git rail is active with changed files', (_w: World) => {
+  requireMarker(PAGE_PATH, "activeRailTab === 'git'");
+  requireMarker(GIT_PANEL_PATH, 'git-context-panel');
+  requireMarker(FILE_LIST_PATH, 'readVisualSettings');
+});
+
+When('the user inspects the file list controls', (_w: World) => {
+  requireMarker(FILE_LIST_PATH, 'readVisualSettings');
+  requireNoMarker(FILE_LIST_PATH, 'file-list-view-list');
+  requireNoMarker(FILE_LIST_PATH, 'file-list-view-tree');
+});
+
+Then('no List or Tree toggle is present in the Git panel', (_w: World) => {
+  requireNoMarker(FILE_LIST_PATH, 'file-list-view-list');
+  requireNoMarker(FILE_LIST_PATH, 'file-list-view-tree');
+  // The Git panel still reads the Settings-owned preference.
+  requireMarker(FILE_LIST_PATH, 'readVisualSettings');
+});
+
+Then('the file list follows the File list view setting from Settings', (_w: World) => {
+  requireMarker(FILE_LIST_PATH, 'readVisualSettings');
+  requireMarker(SETTINGS_PATH, 'settings-file-list-view');
+});
+
+When('the user switches the file list view in Settings', (_w: World) => {
+  requireMarker(SETTINGS_PATH, 'settings-file-list-view');
+  requireMarker(SETTINGS_PATH, 'writeVisualSettings');
 });
 
 When('the application reloads', (_w: World) => {
@@ -114,11 +163,27 @@ Then('the directories are expanded by default again', (_w: World) => {
 });
 
 Then('the tree view remains active', (_w: World) => {
-  const storePath = path.resolve(__dirname, '../../src/lib/web/stores/file-list-view-store.ts');
-  requireMarker(storePath, FILE_LIST_VIEW_STORAGE_KEY);
-  if (DEFAULT_FILE_LIST_VIEW !== 'list') {
-    throw new Error('File list view must default to the list view');
+  const storePath = path.resolve(__dirname, '../../src/lib/web/stores/visual-settings-store.ts');
+  requireMarker(storePath, VISUAL_SETTINGS_STORAGE_KEY);
+  if (DEFAULT_VISUAL_SETTINGS.fileListView !== 'tree') {
+    throw new Error('File list view must default to the tree view');
   }
+});
+
+When('the user switches to the list view', (_w: World) => {
+  requireMarker(FILE_LIST_PATH, 'file-list-view-list');
+  const storePath = path.resolve(__dirname, '../../src/lib/web/stores/visual-settings-store.ts');
+  requireMarker(storePath, 'writeVisualSettings');
+  requireMarker(storePath, LEGACY_FILE_LIST_VIEW_STORAGE_KEY);
+});
+
+Then('the list view remains active', (_w: World) => {
+  // 0003: the Git panel has no local switcher; the list view comes from the
+  // Settings-owned preference.
+  requireMarker(SETTINGS_PATH, 'settings-file-list-list');
+  const storePath = path.resolve(__dirname, '../../src/lib/web/stores/visual-settings-store.ts');
+  requireMarker(storePath, 'readVisualSettings');
+  requireMarker(FILE_LIST_PATH, 'readVisualSettings');
 });
 
 Then('the file opens in the diff viewer', (_w: World) => {

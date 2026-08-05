@@ -2,25 +2,10 @@
   import type { FileListEntry } from '$lib/server/application/dto/results/file-list-results';
 
   import type { FileTreeNode } from './file-list-tree';
-  import { statusTone } from './file-status';
+  import { statusLabel, statusTone } from './file-status';
   // Self-import: Svelte supports recursive components.
   import TreeBranch from './file-tree-branch.svelte';
   import StatusBadge from './ui/StatusBadge.svelte';
-
-  function statusLabel(status: string): string {
-    const map: Record<string, string> = {
-      added: 'added',
-      modified: 'modified',
-      deleted: 'deleted',
-      renamed: 'renamed',
-      copied: 'copied',
-      'type-changed': 'type changed',
-      unmerged: 'unmerged',
-      untracked: 'untracked',
-      unknown: 'unknown',
-    };
-    return map[status] ?? status;
-  }
 
   let {
     node,

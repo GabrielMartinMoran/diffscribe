@@ -943,7 +943,10 @@ When('the user presses ArrowUp', (w: World) => {
 // Note: 'the user presses Enter' is defined in file-list-panel.steps.ts (priority 1).
 // UI scenarios that use this step are verified via E2E; BDD layer makes contract checks.
 
-When('the user presses ArrowLeft or ArrowRight', (w: World) => {
+// Desktop right panel navigation is vertical: the right-panel tablist moves
+// focus with ArrowUp/ArrowDown (the mobile sheet keeps horizontal arrows
+// via the kit's default orientation).
+When('the user presses ArrowUp or ArrowDown', (w: World) => {
   if (w.focusedPanel === 'right') {
     w.rightTab = w.rightTab === 'comments' ? 'review' : 'comments';
   }
@@ -1849,7 +1852,15 @@ Then('the center region shows the Git content', (w: World) => {
 });
 
 Then('focus moves between the Comments and Review tabs', (w: World) => {
-  // Contractual
+  if (w.focusedPanel !== 'right') {
+    throw new Error('Expected the right panel to be focused');
+  }
+  // Semantic marker: the desktop right tablist is vertical.
+  const tabs = path.resolve(__dirname, '../../src/lib/web/components/right-panel-tabs.svelte');
+  const src = fs.readFileSync(tabs, 'utf-8');
+  if (!src.includes('orientation="vertical"')) {
+    throw new Error('Desktop right navigation must use vertical tab orientation');
+  }
 });
 
 Then('the Project and Git tabs show an empty state', (w: World) => {
@@ -3349,6 +3360,412 @@ Then('focus returns to the active strip tab', (_w: World) => {
   }
 });
 
+// ── 0002 panel/rail UX corrections: canonical + delta feature steps ─────
+//
+// These steps serve the persisted `panel-rail-ux-corrections.feature` and
+// the @delta-modified scenarios of `panel-resize.feature`, `rail-tabs.feature`,
+// `base-ui-kit.feature`, and `workspace-git-review-ux.feature`. They are
+// semantic markers: each one pins the corrected source contract (vertical
+// right navigation, real tabpanels, open-if-collapsed, inert subtree, bottom
+// control group, title fallbacks). Browser-observable assertions for the same
+// behaviors live in tests/e2e/panel-rail-corrections.spec.ts.
+
+const RIGHT_PANEL_TABS_PATH = path.resolve(
+  __dirname,
+  '../../src/lib/web/components/right-panel-tabs.svelte',
+);
+const RAIL_TABS_PATH = path.resolve(__dirname, '../../src/lib/web/components/rail-tabs.svelte');
+const SHELL_PAGE_PATH = path.resolve(__dirname, '../../src/routes/+page.svelte');
+const TABS_KIT_PATH = path.resolve(__dirname, '../../src/lib/web/components/ui/Tabs.svelte');
+
+function requireRightPanelSemantics(markers: string[]): void {
+  const src = fs.readFileSync(RIGHT_PANEL_TABS_PATH, 'utf-8');
+  for (const marker of markers) {
+    if (!src.includes(marker)) {
+      throw new Error(`right-panel-tabs.svelte missing marker: ${marker}`);
+    }
+  }
+}
+
+Given('the right panel is expanded on desktop', (w: World) => {
+  w.rightCollapsed = false;
+  w.isMobile = false;
+});
+
+Given('the left panel is expanded', (w: World) => {
+  w.leftCollapsed = false;
+  w.leftPanelVisible = true;
+});
+
+When('the user views the right panel navigation', (_w: World) => {
+  requireRightPanelSemantics(['orientation="vertical"']);
+});
+
+Then(
+  'the expanded panel exposes exactly one vertical tablist with Comments and Review tabs',
+  (_w: World) => {
+    const src = fs.readFileSync(RIGHT_PANEL_TABS_PATH, 'utf-8');
+    // Exactly one tablist: the kit renders it; the consumer never authors a
+    // literal tablist role (no nested wrapper tablist).
+    if (src.includes('role="tablist"')) {
+      throw new Error('right-panel-tabs.svelte must not author its own tablist role');
+    }
+    requireRightPanelSemantics(['orientation="vertical"', "id: 'comments'", "id: 'review'"]);
+  },
+);
+
+Then('activating Review selects it without collapsing the panel', (_w: World) => {
+  // The expanded branch changes the tab only; strip expansion is handled by
+  // handleStripTabChange, which exists exactly once (its definition).
+  const src = fs.readFileSync(RIGHT_PANEL_TABS_PATH, 'utf-8');
+  const count = src.split('handleStripTabChange').length - 1;
+  if (count !== 2) {
+    throw new Error('Expected handleStripTabChange only for strip activation');
+  }
+  requireRightPanelSemantics(['orientation="vertical"']);
+});
+
+When('the user inspects the Comments tab', (w: World) => {
+  w.rightTab = 'comments';
+});
+
+Then(
+  'the tab aria-controls target exists as a tabpanel linked to the tab by aria-labelledby',
+  (_w: World) => {
+    requireRightPanelSemantics(['tabPanelId(', 'aria-labelledby=']);
+    const idsPath = path.resolve(__dirname, '../../src/lib/web/components/ui/ids.ts');
+    const ids = fs.readFileSync(idsPath, 'utf-8');
+    if (!ids.includes('tabPanelId') || !ids.includes('tabButtonId')) {
+      throw new Error('ids.ts must derive deterministic tab panel and button ids');
+    }
+  },
+);
+
+Then(
+  'the inactive Review tabpanel is hidden while the Comments tabpanel is visible',
+  (_w: World) => {
+    requireRightPanelSemantics(['tabPanelId(', 'hidden=']);
+  },
+);
+
+When('the user views the collapsed right strip', (w: World) => {
+  w.rightCollapsed = true;
+  requireRightPanelSemantics(['right-panel-reopen-btn', 'orientation="vertical"']);
+});
+
+Then('a bottom expand control is visible at the bottom of the strip', (_w: World) => {
+  requireRightPanelSemantics(['right-panel-reopen-btn', 'margin-top: auto']);
+});
+
+When('the user activates the expand control', (w: World) => {
+  w.rightCollapsed = false;
+  requireRightPanelSemantics(['right-panel-reopen-btn']);
+});
+
+Then('the panel expands without changing the selected tab', (_w: World) => {
+  // The reopen button only toggles the panel; it never fires onTabChange.
+  requireRightPanelSemantics(['onclick={onToggleRight}']);
+});
+
+Then('the Project option is selected and the left panel expands', (w: World) => {
+  w.activeTab = 'project';
+  const src = fs.readFileSync(SHELL_PAGE_PATH, 'utf-8');
+  if (!src.includes('!isMobileViewport && $panelLayout.leftCollapsed')) {
+    throw new Error('Shell missing the desktop open-if-collapsed guard');
+  }
+});
+
+When('the user selects the Git rail option with the panel open', (w: World) => {
+  w.activeTab = 'git';
+});
+
+Then('the Git option is selected and the panel stays open', (_w: World) => {
+  const src = fs.readFileSync(SHELL_PAGE_PATH, 'utf-8');
+  if (!src.includes('!isMobileViewport && $panelLayout.leftCollapsed')) {
+    throw new Error('Shell missing the desktop open-if-collapsed guard');
+  }
+});
+
+When('the user collapses the left panel', (w: World) => {
+  w.leftCollapsed = true;
+  w.leftPanelVisible = false;
+  const src = fs.readFileSync(SHELL_PAGE_PATH, 'utf-8');
+  if (!src.includes('tabButtonId(activeRailTab)')) {
+    throw new Error('Shell missing the left collapse focus-transfer effect');
+  }
+});
+
+Then('focus moves to a visible rail control', (_w: World) => {
+  const src = fs.readFileSync(SHELL_PAGE_PATH, 'utf-8');
+  if (!src.includes('tabButtonId(activeRailTab)')) {
+    throw new Error('Shell missing the left focus-transfer wiring');
+  }
+});
+
+Then('the collapsed panel content is inert and hidden from the accessibility tree', (_w: World) => {
+  const src = fs.readFileSync(SHELL_PAGE_PATH, 'utf-8');
+  if (!src.includes('inert={!isMobileViewport && $panelLayout.leftCollapsed}')) {
+    throw new Error('Shell missing the desktop collapsed inert wiring');
+  }
+  if (
+    !src.includes('aria-hidden={isMobileViewport ? !mobileLeftOpen : $panelLayout.leftCollapsed}')
+  ) {
+    throw new Error('Shell missing the desktop collapsed aria-hidden wiring');
+  }
+});
+
+Then(
+  'the reopen control is at the bottom of the rail with the Help control below it',
+  (_w: World) => {
+    const src = fs.readFileSync(RAIL_TABS_PATH, 'utf-8');
+    if (!src.includes('rail-bottom-controls')) {
+      throw new Error('rail-tabs.svelte missing bottom-controls group marker');
+    }
+    const reopenIndex = src.indexOf('left-panel-reopen-btn');
+    const helpIndex = src.indexOf('help-btn');
+    if (reopenIndex === -1 || helpIndex === -1 || reopenIndex > helpIndex) {
+      throw new Error('reopen control must be authored above the Help control');
+    }
+  },
+);
+
+When('the panel geometry is measured', (w: World) => {
+  w.geometryMeasured = true;
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+//  0003 left-region footer, right-edge nav, workspace context header
+// ────────────────────────────────────────────────────────────────────────────
+
+Given('the left panel is expanded on desktop', (w: World) => {
+  w.leftCollapsed = false;
+  w.isMobile = false;
+  const src = fs.readFileSync(SHELL_PAGE_PATH, 'utf-8');
+  if (!src.includes('left-region-footer') || !src.includes('grid-template-rows: 1fr auto')) {
+    throw new Error('Shell missing the stable left-region footer row');
+  }
+});
+
+Then('the left collapse control is the bottom-most control of the left region', (_w: World) => {
+  const src = fs.readFileSync(SHELL_PAGE_PATH, 'utf-8');
+  if (!src.includes('left-region-footer') || !src.includes('left-panel-collapse-btn')) {
+    throw new Error('Shell missing the bottom left collapse control');
+  }
+});
+
+Then('the Help control is directly above the collapse control', (_w: World) => {
+  const rail = fs.readFileSync(RAIL_TABS_PATH, 'utf-8');
+  const shell = fs.readFileSync(SHELL_PAGE_PATH, 'utf-8');
+  if (!rail.includes('help-btn') || !shell.includes('left-region-footer')) {
+    throw new Error('Help must stay in the rail directly above the footer row');
+  }
+});
+
+Then('the reopen control is still the bottom-most control of the left region', (_w: World) => {
+  const src = fs.readFileSync(SHELL_PAGE_PATH, 'utf-8');
+  if (!src.includes('left-region-footer') || !src.includes('left-panel-reopen-btn')) {
+    throw new Error('Shell missing the bottom left reopen control');
+  }
+});
+
+Then('the reopen control is the bottom-most control of the left region', (_w: World) => {
+  const src = fs.readFileSync(SHELL_PAGE_PATH, 'utf-8');
+  if (!src.includes('left-region-footer') || !src.includes('left-panel-reopen-btn')) {
+    throw new Error('Shell missing the bottom left reopen control');
+  }
+});
+
+Then('the Help control is directly above the reopen control', (_w: World) => {
+  const rail = fs.readFileSync(RAIL_TABS_PATH, 'utf-8');
+  const shell = fs.readFileSync(SHELL_PAGE_PATH, 'utf-8');
+  if (!rail.includes('help-btn') || !shell.includes('left-region-footer')) {
+    throw new Error('Help must stay in the rail directly above the footer row');
+  }
+});
+
+Then('the collapse control row spans the full width of the left panel', (_w: World) => {
+  const src = fs.readFileSync(SHELL_PAGE_PATH, 'utf-8');
+  if (!src.includes('grid-column: 1 / 3')) {
+    throw new Error('The left-region footer must span rail + panel columns');
+  }
+});
+
+Then('the reopen control row spans only the rail width', (_w: World) => {
+  const src = fs.readFileSync(SHELL_PAGE_PATH, 'utf-8');
+  if (!src.includes('grid-column: 1 / 3')) {
+    throw new Error('The collapsed footer spans the rail column only');
+  }
+});
+
+When('the navigation geometry is measured', (_w: World) => {
+  const src = fs.readFileSync(RIGHT_PANEL_TABS_PATH, 'utf-8');
+  if (!src.includes('row-reverse')) {
+    throw new Error('Expanded right panel must reverse its row order');
+  }
+});
+
+Then('the vertical tablist right edge aligns with the panel right edge', (_w: World) => {
+  requireRightPanelSemantics(['row-reverse']);
+});
+
+Then('the tablist sits to the right of the panel content', (_w: World) => {
+  requireRightPanelSemantics(['row-reverse']);
+});
+
+Then('the tablist remains a single vertical tablist with Comments and Review', (_w: World) => {
+  const src = fs.readFileSync(RIGHT_PANEL_TABS_PATH, 'utf-8');
+  if (src.includes('role="tablist"')) {
+    throw new Error('right-panel-tabs.svelte must not author its own tablist role');
+  }
+  requireRightPanelSemantics(['orientation="vertical"', "id: 'comments'", "id: 'review'"]);
+});
+
+const WORKSPACE_CONTEXT_HEADER_PATH = path.resolve(
+  __dirname,
+  '../../src/lib/web/components/workspace-context-header.svelte',
+);
+
+Given('the active workspace has a display name', (_w: World) => {
+  const shell = fs.readFileSync(SHELL_PAGE_PATH, 'utf-8');
+  const header = fs.readFileSync(WORKSPACE_CONTEXT_HEADER_PATH, 'utf-8');
+  if (!shell.includes('WorkspaceContextHeader') || !header.includes('workspace-context-header')) {
+    throw new Error('Shell/header missing the workspace context wiring');
+  }
+});
+
+When('the user opens the Project rail', (_w: World) => {
+  const src = fs.readFileSync(SHELL_PAGE_PATH, 'utf-8');
+  if (!src.includes('activeRailTab = tab')) {
+    throw new Error('Shell missing the rail tab change handler');
+  }
+});
+
+When('the user opens the Git rail', (_w: World) => {
+  const src = fs.readFileSync(SHELL_PAGE_PATH, 'utf-8');
+  if (!src.includes('activeRailTab = tab')) {
+    throw new Error('Shell missing the rail tab change handler');
+  }
+});
+
+When('the user opens the Workspaces rail', (_w: World) => {
+  const src = fs.readFileSync(SHELL_PAGE_PATH, 'utf-8');
+  if (!src.includes('activeRailTab = tab')) {
+    throw new Error('Shell missing the rail tab change handler');
+  }
+});
+
+Then('the panel shows the active workspace context at the top', (_w: World) => {
+  const shell = fs.readFileSync(SHELL_PAGE_PATH, 'utf-8');
+  const header = fs.readFileSync(WORKSPACE_CONTEXT_HEADER_PATH, 'utf-8');
+  if (!shell.includes('WorkspaceContextHeader') || !header.includes('workspace-context-header')) {
+    throw new Error('Workspace context header must render in the left panel');
+  }
+});
+
+Then('no workspace context header is shown', (_w: World) => {
+  const shell = fs.readFileSync(SHELL_PAGE_PATH, 'utf-8');
+  if (!shell.includes('isWorkspacesRail')) {
+    throw new Error('The context header must be hidden on the Workspaces rail');
+  }
+});
+
+Then(
+  'the panel width equals its grid column and its right edge reaches the viewport edge',
+  (_w: World) => {
+    // The 1 px border-box fix keeps the expanded panel inside its grid column.
+    const src = fs.readFileSync(RIGHT_PANEL_TABS_PATH, 'utf-8');
+    const rule = src.match(/\.right-panel\s*\{[^}]*\}/);
+    if (!rule || !rule[0].includes('box-sizing: border-box')) {
+      throw new Error('Expanded right panel must use border-box sizing');
+    }
+  },
+);
+
+When('the user inspects the rail controls', (_w: World) => {
+  const rail = fs.readFileSync(RAIL_TABS_PATH, 'utf-8');
+  const right = fs.readFileSync(RIGHT_PANEL_TABS_PATH, 'utf-8');
+  if (!rail.includes('title=') || !right.includes('title=')) {
+    throw new Error('Icon-only rail/panel controls must expose title fallbacks');
+  }
+});
+
+Then('every icon-only control has an accessible label and a title attribute', (_w: World) => {
+  const rail = fs.readFileSync(RAIL_TABS_PATH, 'utf-8');
+  const right = fs.readFileSync(RIGHT_PANEL_TABS_PATH, 'utf-8');
+  const shell = fs.readFileSync(SHELL_PAGE_PATH, 'utf-8');
+  for (const [file, src, markers] of [
+    // 0003: the left reopen control moved from the rail to the shell footer.
+    [RAIL_TABS_PATH, rail, ['aria-label', 'title="Keyboard shortcuts"']],
+    [
+      RIGHT_PANEL_TABS_PATH,
+      right,
+      ['aria-label', 'title="Open right panel"', 'title="Collapse right panel"'],
+    ],
+    [SHELL_PAGE_PATH, shell, ['title="Collapse left panel"', 'title="Open left panel"']],
+  ] as const) {
+    for (const marker of markers) {
+      if (!src.includes(marker)) {
+        throw new Error(`${file} missing marker: ${marker}`);
+      }
+    }
+  }
+});
+
+When('the user opens the right panel sheet', (w: World) => {
+  w.rightSheetOpen = true;
+  w.viewportWidth = 375;
+  requireRightPanelSemantics(['mobile-sheet', 'mobile-right-panel-toggle']);
+});
+
+Then('the sheet header keeps horizontal Comments and Review tabs', (w: World) => {
+  if (!w.rightSheetOpen) {
+    throw new Error('Expected the mobile right sheet to be open');
+  }
+  // The mobile branch renders the kit without an orientation override, so
+  // the shared default horizontal orientation applies.
+  requireRightPanelSemantics(['{#if isMobile}']);
+});
+
+Then('the left drawer opens from a rail tap without a desktop expansion', (w: World) => {
+  const src = fs.readFileSync(SHELL_PAGE_PATH, 'utf-8');
+  if (!src.includes('handleMobileTabChange')) {
+    throw new Error('Shell missing the mobile drawer rail-tap handler');
+  }
+  if (!src.includes('mobileLeftOpen = true')) {
+    throw new Error('Shell missing the mobile drawer open wiring');
+  }
+});
+
+When('a vertical Tabs primitive is rendered', (w: World) => {
+  w.tabsVertical = true;
+  const kit = fs.readFileSync(TABS_KIT_PATH, 'utf-8');
+  if (!kit.includes('orientation = ')) {
+    throw new Error('Tabs kit must accept an orientation prop');
+  }
+});
+
+Then('the vertical tablist navigates with ArrowUp or ArrowDown', (_w: World) => {
+  const kit = fs.readFileSync(TABS_KIT_PATH, 'utf-8');
+  if (!kit.includes("'ArrowDown'") || !kit.includes("'ArrowUp'")) {
+    throw new Error('Tabs kit must map vertical navigation to ArrowUp/ArrowDown');
+  }
+});
+
+Then(
+  'the collapsed panel exposes exactly one vertical tablist with Comments and Review tabs',
+  (_w: World) => {
+    const src = fs.readFileSync(RIGHT_PANEL_TABS_PATH, 'utf-8');
+    if (src.includes('role="tablist"')) {
+      throw new Error('right-panel-tabs.svelte must not author its own tablist role');
+    }
+    requireRightPanelSemantics(['orientation="vertical"']);
+  },
+);
+
+Then('the Review tab links to a visible tabpanel in the expanded panel', (_w: World) => {
+  requireRightPanelSemantics(['tabPanelId(', 'aria-labelledby=']);
+});
+
 // ────────────────────────────────────────────────────────────────────────────
 //  Line-number gutter geometry (CSS contract; real geometry is measured in
 //  tests/e2e/gutter-geometry.spec.ts with real fonts, tolerance <= 1 px)
@@ -3387,4 +3804,106 @@ Then(
 Then('every rendered source line number stays inside its 48 px line-number cell', () => {
   requireSourceCssRuleMarker('.line-number', 'justify-content: flex-end');
   requireSourceCssRuleMarker('.line-number', 'box-sizing: border-box');
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+//  0004 panel viewport height fix: desktop bottom-boundary steps
+//  (persisted `panel-viewport-height-fix.feature` desktop scenarios)
+//
+//  Marker-based: the new markers (`grid-row: 1 / -1`, `grid-column: 3`,
+//  `grid-column: 4`, `:global(.right-panel-*)`) fail until the desktop grid
+//  placement lands; browser-observable geometry lives in
+//  tests/e2e/viewport-height.spec.ts.
+// ────────────────────────────────────────────────────────────────────────────
+
+Given(
+  'the viewport is {int} by {int} pixels on desktop',
+  (_w: World, _width: number, _height: number) => {
+    const src = fs.readFileSync(SHELL_PAGE_PATH, 'utf-8');
+    if (!src.includes('grid-template-rows: 1fr auto') || !src.includes('height: 100dvh')) {
+      throw new Error('Shell missing the desktop two-row viewport-bound grid');
+    }
+  },
+);
+
+When('the user measures the region geometry', (w: World) => {
+  w.geometryMeasured = true;
+});
+
+Then('the central area bottom edge equals the viewport bottom', (_w: World) => {
+  const src = fs.readFileSync(SHELL_PAGE_PATH, 'utf-8');
+  if (!src.includes('grid-column: 3') || !src.includes('grid-row: 1 / -1')) {
+    throw new Error('Center must span all shell rows at column 3');
+  }
+});
+
+Then('the right panel bottom edge equals the viewport bottom', (_w: World) => {
+  const src = fs.readFileSync(SHELL_PAGE_PATH, 'utf-8');
+  if (!src.includes('grid-column: 4') || !src.includes('grid-row: 1 / -1')) {
+    throw new Error('Right panel must span all shell rows at column 4');
+  }
+});
+
+Then('the right panel right edge aligns with the viewport right edge', (_w: World) => {
+  const src = fs.readFileSync(SHELL_PAGE_PATH, 'utf-8');
+  if (!src.includes('grid-column: 4')) {
+    throw new Error('Right panel must occupy the explicit right grid column');
+  }
+});
+
+Then('the document does not scroll', (_w: World) => {
+  const src = fs.readFileSync(SHELL_PAGE_PATH, 'utf-8');
+  if (!src.includes('height: 100dvh') || !src.includes('overflow: hidden')) {
+    throw new Error('Shell must stay viewport-bound with hidden overflow');
+  }
+});
+
+Then('the right strip bottom edge equals the viewport bottom', (_w: World) => {
+  const src = fs.readFileSync(SHELL_PAGE_PATH, 'utf-8');
+  if (
+    !src.includes(':global(.right-panel-strip-wrap)') ||
+    !src.includes('grid-column: 4') ||
+    !src.includes('grid-row: 1 / -1')
+  ) {
+    throw new Error('Collapsed right strip must span all shell rows at column 4');
+  }
+});
+
+Then('the right strip keeps its rail width', (_w: World) => {
+  const right = fs.readFileSync(RIGHT_PANEL_TABS_PATH, 'utf-8');
+  if (!right.includes('width: 48px') || !right.includes('min-width: 48px')) {
+    throw new Error('Collapsed right strip must keep the 48 px rail width');
+  }
+});
+
+When('the user measures the left footer geometry', (w: World) => {
+  w.geometryMeasured = true;
+});
+
+Then('the left footer bottom edge equals the viewport bottom', (_w: World) => {
+  const src = fs.readFileSync(SHELL_PAGE_PATH, 'utf-8');
+  if (!src.includes('left-region-footer') || !src.includes('grid-template-rows: 1fr auto')) {
+    throw new Error('Left footer must occupy the shell bottom row');
+  }
+});
+
+Then('the left footer spans the left panel width when expanded', (_w: World) => {
+  const src = fs.readFileSync(SHELL_PAGE_PATH, 'utf-8');
+  if (!src.includes('left-region-footer') || !src.includes('grid-column: 1 / 3')) {
+    throw new Error('Expanded left footer must span rail + panel columns');
+  }
+});
+
+Then('the left footer spans only the rail width', (_w: World) => {
+  const src = fs.readFileSync(SHELL_PAGE_PATH, 'utf-8');
+  if (!src.includes('left-region-footer') || !src.includes('grid-column: 1 / 3')) {
+    throw new Error('Collapsed left footer spans the rail column only');
+  }
+});
+
+Then('the left footer stays bottom-most', (_w: World) => {
+  const src = fs.readFileSync(SHELL_PAGE_PATH, 'utf-8');
+  if (!src.includes('left-region-footer') || !src.includes('grid-template-rows: 1fr auto')) {
+    throw new Error('Left footer must remain the bottom shell row');
+  }
 });

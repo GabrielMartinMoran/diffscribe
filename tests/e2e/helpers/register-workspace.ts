@@ -69,7 +69,12 @@ export async function registerAndActivate(
   await expect(selectBtn).toBeVisible({ timeout: 5000 });
   await selectBtn.click();
 
-  // Observable readiness: the workspace must be marked active in the sidebar
+  // Observable readiness: W3 lands the shell on the Git rail after
+  // selection; return to the Workspaces rail so the sidebar (and the active
+  // item) is visible for callers that keep working there.
+  const gitTab = page.locator('[data-testid="rail-tab-git"]');
+  await expect(gitTab).toHaveAttribute('aria-selected', 'true', { timeout: 10000 });
+  await page.getByTestId('rail-tab-workspaces').click();
   const activeItem = page.locator(`#workspace-sidebar li.active:has-text("${name}")`);
   await expect(activeItem).toBeVisible({ timeout: 10000 });
 }
@@ -95,6 +100,52 @@ export async function selectRailTab(
   if (readinessPromise) {
     await readinessPromise;
   }
+}
+
+/**
+ * W4/0003: fresh contexts default the Git file list to the tree view, and
+ * Settings is the sole presentation preference source (the Git panel exposes
+ * no List/Tree controls). Specs that exercise flat-list contracts (`.file-row`,
+ * pagination, list sorting) must opt into the list view explicitly: write the
+ * versioned visual-settings aggregate and re-enter the Git rail so the panel
+ * re-reads the persisted preference.
+ */
+export async function switchFileListToListView(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    localStorage.setItem(
+      'diffscribe-visual-settings',
+      JSON.stringify({ version: 1, fileListView: 'list', markdownView: 'preview' }),
+    );
+  });
+
+  const isMobile = await page.evaluate(
+    () => document.querySelector('.shell-layout')?.classList.contains('is-mobile') ?? false,
+  );
+
+  // The mobile drawer overlays the rail while open; close it before
+  // switching rails (desktop is unaffected).
+  const drawer = page.locator('[data-testid="left-contextual-panel"]');
+  if (isMobile) {
+    await page.keyboard.press('Escape');
+    await expect(drawer).not.toBeVisible({ timeout: 5000 });
+  }
+
+  // Re-mount the Git panel so the persisted list preference is re-read.
+  await page.getByTestId('rail-tab-workspaces').click();
+  if (isMobile) {
+    // The workspaces drawer also overlays the rail; close it again before
+    // entering Git.
+    await page.keyboard.press('Escape');
+    await expect(drawer).not.toBeVisible({ timeout: 5000 });
+  }
+  const gitTab = page.locator('[data-testid="rail-tab-git"]');
+  await gitTab.click();
+  await expect(gitTab).toHaveAttribute('aria-selected', 'true', { timeout: 15000 });
+
+  const panel = page.locator('#file-list-panel');
+  await expect(panel).toBeVisible({ timeout: 8000 });
+  const rows = panel.locator('.file-row');
+  await expect(rows.first()).toBeVisible({ timeout: 15000 });
 }
 
 /**
@@ -201,27 +252,33 @@ export async function registerAndSelectWorkspace(
   // activation or switch rails.
   await dataJsonPromise;
 
-  // Observable DOM readiness: wait for the workspace to become active in the
-  // sidebar. This directly tests the activation behavior regardless of HTTP
-  // response status and is more robust than a network response proxy that may
-  // resolve too early or never resolve on a non-2xx status.
-  const activeItem = page.locator(`#workspace-sidebar li.active:has-text("${name}")`);
-  await expect(activeItem).toBeVisible({ timeout: 10000 });
+  // Observable DOM readiness: W3 lands the shell on the Git rail after
+  // selection. Await the deferred file-list response when the target rail is
+  // Git so the panel content barrier is complete.
+  const gitTab = page.locator('[data-testid="rail-tab-git"]');
+  await expect(gitTab).toHaveAttribute('aria-selected', 'true', { timeout: 10000 });
 
-  // Switch to the target rail.
-  // Pass the fileListPromise as the readiness barrier to selectRailTab so that
-  // the response is awaited before the panel visibility assertions below.
-  await selectRailTab(page, targetRail, fileListPromise);
-
-  // Confirm the workspace is active: verify the corresponding panel
   if (targetRail === 'git') {
+    if (fileListPromise) {
+      await fileListPromise;
+    }
     const panel = page.locator('#git-context-panel');
     await expect(panel).toBeVisible({ timeout: 20000 });
     await expect(panel.locator('.status-indicator')).toBeVisible({ timeout: 20000 });
-  } else {
-    const panel = page.locator('#workspace-sidebar');
-    await expect(panel).toBeVisible({ timeout: 10000 });
-    const activeItem = panel.locator('li.active');
-    await expect(activeItem).toBeVisible({ timeout: 8000 });
+    return;
   }
+
+  // Non-Git targets: switch to the requested rail and confirm the workspace.
+  await selectRailTab(page, targetRail);
+  if (targetRail === 'project') {
+    const panel = page.locator(
+      '[data-testid="project-tree"], .project-tree, [data-testid="tree-node"]',
+    );
+    await expect(panel.first()).toBeVisible({ timeout: 10000 });
+    return;
+  }
+  const panel = page.locator('#workspace-sidebar');
+  await expect(panel).toBeVisible({ timeout: 10000 });
+  const activeItem = panel.locator('li.active');
+  await expect(activeItem).toBeVisible({ timeout: 8000 });
 }

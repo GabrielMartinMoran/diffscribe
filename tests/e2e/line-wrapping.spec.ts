@@ -5,7 +5,7 @@ import type { Locator, Page } from '@playwright/test';
 
 import { expect, test } from './fixtures';
 import { createGitFixture } from './helpers/git-fixture';
-import { registerAndSelectWorkspace } from './helpers/register-workspace';
+import { registerAndSelectWorkspace, switchFileListToListView } from './helpers/register-workspace';
 import { resetDb } from './helpers/reset-db';
 
 /**
@@ -50,6 +50,7 @@ test.describe('Line wrapping', () => {
 
     const fileList = page.locator('#file-list-panel');
     await expect(fileList).toBeVisible({ timeout: 8000 });
+    await switchFileListToListView(page);
     const fileRow = fileList.locator('.file-row').filter({ hasText: 'src/app.ts' });
     await expect(fileRow).toBeVisible({ timeout: 10000 });
     await clickAndWaitForDiff(page, fileRow);
@@ -113,6 +114,7 @@ test.describe('Line wrapping', () => {
     await page.getByTestId('rail-tab-git').click();
     const fileList = page.locator('#file-list-panel');
     await expect(fileList).toBeVisible({ timeout: 8000 });
+    await switchFileListToListView(page);
     const fileRow = fileList.locator('.file-row').filter({ hasText: 'src/lib.ts' });
     await expect(fileRow).toBeVisible({ timeout: 10000 });
     await clickAndWaitForDiff(page, fileRow);

@@ -708,6 +708,11 @@ La interfaz se organiza en tres zonas más un rail izquierdo:
 3. **Zona central:** Diff Viewer o Source View según el tab activo.
 4. **Panel derecho:** dos tabs — Comments (observaciones) y Review (progreso).
 
+En escritorio, la navegación del panel derecho usa íconos verticales tanto en
+estado expandido como colapsado (columna de 48 px); en móvil, la hoja
+inferior conserva su cabecera horizontal. Seleccionar una opción de un panel
+colapsado expande el panel y selecciona la opción en ambos lados.
+
 El resumen de revisión puede utilizar una vista separada. Todos los paneles son
 colapsables y redimensionables.
 
@@ -1074,14 +1079,64 @@ Incluye:
   cliente (ruta exacta > prefijo de basename > subsecuencia de basename >
   fuzzy de ruta, boosts de consecutividad/case/inicio-de-palabra/separador,
   desempate léxico determinista, términos por espacios todos requeridos,
-  highlights, tope de 512 resultados); por defecto muestra solo archivos
-  trackeados y el setting local `diffscribe-quick-open-include-untracked`
-  (localStorage, default false) expone los untracked sin afectar a la Git/file
-  list; aceptar un resultado siempre activa el rail Project para mostrar el
-  Source Viewer;
-* setting "Include untracked files in Quick Open" en el panel de Settings;
+  highlights, tope de 512 resultados); incluye siempre los archivos
+  trackeados y los untracked no ignorados (los ignorados quedan excluidos por
+  las reglas estándar de Git) — el setting obsoleto
+  `diffscribe-quick-open-include-untracked` fue eliminado y su clave se
+  limpia al abrir el diálogo; los resultados muestran badges de estado del
+  comparador activo mediante el mapeo UI existente (`untracked` como **New**
+  en verde), degradando a sin badge si falla la consulta; aceptar un resultado
+  siempre activa el rail Project para mostrar el Source Viewer;
+* el diff completo es la primera pestaña sintética fija del viewer central
+  (id estable `complete-diff`, no-closable, revisitable desde cualquier rail,
+  refrescada en el lugar al cambiar la comparación y recreada al cambiar de
+  workspace tras limpiar las pestañas de archivos; sin workspace no hay
+  pestaña fija y el estado "No file selected" solo queda para el caso
+  realmente vacío);
+* la pestaña central activa no tiene borde inferior; las pestañas inactivas
+  muestran un borde inferior sutil;
+* encabezado de contexto del workspace activo (nombre + ruta truncada con
+  `title`) arriba del contenido de Project/Git/Settings, ausente en
+  Workspaces;
+* el control de colapso/expansión izquierdo vive en una fila inferior estable
+  del shell que abarca el rail + panel cuando está expandido y solo el ancho
+  del rail cuando está colapsado, con Help directamente encima (el botón de
+  reapertura ya no vive en el rail);
+* en desktop los íconos de pestaña del panel derecho se ubican en el borde
+  derecho del panel (el sheet horizontal mobile no cambia);
+* la Git/file list ya no expone controles List/Tree: Settings es la única
+  fuente de la preferencia de vista;
 * dos temas globales: Dark Deep (predeterminado) y Synthwave '84;
-* experiencia funcional en desktop y mobile desde el inicio.
+* experiencia funcional en desktop y mobile desde el inicio;
+* aterrizaje Git‑first: al seleccionar un workspace el rail Git queda activo y
+  el Project sigue accesible;
+* diff completo del comparador activo por defecto (endpoint agregado
+  `GET /api/workspaces/[id]/complete-diff`): click simple sobre un archivo
+  desplaza el diff completo hasta su sección; Ctrl/Cmd‑click abre la pestaña
+  con el archivo completo y activa el rail Project; orden determinista por
+  ruta, límites por archivo (256 KB/5.000 líneas) y agregados
+  (500 archivos/4.096 KB/40.000 líneas), marcadores binario/truncado y
+  errores parciales sin fallar el agregado;
+* preferencias visuales versionadas en cliente (`diffscribe-visual-settings`
+  v1): lista de archivos Tree (predeterminado) o List con migración read‑through
+  desde la clave legacy `diffscribe-file-list-view`, y vista Markdown Raw/Preview
+  (preview predeterminado) con renderizador sin dependencias que escapa todo el
+  HTML y rechaza enlaces inseguros;
+* el estado técnico `untracked` se muestra como **New** en verde (solo UI; el
+  valor de API/dominio permanece `untracked`; sin localización);
+* selector de comparación más ancho con tooltips para nombres largos, opción
+  fija "Working tree" reseleccionable y eliminación del caption redundante;
+* controles de colapso de ambos paneles en la parte inferior (desktop), botón
+  de reapertura inferior en la franja derecha colapsada, y cierre de pestañas
+  con click central (middle‑click);
+* diálogo de Ayuda accesible por teclado desde el pie del rail izquierdo
+  (atajos de teclado/ratón);
+* puntos de estado de directorio en el Project tree derivados de los
+  descendientes con precedencia determinista, con verde para los estados
+  nuevos (added/untracked);
+* el borrado de un workspace lo elimina del sidebar de inmediato sin recarga,
+  y el formulario Open Workspace conserva la ruta editable con selector de
+  directorio (prefill del nombre + aviso del límite del navegador).
 
 **Resultado:** DiffScribe ya es útil sin IA.
 

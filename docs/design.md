@@ -710,15 +710,23 @@ The main interface is organized in three zones plus a left rail:
 
 ```text
 ┌───┬────────────────┬──────────────────────┬──────────────┐
-│   │  Contextual    │                      │              │
-│   │  Panel         │   Central Area       │  Right       │
-│ R │ ────────────── │  (Diff Viewer /      │  Panel       │
-│ A │ • Workspaces   │   Source View)       │ ───────────  │
-│ I │ • Project      │                      │ • Comments   │
-│ L │ • Git          │                      │ • Review     │
+│   │  Contextual    │                      │  Right       │
+│   │  Panel         │   Central Area       │  Panel       │
+│ R │ ────────────── │  (Diff Viewer /      │ ───────────  │
+│ A │ • Workspaces   │   Source View)       │ ⋮ Comments   │
+│ I │ • Project      │                      │ ⋮ Review     │
+│ L │ • Git          │                      │ ───────────  │
 │   │                │                      │              │
 └───┴────────────────┴──────────────────────┴──────────────┘
 ```
+
+The right panel's navigation is a vertical icon column on the panel's **right
+edge** (48 px) on desktop; content renders to its left and the collapse
+control stays in the bottom footer. The right-edge placement uses
+`flex-direction: row-reverse` so the DOM and keyboard order stay unchanged:
+the nav is authored first, content second, and the separator border flips to
+the nav's inner (left) side while the active indicator sits on the outer
+(right) edge. Mobile keeps its horizontal bottom sheet.
 
 ### Left rail
 
@@ -798,12 +806,21 @@ The central viewer shows a tab strip above the work area (32 px high,
 - **Active vs inactive:** the active tab renders with the file-tab chrome on
   `--surface-primary` and full `--text-primary` color; inactive tabs are
   visibly dimmed (`--text-tertiary`, reduced opacity on the close affordance)
-  but remain readable. The active tab is the only one with `aria-selected`
-  and `tabindex="0"`.
-- **Close:** every tab exposes a close button with an accessible name
+  but remain readable. The active tab has **no bottom border**; inactive tabs
+  show a subtle 1 px `--border-subtle` bottom border. The active tab is the
+  only one with `aria-selected` and `tabindex="0"`.
+- **Pinned complete-diff tab:** whenever a workspace is active, the first tab
+  is the synthetic workspace-scoped "Complete diff" tab
+  (`pinned-complete-diff-tab`, discriminated `kind: 'complete-diff'` with the
+  stable id `complete-diff` — never a path sentinel). It cannot be closed
+  (no close button, middle-click is a no-op), is part of the roving tab
+  order, and selecting it renders the complete-diff viewer from any rail.
+  Closing the last file tab returns to it; switching workspace clears file
+  tabs and recreates the pin; without an active workspace no pin exists and
+  the "No file selected" empty state remains for the truly empty case.
+- **Close:** every file tab exposes a close button with an accessible name
   ("Close <label>"); closing the active tab selects next, else previous, else
-  the empty viewer ("No file selected"). Closing an inactive tab preserves
-  the active tab.
+  the pinned complete-diff tab.
 - **Keyboard:** roving tabindex; ArrowLeft/ArrowRight move focus, Home/End
   jump to first/last, focus-visible ring per token. Enter/Space on a tree or
   file-list row stays a normal click (reuse active tab), never a new tab.
@@ -830,14 +847,21 @@ behavior contract:
   (`isComposing`) never accept, navigate, or close the dialog.
 - **Routing:** every acceptance activates the Project rail before opening, so
   the Source Viewer is shown regardless of the current rail.
-- **Index:** the dialog searches the shared Project tree (tracked files by
-  default; the `diffscribe-quick-open-include-untracked` setting exposes
-  untracked files) and highlights fuzzy matches. See
-  `docs/architecture.md` → Quick Open index.
+- **Index:** the dialog searches the shared Project tree, which always
+  includes tracked files and nonignored untracked files (ignored files stay
+  excluded by Git standard ignore rules). The obsolete
+  `diffscribe-quick-open-include-untracked` localStorage setting no longer
+  exists and its key is removed on every dialog open. Results are capped at
+  512 and highlight fuzzy matches. See `docs/architecture.md` → Quick Open
+  index.
+- **Status badges:** results join the active comparison's `/file-list` status
+  map by path and render `StatusBadge` through the existing
+  `statusTone`/`statusLabel` mapping (`untracked` renders as **New** in
+  green). A missing comparison or failed fetch degrades to no badge.
 
 ### Right panel
 
-Collapsible and resizable panel with two tabs:
+Collapsible and resizable panel with two content views:
 
 - **Comments:** list of observations/comments on the active review.
 - **Review:** summary, progress, and controls of the active review.
@@ -845,18 +869,41 @@ Collapsible and resizable panel with two tabs:
 Both panels (contextual and right) can be collapsed and resized within
 predefined minimum and maximum limits.
 
-#### Collapsed right strip (desktop)
+#### Desktop right navigation is vertical in both states
 
-When the right panel is collapsed on desktop it renders a 48 px vertical strip
-(`box-sizing: border-box`) with the Comments and Review tabs using the `Tabs`
-kit in `orientation="vertical"`. Activating a strip tab expands the panel and
-selects the tab at once (PANEL-STRIP-02). Collapsing returns focus to the
-active strip tab (PANEL-STRIP-03). On compact, the bottom sheet keeps its
-slide-up behavior and the toggle lives in the dedicated right column of the
+On desktop the right panel navigates with **vertical icon tabs** in both
+states, mirroring the collapsed strip's visual language (48 px column, icon +
+`--text-2xs` caption):
+
+- **Expanded:** a 48 px vertical icon tablist on the **right edge** of the
+  panel (row-reverse), the two content views to its left, and the collapse
+  control in the bottom footer. The expanded panel uses `box-sizing:
+  border-box` so its 1 px left border stays inside the grid column and the
+  panel right edge is flush with the viewport. The active indicator renders
+  on the tab's outer (right) edge.
+- **Collapsed:** the 48 px vertical strip with the Comments and Review tabs
+  and the bottom `right-panel-reopen-btn` expand control.
+
+**Tab semantics and ARIA:** Comments/Review remain a true tab widget. Each
+desktop state exposes exactly **one** tablist (the shared `Tabs` kit renders
+it; the right-panel wrapper carries no `tablist` role). Tabs link to real
+consumer-rendered `role="tabpanel"` elements via the deterministic
+`tabPanelId()` ids, with reciprocal `aria-labelledby` pointing at the tab
+button ids (`tabButtonId()`). Both tabpanels stay mounted; the inactive one is
+`hidden` so scroll position and in-panel state survive tab switches.
+Activating a strip tab expands the panel and selects the tab at once
+(PANEL-STRIP-02); collapsing and expanding (strip tab or reopen button) both
+return focus to the active tab button. The desktop right tablist navigates
+with ArrowUp/ArrowDown.
+
+On compact (mobile), the bottom sheet keeps its horizontal header tabs and
+slide-up behavior; the toggle lives in the dedicated right column of the
 mobile shell (see Responsive behavior), sitting above the backdrop so it
-stays usable to open and close the sheet. Scroll ownership and the persisted
-expanded width are unaffected; the collapsed grid column is 48 px
-wide so the strip is a real column, not an overflow.
+stays usable to open and close the sheet. The sheet wrapper carries the
+active tab's `tabPanelId()`/`aria-labelledby` (validity only, zero visual
+change). Scroll ownership and the persisted expanded width are unaffected;
+the collapsed grid column is 48 px wide so the strip is a real column, not an
+overflow.
 
 ### Scroll ownership
 
@@ -883,6 +930,10 @@ not push the central content.
 right panel) sets `min-height: 0` so zones cannot grow the shell. Zones that
 own vertical scroll (`project-tree`, `diff-viewer`, panels) combine
 `flex: 1; min-height: 0; overflow-y: auto`. The document never scrolls.
+On desktop the center and right regions span the full shell height
+(`grid-row: 1 / -1` with explicit `grid-column: 3` and `4`) so all three
+regions share the viewport bottom boundary; the mobile shell is an explicit
+single grid row (`grid-template-rows: 1fr`).
 
 ### Diff line wrapping (tranche)
 
@@ -1082,6 +1133,113 @@ repository inside the Project tab of the contextual panel.
 | `rendered`   | Full tree with all nodes                          |
 | `empty`      | Empty repository with no files                    |
 | `error`      | Error message with retry                          |
+
+### Directory status dots (workspace‑git‑review‑ux)
+
+Directories show a single status dot derived from their descendants using a
+deterministic precedence (highest wins): `unmerged > deleted > modified >
+type-changed > added > renamed > copied > untracked > unknown`. Pure helper:
+`src/lib/web/utils/status-aggregation.ts` (`aggregateStatus`,
+`descendantStatuses`). Dots are decorative (`aria-hidden`) with
+`title`/`aria-label` on the node providing the state.
+
+---
+
+## Complete diff view (Git rail)
+
+The complete diff of the active comparison renders whenever the **pinned
+"Complete diff" tab** is active — by default whenever a workspace is active,
+from any rail (0003). It is the first synthetic non-closable workspace-scoped
+tab; comparison changes refresh the viewer in place; switching workspace
+clears file tabs and recreates the pin; no workspace, no pin. The generic
+"No file selected" empty state never appears for the pinned tab.
+
+- **File index** (`role="list"`): status + path per file, binary (`B`) and
+  truncation (`…`) markers; keyboard focusable buttons; plain click scrolls
+  the section into view; Ctrl/Cmd‑click opens a full‑file tab in Project mode.
+- **File sections** (`role="region"` + path `aria-label`): sticky path header
+  with rename/binary/truncation markers, unified diff hunks (no selection
+  behavior in the aggregate view), deterministic ascending path order.
+- Empty state "No changes in this comparison"; loading `role="status"`;
+  aggregate truncation notice `role="alert"`; error state with Retry.
+- Respects `prefers-reduced-motion` (scroll uses the existing motion
+  patterns).
+
+## Status colors (workspace‑git‑review‑ux)
+
+- Technical `untracked` renders as the English label **New** with the success
+  (green) tone in the Git file list and tree; the API/domain value stays
+  `untracked`. No localization.
+- `--tree-status-untracked` is green (`#22c55e`) in all three theme blocks, so
+  "new" (added/untracked) dots read green.
+
+## Branch selector ergonomics
+
+- Slot buttons min‑width 160 px; slot values max‑width 200 px with ellipsis;
+  the full name is exposed through `title` on slot buttons, option labels, and
+  the Working tree pseudo-option.
+- The redundant comparison caption is removed; the working tree is a fixed
+  pseudo-option at the top of the Target listbox (hidden while a search query
+  is active) and can be reselected.
+
+## Panel controls (W9/0003)
+
+- Desktop collapse controls live in bottom footers: the **left-region
+  footer** row (`.left-region-footer`, testid preserved as
+  `left-panel-footer`) spans the rail + panel grid columns in the shell's
+  bottom row (`grid-template-rows: 1fr auto`); the collapse/expand control
+  fills the row — full left-panel width when expanded, rail width only when
+  collapsed (the panel column is 0 px collapsed). The center and right panel
+  regions span the full shell height on desktop (`grid-row: 1 / -1` with
+  explicit `grid-column: 3` / `4`), which guarantees the same viewport
+  bottom boundary as the left footer. The right panel keeps
+  `.right-panel-footer` (testids preserved). The collapsed right strip gets a
+  bottom reopen button (`right-panel-reopen-btn`); activating a strip tab
+  expands the panel and selects the tab. Mobile drawer/sheet headers are
+  unchanged.
+- The left rail keeps **Help only** in its bottom `.rail-bottom-controls`
+  container (`help-btn`), pinned by a single `margin-top: auto` directly
+  above the left-region footer row. The reopen control moved out of the rail
+  into the footer (0003).
+- **Workspace context header:** the active workspace `displayName` and
+  truncated `repositoryPath` (`title` exposes the full path) render at the
+  top of Project/Git/Settings panel content (`workspace-context-header`),
+  never on the Workspaces rail.
+- **Idempotent left expansion:** selecting a left rail option while the left
+  panel is collapsed selects the option AND opens the panel (mirroring the
+  right strip). Selecting while the panel is open only changes the
+  selection; it never toggles the panel closed. Programmatic rail switches
+  (Quick Open acceptance, workspace landing, Git Ctrl/Cmd-click) do not
+  reopen a collapsed panel — only direct rail clicks do.
+- **Collapsed left accessibility:** collapsing the left panel transfers
+  focus to a visible rail control before the panel subtree hides. The
+  collapsed desktop subtree stays mounted (tree/scroll state survives) but
+  is `inert` + `aria-hidden="true"`: out of the tab order, out of the
+  accessibility tree, and pointer-blocked. On desktop the aside is the
+  active rail tab's `tabpanel` (`tabPanelId(activeRailTab)` with reciprocal
+  `aria-labelledby`); mobile keeps its `dialog` drawer semantics.
+- **Title fallbacks:** every icon-only rail/panel control keeps its
+  `aria-label` as the accessible name and adds a native `title` fallback for
+  pointer discoverability — `title="Open left panel"`,
+  `title="Open right panel"`, `title="Collapse left panel"`,
+  `title="Collapse right panel"`; Help already exposes
+  `title="Keyboard shortcuts"`. The kit Tooltip component is not introduced
+  here; no element that already shows a visible label gets a `title`.
+
+## Markdown Raw/Preview toggle
+
+- `.md`/`.markdown` files in the Source viewer show a segmented Raw | Preview
+  control at the top right of the header; initial mode comes from the
+  visualization settings aggregate (default preview, per-file session
+  override, not persisted).
+- Preview output comes exclusively from the escaping dependency-free
+  renderer; safe links render as anchors, unsafe URLs render as plain text.
+
+## Help dialog
+
+- Help (`help-btn`) sits at the bottom of the left rail (below the reopen
+  button); opens a native-modal dialog listing keyboard/mouse shortcuts;
+  Escape closes it and the browser restores focus to the trigger.
 
 ---
 

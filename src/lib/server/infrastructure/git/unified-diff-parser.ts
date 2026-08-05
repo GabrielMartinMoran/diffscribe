@@ -190,3 +190,33 @@ function findLast(lines: DiffLine[], changeType: DiffChangeType): DiffLine | und
   }
   return undefined;
 }
+
+/**
+ * Split a combined multi-file `git diff` output into per-file sections on
+ * `diff --git ` block boundaries. Pure helper used by the aggregate complete
+ * diff reader; each section is parsed independently with `parseUnifiedDiff`.
+ * Empty input yields an empty array.
+ */
+export function splitUnifiedDiffByFile(raw: string): string[] {
+  if (!raw) return [];
+
+  const sections: string[] = [];
+  let current: string[] | null = null;
+
+  for (const line of raw.replace(/\r/g, '').split('\n')) {
+    if (line.startsWith('diff --git ')) {
+      if (current) {
+        sections.push(current.join('\n'));
+      }
+      current = [line];
+    } else if (current) {
+      current.push(line);
+    }
+  }
+
+  if (current) {
+    sections.push(current.join('\n'));
+  }
+
+  return sections;
+}

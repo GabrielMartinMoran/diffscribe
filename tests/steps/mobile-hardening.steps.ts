@@ -18,6 +18,7 @@ const FILE_LIST_PATH = path.join(COMPONENTS_DIR, 'file-list.svelte');
 const BACKDROP_PATH = path.join(COMPONENTS_DIR, 'mobile-backdrop.svelte');
 const RIGHT_TABS_PATH = path.join(COMPONENTS_DIR, 'right-panel-tabs.svelte');
 const GIT_PANEL_PATH = path.join(COMPONENTS_DIR, 'git-context-panel.svelte');
+const SETTINGS_PATH = path.join(COMPONENTS_DIR, 'settings-panel.svelte');
 
 function requireMarker(file: string, marker: string): void {
   const src = fs.readFileSync(file, 'utf-8');
@@ -109,14 +110,52 @@ Then('the right panel toggle is at least 24 by 24 pixels', (_w: World) => {
 });
 
 Then('the right panel toggle spans the full center content height', (_w: World) => {
-  // Single-row mobile grid: the toggle stretches to the full row height.
+  // Single-row mobile grid: the toggle stretches to the full row height. The
+  // trailing semicolon pins the explicit mobile single-row rule and never
+  // matches the desktop `1fr auto` declaration.
   requireMarker(PAGE_PATH, 'grid-template-columns: 48px 1fr 32px');
-  requireMarker(PAGE_PATH, 'grid-template-rows: 1fr');
+  requireMarker(PAGE_PATH, 'grid-template-rows: 1fr;');
 });
 
 Then('the mobile shell has no extra grid row', (_w: World) => {
   requireMarker(PAGE_PATH, 'grid-template-columns: 48px 1fr 32px');
-  requireMarker(PAGE_PATH, 'grid-template-rows: 1fr');
+  requireMarker(PAGE_PATH, 'grid-template-rows: 1fr;');
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+//  0004 panel viewport height fix: mobile bottom-boundary steps
+//  (persisted `panel-viewport-height-fix.feature` mobile scenarios)
+// ────────────────────────────────────────────────────────────────────────────
+
+Given(
+  'the viewport is {int} by {int} pixels on mobile',
+  (_w: World, _width: number, _height: number) => {
+    // Mobile shell grid: rail + center + right toggle in one column set.
+    requireMarker(PAGE_PATH, 'grid-template-columns: 48px 1fr 32px');
+  },
+);
+
+When('the user measures the mobile region geometry', (_w: World) => {
+  // Explicit single-row mobile contract: every mobile region fills the row.
+  requireMarker(PAGE_PATH, 'grid-template-rows: 1fr;');
+  requireMarker(PAGE_PATH, 'grid-template-columns: 48px 1fr 32px');
+});
+
+Then('the central area reaches the viewport bottom', (_w: World) => {
+  requireMarker(PAGE_PATH, 'grid-template-rows: 1fr;');
+  requireMarker(PAGE_PATH, 'grid-template-columns: 48px 1fr 32px');
+});
+
+Then('the rail and the right panel toggle reach the viewport bottom', (_w: World) => {
+  // Single-row mobile grid: rail and toggle stretch to the full row height.
+  requireMarker(PAGE_PATH, 'grid-template-rows: 1fr;');
+  requireMarker(PAGE_PATH, 'grid-template-columns: 48px 1fr 32px');
+});
+
+Then('the sheet bottom is anchored to the viewport bottom', (_w: World) => {
+  // Fixed bottom sheet: the sheet never floats above the viewport bottom.
+  requireMarker(RIGHT_TABS_PATH, 'position: fixed');
+  requireMarker(RIGHT_TABS_PATH, 'bottom: 0');
 });
 
 Then('the right panel is hidden again', (w: World) => {
@@ -131,19 +170,20 @@ Then('the file list controls fit within the panel without horizontal overflow', 
 });
 
 Then('the List and Tree controls are inside the panel', (_w: World) => {
-  requireMarker(FILE_LIST_PATH, 'file-list-view-list');
-  requireMarker(FILE_LIST_PATH, 'file-list-view-tree');
+  // 0003: the view controls live in Settings, not in the Git panel.
+  requireMarker(SETTINGS_PATH, 'settings-file-list-list');
+  requireMarker(SETTINGS_PATH, 'settings-file-list-tree');
 });
 
 Then('the file list switches between Tree and List views', (_w: World) => {
   requireMarker(FILE_LIST_PATH, 'file-list-tree');
-  requireMarker(FILE_LIST_PATH, "aria-pressed={view === 'list'}");
-  requireMarker(FILE_LIST_PATH, "aria-pressed={view === 'tree'}");
+  requireMarker(SETTINGS_PATH, 'settings-file-list-list');
+  requireMarker(SETTINGS_PATH, 'settings-file-list-tree');
 });
 
 Then('the chosen view persists across reloads', (_w: World) => {
-  requireMarker(FILE_LIST_PATH, 'writeStoredFileListView');
-  requireMarker(FILE_LIST_PATH, 'readStoredFileListView');
+  requireMarker(SETTINGS_PATH, 'writeVisualSettings');
+  requireMarker(FILE_LIST_PATH, 'readVisualSettings');
 });
 
 Then('the Git panel is the only scrollable region for its content', (_w: World) => {

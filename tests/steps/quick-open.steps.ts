@@ -16,6 +16,11 @@ const QUICK_OPEN_STORE_PATH = path.resolve(
   __dirname,
   '../../src/lib/web/stores/quick-open-store.ts',
 );
+const FILE_STATUS_PATH = path.resolve(__dirname, '../../src/lib/web/components/file-status.ts');
+const TREE_READER_PATH = path.resolve(
+  __dirname,
+  '../../src/lib/server/infrastructure/git/simple-workspace-tree-reader.ts',
+);
 
 function requireMarker(file: string, marker: string): void {
   const src = fs.readFileSync(file, 'utf-8');
@@ -45,13 +50,26 @@ Given('the filter shows at least three results', (_w: World) => {
   requireMarker(DIALOG_PATH, 'aria-activedescendant');
 });
 
-Given('the workspace repository has more than 512 tracked files', (_w: World) => {
+Given('the workspace repository has more than 512 nonignored files', (_w: World) => {
   // The scorer must cap results; the cap constant lives in the scorer.
   requireMarker(SCORER_PATH, '512');
 });
 
-Given('the Quick Open setting {string} is enabled', (_w: World, _key: string) => {
-  requireMarker(QUICK_OPEN_STORE_PATH, 'diffscribe-quick-open-include-untracked');
+Given('localStorage has {string} set to {string}', (_w: World, _key: string, _value: string) => {
+  requireMarker(QUICK_OPEN_STORE_PATH, 'QUICK_OPEN_INCLUDE_UNTRACKED_STORAGE_KEY');
+});
+
+// 'the working tree has an untracked file {string}' lives in
+// file-list-adapter.steps.ts (shared step).
+
+Given('the working tree has a modified file {string}', (_w: World, _file: string) => {
+  requireMarker(FILE_STATUS_PATH, 'modified');
+  requireMarker(SCORER_PATH, 'eligible');
+});
+
+Given('the working tree has an ignored file {string}', (_w: World, _file: string) => {
+  // Ignore semantics come from the shared tree reader (git standard ignore).
+  requireMarker(TREE_READER_PATH, 'exclude-standard');
 });
 
 Given('the Git rail is active', (_w: World) => {
@@ -78,7 +96,8 @@ When('the user types {string} into the filter', (_w: World, _query: string) => {
 
 When('the user opens Quick Open and types {string}', (_w: World, _query: string) => {
   requireMarker(PAGE_PATH, 'quickOpenOpen');
-  requireMarker(QUICK_OPEN_STORE_PATH, 'diffscribe-quick-open-include-untracked');
+  // Every open cleans the obsolete include-untracked localStorage key.
+  requireMarker(DIALOG_PATH, 'removeLegacyQuickOpenSetting');
 });
 
 When('the user opens Quick Open with an empty filter', (_w: World) => {
@@ -213,12 +232,31 @@ Then('the first result is active', (_w: World) => {
 });
 
 Then('{string} is shown as a result', (_w: World, _file: string) => {
-  requireMarker(QUICK_OPEN_STORE_PATH, 'untracked');
+  requireMarker(DIALOG_PATH, 'quick-open-result');
 });
 
-Then('the results show every tracked file in the workspace', (_w: World) => {
-  requireMarker(SCORER_PATH, 'tracked');
+Then('{string} is still shown as a result', (_w: World, _file: string) => {
+  requireMarker(DIALOG_PATH, 'quick-open-result');
 });
+
+Then('the results show every nonignored file in the workspace', (_w: World) => {
+  // The scorer removed the include-untracked filter: every index file is
+  // eligible (ignore semantics live in the tree reader).
+  requireMarker(SCORER_PATH, 'eligible');
+});
+
+Then('the result {string} shows the status {string}', (_w: World, _file: string, _s: string) => {
+  requireMarker(DIALOG_PATH, 'statusTone');
+  requireMarker(DIALOG_PATH, 'statusLabel');
+});
+
+Then(
+  'the result {string} shows the status {string} in green',
+  (_w: World, _f: string, _s: string) => {
+    requireMarker(DIALOG_PATH, 'statusTone');
+    requireMarker(FILE_STATUS_PATH, 'success');
+  },
+);
 
 Then('no more than 512 results are shown', (_w: World) => {
   requireMarker(SCORER_PATH, '512');

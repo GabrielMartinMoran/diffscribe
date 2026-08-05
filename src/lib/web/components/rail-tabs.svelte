@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Files, Folder, GitBranch, PanelLeftOpen, Settings } from 'svelte-lucide';
+  import { CircleQuestionMark, Files, Folder, GitBranch, Settings } from 'svelte-lucide';
 
   import type { TabItem } from './ui/Tabs.svelte';
   import Tabs from './ui/Tabs.svelte';
@@ -9,14 +9,12 @@
   let {
     activeTab = 'workspaces' as RailTabKey,
     onTabChange = undefined as ((tab: RailTabKey) => void) | undefined,
-    leftCollapsed = false,
-    onToggleLeft = undefined as (() => void) | undefined,
+    onHelp = undefined as (() => void) | undefined,
     isMobile = false,
   }: {
     activeTab?: RailTabKey;
     onTabChange?: (tab: RailTabKey) => void;
-    leftCollapsed?: boolean;
-    onToggleLeft?: () => void;
+    onHelp?: () => void;
     isMobile?: boolean;
   } = $props();
 
@@ -55,16 +53,20 @@
     onchange={(id) => onTabChange?.(id as RailTabKey)}
   />
 
-  {#if leftCollapsed}
+  <!-- 0003: Help is the rail's only bottom control, pinned directly above
+       the stable left-region footer row (which owns the collapse/reopen
+       control). A single margin-top:auto keeps it at the rail bottom. -->
+  <div class="rail-bottom-controls">
     <button
-      data-testid="left-panel-reopen-btn"
-      class="rail-reopen-btn"
-      aria-label="Open left panel"
-      onclick={onToggleLeft}
+      data-testid="help-btn"
+      class="rail-help-btn"
+      aria-label="Help"
+      title="Keyboard shortcuts"
+      onclick={onHelp}
     >
-      <PanelLeftOpen size="18" strokeWidth="1.5" ariaLabel="Open left panel" />
+      <CircleQuestionMark size="18" strokeWidth="1.5" ariaLabel="Help" />
     </button>
-  {/if}
+  </div>
 </div>
 
 <style>
@@ -118,30 +120,39 @@
     text-overflow: ellipsis;
   }
 
-  .rail-reopen-btn {
+  /* 0003: Help pinned at the rail bottom, directly above the left-region
+     footer row (the footer owns the collapse/reopen control). */
+  .rail-bottom-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-1);
+    margin-top: auto;
+  }
+
+  .rail-help-btn {
     display: flex;
     align-items: center;
     justify-content: center;
     width: 40px;
     height: 40px;
-    margin-top: auto;
     padding: var(--space-1);
-    border: 1px solid var(--border-default);
+    border: none;
     border-radius: var(--radius-sm);
-    background: var(--surface-secondary);
-    color: var(--accent);
+    background: transparent;
+    color: var(--text-tertiary);
     cursor: pointer;
     transition:
       color 0.15s,
       background 0.15s;
   }
 
-  .rail-reopen-btn:hover {
-    background: var(--accent);
-    color: var(--text-inverse);
+  .rail-help-btn:hover {
+    color: var(--accent);
+    background: var(--surface-hover);
   }
 
-  .rail-reopen-btn:focus-visible {
+  .rail-help-btn:focus-visible {
     outline: var(--focus-ring-offset) solid var(--focus-ring);
     outline-offset: -2px;
   }
@@ -170,7 +181,7 @@
 
   @media (prefers-reduced-motion: reduce) {
     .rail-tabs :global(.ui-tabs__tab),
-    .rail-reopen-btn {
+    .rail-help-btn {
       transition: none;
     }
   }

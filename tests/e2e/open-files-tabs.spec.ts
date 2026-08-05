@@ -193,10 +193,18 @@ test.describe('Open files tabs', () => {
         timeout: 15000,
       });
 
-      // Closing the only tab shows the empty viewer.
+      // Closing the only file tab returns to the pinned complete-diff tab.
       await page.getByTestId('close-file-tab').click();
       await expect(page.getByTestId('open-file-tab')).toHaveCount(0);
-      await expect(page.getByText('No file selected')).toBeVisible();
+      await expect(page.getByTestId('pinned-complete-diff-tab')).toHaveCount(1);
+      await expect(page.getByTestId('pinned-complete-diff-tab')).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      await expect(page.locator('[data-testid="complete-diff-viewer"]')).toBeVisible({
+        timeout: 15000,
+      });
+      await expect(page.getByText('No file selected')).toHaveCount(0);
     } finally {
       fixture.cleanup();
     }
@@ -248,10 +256,50 @@ test.describe('Open files tabs', () => {
       await selectRailTab(page, 'workspaces');
       await registerAndActivate(page, fixtureB.repoPath, `Tabs-WsB-${Date.now()}`);
       await expect(page.getByTestId('open-file-tab')).toHaveCount(0);
-      await expect(page.getByText('No file selected')).toBeVisible();
+      // The new workspace shows only its own pinned complete-diff tab and no
+      // stale path from the previous workspace.
+      await expect(page.getByTestId('pinned-complete-diff-tab')).toHaveCount(1);
+      await expect(page.getByTestId('pinned-complete-diff-tab')).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      await expect(page.getByText('src/app.ts')).toHaveCount(0);
+      await expect(page.getByText('No file selected')).toHaveCount(0);
     } finally {
       fixtureA.cleanup();
       fixtureB.cleanup();
+    }
+  });
+
+  test('active tab has no bottom border; inactive tabs have a visible one', async ({ page }) => {
+    const fixture = createGitFixture('diffscribe-e2e-tabs-');
+    try {
+      makeProjectRepo(fixture);
+      await registerAndActivate(page, fixture.repoPath, `Tabs-Border-${Date.now()}`);
+      await page.reload();
+      await waitForHydration(page);
+      await openProjectTree(page);
+
+      await clickTreeFile(page, 'app.ts');
+      await clickTreeFile(page, 'util.ts', 'Control');
+      const tabs = page.getByTestId('open-file-tab');
+      await expect(tabs).toHaveCount(2);
+      // The last opened tab is active.
+      await expect(tabs.last()).toHaveAttribute('aria-selected', 'true');
+
+      const styles = await tabs.evaluateAll((els) =>
+        els.map((el) => {
+          const s = getComputedStyle(el);
+          return { width: s.borderBottomWidth, color: s.borderBottomColor };
+        }),
+      );
+      // Inactive (first) tab: visible 1px subtle bottom border.
+      expect(styles[0].width).toBe('1px');
+      expect(styles[0].color).not.toMatch(/rgba\(0, 0, 0, 0\)|transparent/);
+      // Active (last) tab: no bottom border.
+      expect(styles[1].width).toBe('0px');
+    } finally {
+      fixture.cleanup();
     }
   });
 
@@ -271,9 +319,11 @@ test.describe('Open files tabs', () => {
       await tabs.first().click();
       await tabs.first().press('ArrowRight');
       await expect(tabs.last()).toBeFocused();
+      // Home returns to the first tab of the strip: the pinned complete-diff
+      // tab sits at index 0, before the file tabs.
       await tabs.last().press('Home');
-      await expect(tabs.first()).toBeFocused();
-      await tabs.first().press('End');
+      await expect(page.getByTestId('pinned-complete-diff-tab')).toBeFocused();
+      await page.getByTestId('pinned-complete-diff-tab').press('End');
       await expect(tabs.last()).toBeFocused();
     } finally {
       fixture.cleanup();
@@ -300,6 +350,51 @@ test.describe('Open files tabs', () => {
       await expect(tabs.last()).toHaveAttribute('aria-selected', 'true');
       await expect(tabs.first()).toHaveAttribute('aria-controls', /panel/);
       await expect(page.getByTestId('close-file-tab').first()).toHaveAccessibleName(/Close/);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  test('middle-click closes any open tab (W10)', async ({ page }) => {
+    const fixture = createGitFixture('diffscribe-e2e-tabs-');
+    try {
+      makeProjectRepo(fixture);
+      await registerAndActivate(page, fixture.repoPath, `Tabs-Middle-${Date.now()}`);
+      await page.reload();
+      await waitForHydration(page);
+      await openProjectTree(page);
+
+      await clickTreeFile(page, 'app.ts');
+      await clickTreeFile(page, 'util.ts', 'Control');
+      await clickTreeFile(page, 'more.ts', 'Control');
+      await expect(page.getByTestId('open-file-tab')).toHaveCount(3);
+
+      // Middle-click an INACTIVE tab (first): it closes, active preserved.
+      await page.getByTestId('open-file-tab').first().click({ button: 'middle' });
+      await expect(page.getByTestId('open-file-tab')).toHaveCount(2);
+      await expect(page.getByTestId('open-file-tab').first()).toHaveAttribute(
+        'aria-selected',
+        'false',
+      );
+      await expect(page.getByTestId('open-file-tab').last()).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+
+      // Middle-click the ACTIVE tab (last): it closes, a neighbor becomes
+      // active.
+      await page.getByTestId('open-file-tab').last().click({ button: 'middle' });
+      await expect(page.getByTestId('open-file-tab')).toHaveCount(1);
+      await expect(page.getByTestId('open-file-tab').first()).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      await expect(page.locator('[data-testid="source-file-path"]')).toContainText(
+        'src/lib/util.ts',
+        {
+          timeout: 15000,
+        },
+      );
     } finally {
       fixture.cleanup();
     }

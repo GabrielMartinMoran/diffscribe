@@ -8,6 +8,7 @@ import {
   registerAndSelectWorkspace,
   selectRailTab,
   selectRightPanelTab,
+  switchFileListToListView,
 } from './helpers/register-workspace';
 import { resetDb } from './helpers/reset-db';
 
@@ -182,6 +183,9 @@ test.describe('Review Lifecycle (E2E)', () => {
       // File list should show review markers
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
+      // W4: fresh contexts default to tree; the review-cell contract lives
+      // in the flat list rows, so opt into the list view.
+      await switchFileListToListView(page);
 
       // Every file row should have a review marker cell (.review-cell)
       const reviewCell = fileList.locator('.review-cell');

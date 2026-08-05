@@ -14,7 +14,8 @@ import { resetDb } from './helpers/reset-db';
  * The kit primitives are exercised through real product consumers:
  * - TextInput / Button: the open-workspace and rename/repair forms.
  * - Dialog: the workspace delete confirmation dialog.
- * - Tabs: the left rail (vertical) and right panel (horizontal) tablists.
+ * - Tabs: the left rail (vertical) and right panel (vertical on desktop)
+ *   tablists.
  * - Tokens/themes: computed styles on kit elements across themes.
  * - Target size and reduced motion: computed styles on kit buttons.
  *
@@ -247,14 +248,14 @@ test.describe('Base UI kit — Tabs (left rail, vertical)', () => {
   });
 });
 
-test.describe('Base UI kit — Tabs (right panel, horizontal)', () => {
+test.describe('Base UI kit — Tabs (right panel, vertical, desktop)', () => {
   test.beforeEach(async ({ page, request }) => {
     await resetDb(request);
     await page.goto('/');
     await page.waitForLoadState('networkidle');
   });
 
-  test('ArrowLeft/ArrowRight navigate between Comments and Review', async ({ page }) => {
+  test('ArrowUp/ArrowDown navigate between Comments and Review', async ({ page }) => {
     const fixture = createGitFixture('diffscribe-e2e-kit-');
 
     try {
@@ -265,13 +266,19 @@ test.describe('Base UI kit — Tabs (right panel, horizontal)', () => {
       const reviewTab = page.getByTestId('right-tab-review');
       await expect(commentsTab).toBeVisible({ timeout: 10000 });
 
-      // Horizontal tablist: arrows are ArrowRight/ArrowLeft.
+      // Vertical tablist: the expanded right navigation exposes
+      // aria-orientation="vertical" and navigates with ArrowUp/ArrowDown.
+      await expect(page.locator('[data-testid="right-panel"] [role="tablist"]')).toHaveAttribute(
+        'aria-orientation',
+        'vertical',
+      );
+
       await commentsTab.focus();
-      await page.keyboard.press('ArrowRight');
+      await page.keyboard.press('ArrowDown');
       await expect(reviewTab).toBeFocused();
       await expect(reviewTab).toHaveAttribute('aria-selected', 'true');
 
-      await page.keyboard.press('ArrowLeft');
+      await page.keyboard.press('ArrowUp');
       await expect(commentsTab).toBeFocused();
       await expect(commentsTab).toHaveAttribute('aria-selected', 'true');
     } finally {

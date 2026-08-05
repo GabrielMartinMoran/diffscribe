@@ -43,12 +43,3 @@ Feature: Settings panel — Appearance and Editor preferences
     Given the left contextual panel is open
     When the user inspects the panel header
     Then no theme switcher is present in the header
-
-  @product @navigation @quick-open @p1 @e2e
-  Scenario: Quick Open untracked inclusion is a switch persisted in localStorage
-    Given the Settings panel is open
-    When the user enables "Include untracked files in Quick Open" inside Settings
-    Then the Quick Open setting "diffscribe-quick-open-include-untracked" is stored in localStorage
-    When the application reloads with the stored preference
-    Then the Quick Open untracked switch is enabled after reload
-    And the setting affects Quick Open only, not the Git file list

@@ -66,30 +66,11 @@ test.describe('Settings panel', () => {
   });
 
   test('theme switcher is not rendered in the panel header', async ({ page }) => {
-    // With Settings hosting the theme switcher, the contextual panel header
-    // must not contain it.
+    // With Settings hosting the theme switcher, no desktop panel header must
+    // contain it. W9 moved the desktop collapse control into the bottom
+    // footer, so the desktop header no longer exists at all.
     const header = page.locator('.left-panel-header');
-    await expect(header).not.toContainText('Theme');
-    await expect(header.getByTestId('theme-switcher')).toHaveCount(0);
-  });
-
-  test('Quick Open untracked switch persists in localStorage', async ({ page }) => {
-    await page.getByTestId('rail-tab-settings').click();
-    await expect(page.getByTestId('settings-panel')).toBeVisible({ timeout: 10000 });
-
-    const untrackedSwitch = page.getByTestId('settings-quick-open-untracked-switch');
-    await expect(untrackedSwitch).not.toBeChecked();
-    await untrackedSwitch.locator('..').click();
-    await expect(untrackedSwitch).toBeChecked();
-
-    const stored = await page.evaluate(() =>
-      localStorage.getItem('diffscribe-quick-open-include-untracked'),
-    );
-    expect(stored).toBe('true');
-
-    await page.reload();
-    await page.waitForLoadState('networkidle');
-    await page.getByTestId('rail-tab-settings').click();
-    await expect(page.getByTestId('settings-quick-open-untracked-switch')).toBeChecked();
+    await expect(header).toHaveCount(0);
+    await expect(page.locator('[data-testid="theme-switcher"]')).toHaveCount(0);
   });
 });

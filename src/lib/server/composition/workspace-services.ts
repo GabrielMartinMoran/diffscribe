@@ -1,12 +1,14 @@
 import type Database from 'better-sqlite3';
 
 import type { FileSourceReader } from '$lib/server/application/file-source-reader';
+import type { GitCompleteDiffReader } from '$lib/server/application/git-complete-diff-reader';
 import type { GitContextReader } from '$lib/server/application/git-context-reader';
 import type { GitFileDiffReader } from '$lib/server/application/git-file-diff-reader';
 import type { GitFileListReader } from '$lib/server/application/git-file-list-reader';
 import type { GitValidator } from '$lib/server/application/git-validator';
 import { CreateReviewUseCase } from '$lib/server/application/services/create-review-use-case';
 import { DeleteWorkspaceUseCase } from '$lib/server/application/services/delete-workspace-use-case';
+import { GetCompleteDiffUseCase } from '$lib/server/application/services/get-complete-diff-use-case';
 import { GetFileDiffUseCase } from '$lib/server/application/services/get-file-diff-use-case';
 import { GetFileListUseCase } from '$lib/server/application/services/get-file-list-use-case';
 import { GetFileSourceUseCase } from '$lib/server/application/services/get-file-source-use-case';
@@ -35,6 +37,7 @@ import {
 import { SetActiveReviewUseCase } from '$lib/server/application/services/set-active-review-use-case';
 import type { WorkspaceTreeReader } from '$lib/server/application/workspace-tree-reader';
 import { SimpleFileSourceReader } from '$lib/server/infrastructure/git/simple-file-source-reader';
+import { SimpleGitCompleteDiffReader } from '$lib/server/infrastructure/git/simple-git-complete-diff-reader';
 import { SimpleGitContextReader } from '$lib/server/infrastructure/git/simple-git-context-reader';
 import { SimpleGitFileDiffReader } from '$lib/server/infrastructure/git/simple-git-file-diff-reader';
 import { SimpleGitFileListReader } from '$lib/server/infrastructure/git/simple-git-file-list-reader';
@@ -56,6 +59,7 @@ export interface WorkspaceServices {
   getGitContextUseCase: GetGitContextUseCase;
   getFileListUseCase: GetFileListUseCase;
   getFileDiffUseCase: GetFileDiffUseCase;
+  getCompleteDiffUseCase: GetCompleteDiffUseCase;
   getFileSourceUseCase: GetFileSourceUseCase;
   getWorkspaceTreeUseCase: GetWorkspaceTreeUseCase;
   createReviewUseCase: CreateReviewUseCase;
@@ -83,6 +87,7 @@ export function createWorkspaceServices(db: Database.Database): WorkspaceService
   const gitContextReader: GitContextReader = new SimpleGitContextReader();
   const gitFileListReader: GitFileListReader = new SimpleGitFileListReader();
   const gitFileDiffReader: GitFileDiffReader = new SimpleGitFileDiffReader();
+  const gitCompleteDiffReader: GitCompleteDiffReader = new SimpleGitCompleteDiffReader();
   const fileSourceReader: FileSourceReader = new SimpleFileSourceReader();
   const workspaceTreeReader: WorkspaceTreeReader = new SimpleWorkspaceTreeReader();
 
@@ -106,6 +111,7 @@ export function createWorkspaceServices(db: Database.Database): WorkspaceService
         return h.highlight(code, lang);
       },
     }),
+    getCompleteDiffUseCase: new GetCompleteDiffUseCase(gitCompleteDiffReader),
     getFileSourceUseCase: new GetFileSourceUseCase(fileSourceReader, gitFileDiffReader, {
       highlight: async (code, lang) => {
         const h = await getHighlighter();

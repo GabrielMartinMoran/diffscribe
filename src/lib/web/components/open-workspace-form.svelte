@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { SubmitFunction } from '@sveltejs/kit';
 
+  import { browser } from '$app/environment';
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
 
@@ -18,6 +19,31 @@
   let error = $state('');
   let loading = $state(false);
 
+  // Browsers expose directory selection through the non-standard
+  // `webkitdirectory` input attribute. When unsupported, the Browse control
+  // is hidden and manual path entry stays the only option.
+  let supportsDirectoryBrowse = $state(false);
+  let browseHintVisible = $state(false);
+  let fileInput = $state<HTMLInputElement | null>(null);
+
+  $effect(() => {
+    if (!browser) return;
+    supportsDirectoryBrowse = 'webkitdirectory' in HTMLInputElement.prototype;
+  });
+
+  function handleDirectoryPicked() {
+    const files = fileInput?.files;
+    const first = files?.[0];
+    const relativePath = first?.webkitRelativePath;
+    if (!relativePath) return;
+    // Pre-fill with the picked directory name; browsers cannot return the
+    // absolute path, so the user completes it manually.
+    path = relativePath.split('/')[0];
+    browseHintVisible = true;
+    if (fileInput) fileInput.value = '';
+    document.getElementById('ws-path')?.focus();
+  }
+
   const handleSubmit: SubmitFunction = () => {
     loading = true;
     error = '';
@@ -28,6 +54,7 @@
       } else if (result.type === 'success') {
         path = '';
         displayName = '';
+        browseHintVisible = false;
         await invalidateAll();
         onRegistered?.();
       }
@@ -45,13 +72,45 @@
   <fieldset disabled={loading}>
     <legend>Open workspace</legend>
 
-    <TextInput
-      id="ws-path"
-      name="repositoryPath"
-      label="Repository Path"
-      bind:value={path}
-      placeholder="/absolute/path/to/repo"
-    />
+    <div class="path-row">
+      <TextInput
+        id="ws-path"
+        name="repositoryPath"
+        label="Repository Path"
+        bind:value={path}
+        placeholder="/absolute/path/to/repo"
+      />
+
+      {#if supportsDirectoryBrowse}
+        <button
+          type="button"
+          class="browse-btn"
+          data-testid="ws-path-browse"
+          aria-label="Browse for repository directory"
+          onclick={() => fileInput?.click()}
+        >
+          Browse…
+        </button>
+      {/if}
+
+      {#if browseHintVisible}
+        <p class="browse-hint" data-testid="ws-path-browse-hint">
+          Browsers cannot return the absolute path — complete it after browsing.
+        </p>
+      {/if}
+
+      {#if supportsDirectoryBrowse}
+        <input
+          bind:this={fileInput}
+          type="file"
+          webkitdirectory
+          hidden
+          aria-hidden="true"
+          tabindex="-1"
+          onchange={handleDirectoryPicked}
+        />
+      {/if}
+    </div>
 
     <TextInput
       id="ws-name"
@@ -88,6 +147,41 @@
 
   fieldset :global(.ui-text-input) {
     margin-top: var(--space-1);
+    flex: 1;
+  }
+
+  .path-row {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
+  }
+
+  .browse-btn {
+    align-self: flex-start;
+    margin-top: var(--space-1);
+    padding: var(--space-1) var(--space-3);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    background: var(--surface-primary);
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+    cursor: pointer;
+  }
+
+  .browse-btn:hover {
+    background: var(--surface-hover);
+    border-color: var(--accent);
+  }
+
+  .browse-btn:focus-visible {
+    outline: var(--focus-ring-offset) solid var(--focus-ring);
+  }
+
+  .browse-hint {
+    margin: 0;
+    color: var(--text-tertiary);
+    font-size: var(--text-xs);
   }
 
   fieldset :global(.ui-button) {

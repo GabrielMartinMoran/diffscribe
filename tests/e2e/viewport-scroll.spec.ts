@@ -5,7 +5,11 @@ import type { Page } from '@playwright/test';
 
 import { expect, test } from './fixtures';
 import { createGitFixture } from './helpers/git-fixture';
-import { registerAndSelectWorkspace, selectRailTab } from './helpers/register-workspace';
+import {
+  registerAndSelectWorkspace,
+  selectRailTab,
+  switchFileListToListView,
+} from './helpers/register-workspace';
 import { resetDb } from './helpers/reset-db';
 
 /**
@@ -128,6 +132,7 @@ test.describe('Viewport-bound scroll ownership', () => {
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
+      await switchFileListToListView(page);
       const fileRow = fileList.locator('.file-row').first();
       await expect(fileRow).toBeVisible({ timeout: 10000 });
 

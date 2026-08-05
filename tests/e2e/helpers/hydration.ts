@@ -29,11 +29,17 @@ export async function waitForHydration(page: Page): Promise<void> {
   // below, this avoids using networkidle as the sole signal.
   await page.waitForLoadState('networkidle');
 
-  // Wait for the sidebar to be visible as a secondary stability signal.
-  // SvelteKit SSR renders it; its presence in the DOM confirms the page
-  // layout has settled enough for the toggle to be interactive.
+  // W3: with an active workspace the shell lands on the Git rail and the
+  // sidebar is not rendered. Activate the Workspaces rail so the sidebar
+  // exists for the hydration probe below.
   const sidebar = page.locator('#workspace-sidebar');
   await expect(async () => {
+    if (!(await sidebar.isVisible().catch(() => false))) {
+      const railTab = page.locator('[data-testid="rail-tab-workspaces"]');
+      if (await railTab.isVisible().catch(() => false)) {
+        await railTab.click();
+      }
+    }
     await expect(sidebar).toBeAttached({ timeout: 3000 });
     await expect(sidebar).toBeVisible({ timeout: 3000 });
   }).toPass({ timeout: 20000 });

@@ -47,3 +47,20 @@ Feature: Observation status — state transitions between open, resolved, dismis
     Given an observation with status "dismissed" exists on the active review
     When the user reopens the observation
     Then the observation status is "open"
+
+  # ────── Seeded card rendering (0003 refinements) ──────
+
+  @product @observation @e2e @delta-added
+  Scenario: Seeded observation cards render with badges, status, and actions
+    Given the active review has observations of types "issue", "risk", and "suggestion"
+    When the user opens the Comments panel
+    Then each observation card shows its type badge and severity badge
+    And each card shows a status dot and body text
+    When the user hovers a card
+    Then the card actions appear
+
+  @product @observation @e2e @delta-added
+  Scenario: Observation cards render correctly in dark and synthwave themes
+    Given the active review has observations
+    When the user selects the Synthwave theme
+    Then the observation cards remain readable with contrast on their badges

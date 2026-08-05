@@ -1,11 +1,13 @@
 <script lang="ts">
-  import { PanelLeftClose } from 'svelte-lucide';
+  import { PanelLeftClose, PanelLeftOpen } from 'svelte-lucide';
 
   import { browser } from '$app/environment';
   import { invalidateAll } from '$app/navigation';
   import type { WorkspaceListItem } from '$lib/server/application/dto/results/workspace-results';
+  import CompleteDiffViewer from '$lib/web/components/complete-diff-viewer.svelte';
   import DiffViewer from '$lib/web/components/diff-viewer.svelte';
   import GitContextPanel from '$lib/web/components/git-context-panel.svelte';
+  import HelpDialog from '$lib/web/components/help-dialog.svelte';
   import MobileBackdrop from '$lib/web/components/mobile-backdrop.svelte';
   import ObservationPanel from '$lib/web/components/observation-panel.svelte';
   import OpenFilesTabs from '$lib/web/components/open-files-tabs.svelte';
@@ -19,8 +21,17 @@
   import SettingsPanel from '$lib/web/components/settings-panel.svelte';
   import SourceViewer from '$lib/web/components/source-viewer.svelte';
   import Dialog from '$lib/web/components/ui/Dialog.svelte';
+  import { tabButtonId, tabPanelId } from '$lib/web/components/ui/ids';
+  import WorkspaceContextHeader from '$lib/web/components/workspace-context-header.svelte';
   import WorkspaceSidebar from '$lib/web/components/workspace-sidebar.svelte';
-  import { activeFilePath, openFileTab, resetTabs } from '$lib/web/stores/active-file-store';
+  import {
+    activeFilePath,
+    activeTabId,
+    COMPLETE_DIFF_TAB_ID,
+    openFileTab,
+    pinCompleteDiff,
+    resetTabs,
+  } from '$lib/web/stores/active-file-store';
   import { ObservationDraftStore } from '$lib/web/stores/observation-draft-store.svelte';
   import {
     LEFT_PANEL_MAX,
@@ -40,11 +51,19 @@
   let { data } = $props();
   let workspaces: WorkspaceListItem[] = $derived(data.workspaces ?? []);
   let activeWorkspaceId: string | null = $derived(data.activeWorkspaceId ?? null);
+  let activeWorkspace: WorkspaceListItem | null = $derived(
+    workspaces.find((w) => w.id === activeWorkspaceId) ?? null,
+  );
 
   // ─── Shell state ───
-  let activeRailTab = $state<RailTabKey>('workspaces');
+  // W3: a workspace lands in Git; without a workspace the workspaces rail is
+  // the landing tab. The initial value is captured from the SSR page data
+  // (state_referenced_locally is intended here: only the mount-time value is
+  // wanted; later workspace changes are handled by the reset effect below).
+  let activeRailTab = $state<RailTabKey>(data.activeWorkspaceId ? 'git' : 'workspaces');
   let activeRightTab = $state<'comments' | 'review'>('comments');
   let quickOpenOpen = $state(false);
+  let helpOpen = $state(false);
 
   // ─── Quick Open (Ctrl/Cmd+P) ───
   $effect(() => {
@@ -240,18 +259,49 @@
     openFileTab(path, undefined, newTab);
   }
 
+  // W6: from the Git file list, a plain click scrolls the complete diff to
+  // that file; a Ctrl/Cmd-click opens a full-file tab and switches to the
+  // Project rail (same semantics as Quick Open acceptance).
+  let completeDiffScrollTarget = $state<string | null>(null);
+
+  function handleGitFileSelect(path: string, newTab = false) {
+    if (newTab) {
+      activeRailTab = 'project';
+      openFileTab(path, undefined, true);
+    } else {
+      completeDiffScrollTarget = path;
+    }
+  }
+
+  function handleCompleteDiffScrollHandled() {
+    completeDiffScrollTarget = null;
+  }
+
   // Switching workspace clears the tab collection so stale paths from the
-  // previous workspace cannot appear in the new one.
+  // previous workspace cannot appear in the new one, then materializes the
+  // pinned complete-diff tab for the new workspace. The rail follows the
+  // workspace lifecycle: an active workspace lands in Git (W3), and deleting
+  // the active workspace returns the shell to the workspaces rail (and drops
+  // the pin with it).
   let lastWorkspaceId = $state<string | null | undefined>(undefined);
   $effect(() => {
     if (activeWorkspaceId !== lastWorkspaceId) {
       lastWorkspaceId = activeWorkspaceId;
       resetTabs();
+      if (activeWorkspaceId) {
+        pinCompleteDiff();
+      }
+      activeRailTab = activeWorkspaceId ? 'git' : 'workspaces';
     }
   });
 
   function handleComparisonChange(draft: ComparisonDraft) {
     comparisonDraft = draft;
+  }
+
+  // The workspace context header renders on every rail except Workspaces.
+  function isWorkspacesRail(tab: RailTabKey): boolean {
+    return tab === 'workspaces';
   }
 
   // ─── Mobile-specific handlers ───
@@ -261,6 +311,35 @@
     lastLeftTrigger = tab;
     mobileLeftOpen = true;
   }
+
+  // Desktop rail selection: selecting a rail option while the left panel is
+  // collapsed selects the option AND opens the panel idempotently (mirroring
+  // the right strip); while expanded it only changes selection — it never
+  // toggles the panel closed. Programmatic switches (Quick Open acceptance,
+  // workspace landing, Git Ctrl/Cmd-click) do not go through this handler and
+  // keep the collapsed state.
+  function handleDesktopRailTabChange(tab: RailTabKey) {
+    activeRailTab = tab;
+    if (!isMobileViewport && $panelLayout.leftCollapsed) {
+      toggleLeft();
+    }
+  }
+
+  // Left collapse/reopen focus continuity (desktop): collapsing transfers
+  // focus to a visible rail control before the panel subtree hides; expanding
+  // via the reopen button returns focus to the active rail tab. Rail tab
+  // buttons are always visible, so both transitions focus the active one.
+  let wasLeftCollapsed = $state(false);
+  $effect(() => {
+    if (!browser || isMobileViewport) return;
+    const collapsed = $panelLayout.leftCollapsed;
+    if (collapsed !== wasLeftCollapsed) {
+      requestAnimationFrame(() => {
+        document.getElementById(tabButtonId(activeRailTab))?.focus();
+      });
+    }
+    wasLeftCollapsed = collapsed;
+  });
 
   function handleCloseMobileLeft() {
     closeAllMobile();
@@ -373,21 +452,29 @@
   <!-- Left rail -->
   <RailTabs
     activeTab={activeRailTab}
-    onTabChange={isMobileViewport ? handleMobileTabChange : (t) => (activeRailTab = t)}
-    leftCollapsed={$panelLayout.leftCollapsed || isMobileViewport}
-    onToggleLeft={isMobileViewport ? () => handleMobileTabChange(activeRailTab) : toggleLeft}
+    onTabChange={isMobileViewport ? handleMobileTabChange : handleDesktopRailTabChange}
+    onHelp={() => (helpOpen = true)}
     isMobile={isMobileViewport}
   />
 
-  <!-- Left contextual panel (desktop: in grid; mobile: overlay drawer) -->
+  <!-- Left contextual panel (desktop: in grid; mobile: overlay drawer).
+       On desktop the aside is the active rail tab's tabpanel: its id and
+       aria-labelledby make the active rail tab's aria-controls resolve.
+       While collapsed the desktop subtree stays mounted (tree/scroll/state
+       preserved) but is inert + aria-hidden: out of the tab order, out of
+       the accessibility tree, and pointer-blocked. Mobile keeps its dialog
+       drawer semantics. -->
   <aside
     data-testid="left-contextual-panel"
     class="left-contextual-panel"
     class:collapsed={$panelLayout.leftCollapsed || isMobileViewport}
     class:mobile-drawer={isMobileViewport}
     class:mobile-drawer-open={isMobileViewport && mobileLeftOpen}
-    aria-hidden={isMobileViewport && !mobileLeftOpen}
-    role={isMobileViewport ? 'dialog' : undefined}
+    id={isMobileViewport ? undefined : tabPanelId(activeRailTab)}
+    role={isMobileViewport ? 'dialog' : 'tabpanel'}
+    aria-labelledby={isMobileViewport ? undefined : tabButtonId(activeRailTab)}
+    aria-hidden={isMobileViewport ? !mobileLeftOpen : $panelLayout.leftCollapsed}
+    inert={!isMobileViewport && $panelLayout.leftCollapsed}
   >
     {#if isMobileViewport}
       <div class="left-panel-header">
@@ -398,17 +485,6 @@
           onclick={handleCloseMobileLeft}
         >
           <PanelLeftClose size="14" strokeWidth="1.5" ariaLabel="Close left panel" />
-        </button>
-      </div>
-    {:else}
-      <div class="left-panel-header">
-        <button
-          data-testid="left-panel-collapse-btn"
-          class="left-collapse-btn"
-          aria-label="Collapse left panel"
-          onclick={toggleLeft}
-        >
-          <PanelLeftClose size="14" strokeWidth="1.5" ariaLabel="Collapse left panel" />
         </button>
       </div>
     {/if}
@@ -433,20 +509,28 @@
           <OpenWorkspaceForm onRegistered={() => (showOpenForm = false)} />
         </div>
       {/if}
-    {:else if activeRailTab === 'project'}
-      <ProjectTree {activeWorkspaceId} {comparisonDraft} />
-    {:else if activeRailTab === 'git'}
-      <GitContextPanel
-        gitContext={data.gitContext}
-        {activeWorkspaceId}
-        {comparisonDraft}
-        onFileSelect={handleFileSelect}
-        onComparisonChange={handleComparisonChange}
-        {reviewedFilePaths}
-        hasActiveReview={!!data.activeReview}
-      />
-    {:else if activeRailTab === 'settings'}
-      <SettingsPanel />
+    {:else}
+      <!-- 0003: active workspace context at the top of Project/Git/Settings
+           panel content; never on the Workspaces rail. -->
+      {#if !isWorkspacesRail(activeRailTab) && activeWorkspace}
+        <WorkspaceContextHeader workspace={activeWorkspace} />
+      {/if}
+
+      {#if activeRailTab === 'project'}
+        <ProjectTree {activeWorkspaceId} {comparisonDraft} />
+      {:else if activeRailTab === 'git'}
+        <GitContextPanel
+          gitContext={data.gitContext}
+          {activeWorkspaceId}
+          {comparisonDraft}
+          onFileSelect={handleFileSelect}
+          onComparisonChange={handleComparisonChange}
+          {reviewedFilePaths}
+          hasActiveReview={!!data.activeReview}
+        />
+      {:else if activeRailTab === 'settings'}
+        <SettingsPanel />
+      {/if}
     {/if}
   </aside>
 
@@ -455,14 +539,38 @@
     <OpenFilesTabs />
 
     <div class="work-area">
-      {#if $activeFilePath && activeRailTab === 'project'}
+      {#if $activeTabId === COMPLETE_DIFF_TAB_ID}
+        <!-- The pinned complete-diff tab renders the existing aggregate diff
+             viewer from any rail, refreshing in place on comparison change. -->
+        <div class="diff-area">
+          <CompleteDiffViewer
+            {activeWorkspaceId}
+            {comparisonDraft}
+            scrollTarget={completeDiffScrollTarget}
+            onScrollHandled={handleCompleteDiffScrollHandled}
+            onFileClick={handleGitFileSelect}
+          />
+        </div>
+      {:else if activeRailTab === 'project' && $activeFilePath}
         <div class="diff-area">
           <SourceViewer filePath={$activeFilePath} {activeWorkspaceId} {comparisonDraft} />
+        </div>
+      {:else if $activeFilePath}
+        <div class="diff-area">
+          <DiffViewer
+            selectedFile={$activeFilePath}
+            {comparisonDraft}
+            {activeWorkspaceId}
+            clearRequest={selectionClearRequest}
+            {restoreRequest}
+            {restoreSelection}
+            onSelectionChange={handleSelectionChange}
+          />
         </div>
       {:else}
         <div class="diff-area">
           <DiffViewer
-            selectedFile={$activeFilePath ?? null}
+            selectedFile={null}
             {comparisonDraft}
             {activeWorkspaceId}
             clearRequest={selectionClearRequest}
@@ -553,6 +661,38 @@
       />
     {/snippet}
   </RightPanelTabs>
+
+  <!-- 0003: stable left-region footer. The collapse/expand control lives at
+       the absolute bottom of the shell, spanning the rail + panel columns
+       when expanded and the rail width when collapsed (the panel column is
+       0 px collapsed). Authored last so grid auto-placement keeps the other
+       items in row 1 and this footer lands alone in the bottom row. Help
+       stays in the rail directly above this row. -->
+  {#if !isMobileViewport}
+    <div class="left-region-footer left-panel-footer" data-testid="left-region-footer">
+      {#if $panelLayout.leftCollapsed}
+        <button
+          data-testid="left-panel-reopen-btn"
+          class="left-footer-btn"
+          aria-label="Open left panel"
+          title="Open left panel"
+          onclick={toggleLeft}
+        >
+          <PanelLeftOpen size="14" strokeWidth="1.5" ariaLabel="Open left panel" />
+        </button>
+      {:else}
+        <button
+          data-testid="left-panel-collapse-btn"
+          class="left-footer-btn"
+          aria-label="Collapse left panel"
+          title="Collapse left panel"
+          onclick={toggleLeft}
+        >
+          <PanelLeftClose size="14" strokeWidth="1.5" ariaLabel="Collapse left panel" />
+        </button>
+      {/if}
+    </div>
+  {/if}
 </div>
 
 <!-- Mobile backdrop (outside shell-layout so it overlays properly) -->
@@ -578,20 +718,38 @@
 <QuickOpenDialog
   open={quickOpenOpen}
   {activeWorkspaceId}
+  {comparisonDraft}
   onAccept={handleQuickOpenAccept}
   onClose={handleQuickOpenClose}
 />
+
+<!-- Help dialog (W11): keyboard/mouse shortcuts. -->
+<HelpDialog open={helpOpen} onClose={() => (helpOpen = false)} />
 
 <style>
   .shell-layout {
     position: relative;
     display: grid;
     grid-template-columns: 48px var(--left-panel-width, 300px) 1fr var(--right-panel-width, 320px);
-    grid-template-rows: 1fr;
+    grid-template-rows: 1fr auto;
     /* Viewport-bound: fixed height so grid items cannot grow the shell. */
     height: 100dvh;
     overflow: hidden;
     background: var(--surface-primary);
+  }
+
+  /* 0004: center and right regions span the full shell height (rows 1/-1)
+     so they reach the same bottom boundary as the left footer region.
+     Explicit columns keep Grid auto-placement from reordering regions. */
+  .shell-layout:not(.is-mobile) .center-content {
+    grid-column: 3;
+    grid-row: 1 / -1;
+  }
+
+  .shell-layout:not(.is-mobile) :global(.right-panel-strip-wrap),
+  .shell-layout:not(.is-mobile) :global(.right-panel:not(.mobile-sheet)) {
+    grid-column: 4;
+    grid-row: 1 / -1;
   }
 
   /* ── Mobile grid: rail + center + right toggle column ──
@@ -599,7 +757,11 @@
      row: it spans the full center height and never creates an implicit
      second grid row. */
   .shell-layout.is-mobile {
+    /* 0004: explicit single-row mobile contract (zero visual change — the
+       left footer is display: none on mobile, so the computed rows go from
+       `667px 0px` to `667px`). */
     grid-template-columns: 48px 1fr 32px;
+    grid-template-rows: 1fr;
   }
 
   /* ─── Left panel (desktop) ─── */
@@ -689,6 +851,50 @@
   .left-collapse-btn:focus-visible {
     outline: var(--focus-ring-offset) solid var(--focus-ring);
     outline-offset: -2px;
+  }
+
+  /* ── 0003: stable left-region footer row ──
+     Spans the rail + panel columns (1 / 3) in the shell's second grid row.
+     Collapsed the panel column is 0 px, so the row spans only the rail
+     width. The control fills the whole row. */
+
+  .left-region-footer {
+    grid-column: 1 / 3;
+    display: flex;
+    background: var(--surface-secondary);
+    border-top: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+    min-width: 0;
+  }
+
+  .left-footer-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 28px;
+    padding: var(--space-1);
+    border: none;
+    background: transparent;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    transition:
+      color 0.15s,
+      background 0.15s;
+  }
+
+  .left-footer-btn:hover {
+    color: var(--text-primary);
+    background: var(--surface-hover);
+  }
+
+  .left-footer-btn:focus-visible {
+    outline: var(--focus-ring-offset) solid var(--focus-ring);
+    outline-offset: -2px;
+  }
+
+  .shell-layout.is-mobile .left-region-footer {
+    display: none;
   }
 
   /* ─── Resize handles ─── */
@@ -852,6 +1058,7 @@
       transition: none;
     }
 
+    .left-footer-btn,
     .left-collapse-btn,
     .resize-handle,
     .reset-layout-btn {

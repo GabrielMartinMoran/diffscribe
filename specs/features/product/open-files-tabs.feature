@@ -7,7 +7,10 @@ Feature: Open files tabs — multi-tab central viewer with keyboard and ARIA sup
   additional tab, or activates the existing tab when the path is already
   open. Tabs are unique by repo-relative path within the active workspace,
   live only for the session, and are cleared when the workspace changes.
-  Modifier clicks on diff lines keep line selection and never create tabs.
+  The complete diff is the first synthetic non-closable workspace-scoped tab:
+  it is always present when a workspace is active, cannot be closed, and
+  closing the last file tab returns to it. Modifier clicks on diff lines keep
+  line selection and never create tabs.
 
   Background:
     Given DiffScribe is started
@@ -81,12 +84,13 @@ Feature: Open files tabs — multi-tab central viewer with keyboard and ARIA sup
     Then the active tab is "src/app.ts"
     And the central viewer shows the content of "src/app.ts"
 
-  @product @navigation @viewer @p1 @e2e
-  Scenario: Closing the only tab shows the empty viewer
-    Given the central viewer shows the tab "src/app.ts"
+  @product @navigation @viewer @p1 @e2e @delta-modified
+  Scenario: Closing the last file tab returns to the complete diff tab
+    # CHANGED: the pinned complete-diff tab is always present; closing the last file tab returns to it (was: empty viewer)
+    Given the central viewer shows the complete diff tab and "src/app.ts"
     When the user closes the tab "src/app.ts"
-    Then the central viewer shows no tabs
-    And the central viewer shows "No file selected"
+    Then the complete diff viewer is shown
+    And the complete diff tab is the only tab
 
   @product @navigation @viewer @p1 @e2e
   Scenario: Closing an inactive tab preserves the active tab
@@ -96,12 +100,56 @@ Feature: Open files tabs — multi-tab central viewer with keyboard and ARIA sup
     Then the central viewer shows one tab
     And the active tab is "src/app.ts"
 
-  @product @navigation @viewer @p1 @e2e
-  Scenario: Switching workspace clears all tabs
-    Given the central viewer shows the tabs "src/app.ts" and "src/lib/util.ts"
+  @product @navigation @viewer @p1 @e2e @delta-modified
+  Scenario: Switching workspace replaces the pin and clears file tabs
+    # CHANGED: the new workspace shows its own pinned complete-diff tab (was: no tabs)
+    Given the central viewer shows the complete diff tab and "src/app.ts"
     When the user activates another workspace
-    Then the central viewer shows no tabs
+    Then the central viewer shows only the new workspace complete diff tab
     And no stale path from the previous workspace appears
+
+  @product @navigation @viewer @p1 @e2e @delta-added
+  Scenario: Complete diff is the first synthetic non-closable tab
+    Given the active workspace has changes
+    When the user views the central tab strip
+    Then the first tab is the complete diff tab
+    And the complete diff tab has no close button
+    When the user middle-clicks the complete diff tab
+    Then the complete diff tab remains open
+
+  @product @navigation @viewer @p1 @e2e @delta-added
+  Scenario: Opening a file preserves the pinned tab and activates the file tab
+    Given the complete diff tab is the first tab
+    When the user opens "src/app.ts" from the Project tree
+    Then the central viewer shows the complete diff tab followed by "src/app.ts"
+    And the active tab is "src/app.ts"
+
+  @product @navigation @viewer @p1 @e2e @delta-added
+  Scenario: The complete diff tab is revisitable and shows no "No file selected"
+    Given the complete diff tab is the first tab
+    When the user clicks the complete diff tab
+    Then the complete diff viewer is shown
+    And "No file selected" is not shown
+
+  @product @navigation @viewer @p1 @e2e @delta-added
+  Scenario: Changing the comparison refreshes the pinned tab in place
+    Given the complete diff tab is active
+    When the user changes the comparison target
+    Then the complete diff tab remains the first tab
+    And the complete diff viewer reloads for the new comparison
+
+  @product @navigation @viewer @p1 @e2e @delta-added
+  Scenario: No active workspace shows no pinned complete diff tab
+    Given no workspace is active
+    Then the central viewer shows no complete diff tab
+    And the central viewer shows "No file selected"
+
+  @product @navigation @viewer @p1 @e2e @delta-added
+  Scenario: Active central tab has no bottom border and inactive tabs do
+    Given the central viewer shows the tabs "src/app.ts" and "src/lib/util.ts"
+    And the active tab is "src/app.ts"
+    Then the active tab has no bottom border
+    And the inactive tab has a visible bottom border
 
   @product @navigation @viewer @p1 @e2e
   Scenario: Ctrl/Cmd-click on a diff line preserves line selection and opens no tab

@@ -297,7 +297,9 @@ Then('no other option has aria-selected true', () => {
 });
 
 Then('the active option wraps to the first option', () => {
-  requireMarker(POPUP_PATH, 'visibleOptions.length');
+  // W8: with no search query the Working tree pseudo-option leads the
+  // keyboard navigation, so wrap bounds come from the full keyboard list.
+  requireMarker(POPUP_PATH, 'keyboardOptions.length');
 });
 
 Then('the last option is active', () => {

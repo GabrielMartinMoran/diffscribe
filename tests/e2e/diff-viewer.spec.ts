@@ -6,7 +6,11 @@ import type { Locator, Page } from '@playwright/test';
 
 import { expect, test } from './fixtures';
 import { createGitFixture } from './helpers/git-fixture';
-import { registerAndSelectWorkspace, selectRailTab } from './helpers/register-workspace';
+import {
+  registerAndSelectWorkspace,
+  selectRailTab,
+  switchFileListToListView,
+} from './helpers/register-workspace';
 import { resetDb } from './helpers/reset-db';
 
 /**
@@ -51,6 +55,7 @@ test.describe('Diff Viewer (E2E)', () => {
       // Wait for file list to appear
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
+      await switchFileListToListView(page);
 
       // Click on the modified file and wait for the diff response
       const fileRow = fileList.locator('.file-row').filter({ hasText: 'src/app.ts' });
@@ -84,6 +89,7 @@ test.describe('Diff Viewer (E2E)', () => {
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
+      await switchFileListToListView(page);
       const fileRow = fileList.locator('.file-row').filter({ hasText: 'src/new.ts' });
       await clickAndWaitForDiff(page, fileRow);
 
@@ -113,6 +119,7 @@ test.describe('Diff Viewer (E2E)', () => {
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
+      await switchFileListToListView(page);
       const fileRow = fileList.locator('.file-row').filter({ hasText: 'rm.ts' });
       await clickAndWaitForDiff(page, fileRow);
 
@@ -144,6 +151,7 @@ test.describe('Diff Viewer (E2E)', () => {
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
+      await switchFileListToListView(page);
       const fileRow = fileList.locator('.file-row').filter({ hasText: 'new.ts' });
       await clickAndWaitForDiff(page, fileRow);
 
@@ -175,6 +183,7 @@ test.describe('Diff Viewer (E2E)', () => {
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
+      await switchFileListToListView(page);
       const fileRow = fileList.locator('.file-row').filter({ hasText: 'logo.png' });
       await clickAndWaitForDiff(page, fileRow);
 
@@ -201,6 +210,7 @@ test.describe('Diff Viewer (E2E)', () => {
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
+      await switchFileListToListView(page);
       const fileRow = fileList.locator('.file-row').filter({ hasText: 'empty.ts' });
       await clickAndWaitForDiff(page, fileRow);
 
@@ -225,6 +235,7 @@ test.describe('Diff Viewer (E2E)', () => {
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
+      await switchFileListToListView(page);
       const fileRow = fileList.locator('.file-row').filter({ hasText: 'untracked.ts' });
       await clickAndWaitForDiff(page, fileRow);
 
@@ -252,6 +263,7 @@ test.describe('Diff Viewer (E2E)', () => {
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
+      await switchFileListToListView(page);
       const fileRow = fileList.locator('.file-row').first();
       await clickAndWaitForDiff(page, fileRow);
       // Loading state briefly appears — verify diff-viewer is present
@@ -277,6 +289,7 @@ test.describe('Diff Viewer (E2E)', () => {
       // Wait for file list to load before corrupting the repo
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
+      await switchFileListToListView(page);
       await expect(fileList.locator('.file-row').first()).toBeVisible({ timeout: 10000 });
 
       // Now corrupt the repo to force diff fetch error
@@ -306,11 +319,13 @@ test.describe('Diff Viewer (E2E)', () => {
 
       await registerAndSelectWorkspace(page, repoDir, `DV-Placeholder-${Date.now()}`, 'git');
 
-      // Without selecting a file, the diff viewer should show placeholder
-      const diffViewer = page.locator('.diff-viewer');
-      await expect(diffViewer).toBeVisible({ timeout: 8000 });
-      await expect(diffViewer).toContainText(/select a file|no file selected/i);
-      await expect(diffViewer.locator('.line-number')).toHaveCount(0);
+      // W6: with no open file tab the Git rail shows the complete diff of
+      // the active comparison instead of the single-file placeholder.
+      const completeDiff = page.locator('[data-testid="complete-diff-viewer"]');
+      await expect(completeDiff).toBeVisible({ timeout: 8000 });
+      // The single-file diff viewer is not rendered without a selection.
+      await expect(page.locator('.diff-viewer')).toHaveCount(0);
+      await expect(page.locator('.line-number')).toHaveCount(0);
     } finally {
       fixture.cleanup();
     }
@@ -333,6 +348,7 @@ test.describe('Diff Viewer (E2E)', () => {
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
+      await switchFileListToListView(page);
       const fileRow = fileList.locator('.file-row').first();
       await clickAndWaitForDiff(page, fileRow);
 
@@ -368,6 +384,7 @@ test.describe('Diff Viewer (E2E)', () => {
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
+      await switchFileListToListView(page);
       const fileRow = fileList.locator('.file-row').first();
       await expect(fileRow).toBeVisible({ timeout: 10000 });
       await clickAndWaitForDiff(page, fileRow);
@@ -399,6 +416,7 @@ test.describe('Diff Viewer (E2E)', () => {
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
+      await switchFileListToListView(page);
       const fileRow = fileList.locator('.file-row').first();
       await clickAndWaitForDiff(page, fileRow);
       // Unselect by clicking again (this toggles selection, no diff request)
@@ -434,6 +452,7 @@ test.describe('Diff Viewer (E2E)', () => {
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
+      await switchFileListToListView(page);
       const fileRow = fileList.locator('.file-row').first();
       await clickAndWaitForDiff(page, fileRow);
 
@@ -474,6 +493,7 @@ test.describe('Diff Viewer (E2E)', () => {
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
+      await switchFileListToListView(page);
       const fileRow = fileList.locator('.file-row').filter({ hasText: 'src/xss.ts' });
       await clickAndWaitForDiff(page, fileRow);
 

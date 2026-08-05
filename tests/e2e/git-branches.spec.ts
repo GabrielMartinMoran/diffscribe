@@ -96,8 +96,9 @@ test.describe('Git branches — cached remotes and inferred comparisons', () => 
 
       // Base slot auto-activated with the current branch (master).
       await expect(page.locator('.slot-base .slot-value')).toHaveText(/master/);
-      // Inferred type shown in the comparison feedback.
-      await expect(page.locator('.comparison-type')).toHaveText(/branch vs branch/);
+      // W8: no comparison caption; the inferred comparison is proven by the
+      // refetched file list under the branch pair.
+      await expect(page.locator('.comparison-type')).toHaveCount(0);
     } finally {
       fixture.cleanup();
     }
@@ -122,7 +123,10 @@ test.describe('Git branches — cached remotes and inferred comparisons', () => 
       await expect(commitList).toBeVisible({ timeout: 10000 });
       await commitList.getByText(head, { exact: true }).click();
 
-      await expect(page.locator('.comparison-type')).toHaveText(/commit vs commit/);
+      // W8: the redundant comparison caption is removed; the commit is
+      // confirmed via the slot labels instead.
+      await expect(page.locator('.comparison-type')).toHaveCount(0);
+      await expect(page.locator('.slot-target .slot-value')).toHaveText(new RegExp(head));
     } finally {
       fixture.cleanup();
     }
@@ -154,6 +158,80 @@ test.describe('Git branches — cached remotes and inferred comparisons', () => 
         .toString()
         .trim();
       expect(refs).toContain('refs/remotes/origin/main');
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  test('branch selector exposes long names as tooltips', async ({ page }) => {
+    const fixture = createGitFixture('diffscribe-e2e-gbr-');
+    const repoDir = fixture.repoPath;
+    try {
+      initRepo(fixture);
+      const longBranch = `feature/very-long-branch-name-${'x'.repeat(40)}`;
+      execSync(`git branch "${longBranch}"`, { cwd: repoDir, stdio: 'pipe' });
+
+      await registerAndSelectWorkspace(page, repoDir, `E2E-GBr5-${Date.now()}`, 'git');
+      await openGitPanel(page);
+
+      // The slot button exposes the full label through title.
+      await page.locator('.slot-base').click();
+      const branchList = page.getByRole('listbox', { name: 'Branches' });
+      const option = branchList.getByRole('option', { name: new RegExp(longBranch) });
+      await expect(option).toBeVisible();
+      // W8: option labels carry a title tooltip with the full name.
+      await expect(option.locator('.branch-option-label')).toHaveAttribute('title', longBranch);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  test('no working tree vs HEAD caption is displayed', async ({ page }) => {
+    const fixture = createGitFixture('diffscribe-e2e-gbr-');
+    const repoDir = fixture.repoPath;
+    try {
+      initRepo(fixture);
+      await registerAndSelectWorkspace(page, repoDir, `E2E-GBr6-${Date.now()}`, 'git');
+      await openGitPanel(page);
+
+      // W8: the redundant caption text is gone entirely.
+      await expect(page.locator('.comparison-type')).toHaveCount(0);
+      await expect(page.locator('.comparison-slots')).not.toContainText('working tree vs HEAD');
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  test('working tree can be reselected as target', async ({ page }) => {
+    const fixture = createGitFixture('diffscribe-e2e-gbr-');
+    const repoDir = fixture.repoPath;
+    try {
+      initRepo(fixture);
+      fs.writeFileSync(path.join(repoDir, 'untracked.txt'), 'fresh\n');
+      execSync('git update-ref refs/remotes/origin/main HEAD', { cwd: repoDir, stdio: 'pipe' });
+
+      await registerAndSelectWorkspace(page, repoDir, `E2E-GBr7-${Date.now()}`, 'git');
+      await openGitPanel(page);
+
+      // Move the target away from the working tree (select a branch).
+      await page.locator('.slot-target').click();
+      const branchList = page.getByRole('listbox', { name: 'Branches' });
+      await branchList.getByRole('option', { name: /origin\/main/ }).click();
+      await expect(page.locator('.slot-target .slot-value')).toHaveText(/origin\/main/);
+
+      // Re-open the target popup: the Working tree pseudo-option is present.
+      await page.locator('.slot-target').click();
+      const targetList = page.getByRole('listbox', { name: 'Branches' });
+      const workingTreeOption = targetList.locator('[data-branch-option="working-tree"]');
+      await expect(workingTreeOption).toBeVisible();
+      await workingTreeOption.click();
+
+      // W8: the target returns to the working tree and the comparison is
+      // inferred as working-tree-vs-head (untouched HEAD base).
+      await expect(page.locator('.slot-target .slot-value')).toHaveText(/working tree/i);
+      const fileList = page.locator('#file-list-panel');
+      await expect(fileList).toBeVisible({ timeout: 10000 });
+      await expect(fileList).toContainText('untracked.txt', { timeout: 10000 });
     } finally {
       fixture.cleanup();
     }

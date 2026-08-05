@@ -22,6 +22,8 @@ export interface ScorableFile {
   path: string;
   /** `undefined` means unknown — treated as tracked. */
   tracked?: boolean;
+  /** Optional working-tree status carried through scoring without ranking. */
+  status?: string;
 }
 
 export interface HighlightRange {
@@ -32,6 +34,7 @@ export interface HighlightRange {
 export interface ScoredFile {
   path: string;
   tracked: boolean | undefined;
+  status?: string;
   score: number;
   highlights: HighlightRange[];
 }
@@ -173,23 +176,17 @@ function positionBonus(
   return bonus;
 }
 
-export interface ScoreOptions {
-  includeUntracked?: boolean;
-}
-
 /**
- * Score every file against the query. Returns results sorted by score
- * (descending) with deterministic lexical tie-breaks, capped at
- * `QUICK_OPEN_MAX_RESULTS`. An empty query returns every eligible file in
- * index order (also capped).
+ * Score every file against the query. Every file in the index is eligible:
+ * tracked and nonignored untracked files alike (ignore semantics come from
+ * the shared tree reader). Returns results sorted by score (descending) with
+ * deterministic lexical tie-breaks, capped at `QUICK_OPEN_MAX_RESULTS`. An
+ * empty query returns every eligible file in index order (also capped).
  */
-export function scoreFiles(
-  files: ScorableFile[],
-  query: string,
-  options: ScoreOptions = {},
-): ScoredFile[] {
-  const includeUntracked = options.includeUntracked ?? false;
-  const eligible = files.filter((f) => includeUntracked || f.tracked !== false);
+export function scoreFiles(files: ScorableFile[], query: string): ScoredFile[] {
+  // All index files are eligible; the 0003 contract removed the
+  // include-untracked filter.
+  const eligible = files;
 
   const rawQuery = query.replace(/\\/g, '/').toLowerCase();
   const terms = rawQuery.split(/\s+/).filter((t) => t.length > 0);
@@ -198,6 +195,7 @@ export function scoreFiles(
     return eligible.slice(0, QUICK_OPEN_MAX_RESULTS).map((f) => ({
       path: f.path,
       tracked: f.tracked,
+      status: f.status,
       score: 0,
       highlights: [],
     }));
@@ -221,7 +219,7 @@ export function scoreFiles(
       }
     }
     if (!matched) continue;
-    results.push({ path: f.path, tracked: f.tracked, score: total, highlights });
+    results.push({ path: f.path, tracked: f.tracked, status: f.status, score: total, highlights });
   }
 
   results.sort((a, b) => b.score - a.score || a.path.localeCompare(b.path));

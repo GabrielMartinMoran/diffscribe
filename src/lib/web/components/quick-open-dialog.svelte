@@ -1,25 +1,29 @@
 <script lang="ts">
   import { LoaderCircle, Search, TriangleAlert } from 'svelte-lucide';
 
+  import type { FileChangeStatus } from '$lib/server/domain/value-objects/file-change-status';
+  import { statusLabel, statusTone } from '$lib/web/components/file-status';
+  import StatusBadge from '$lib/web/components/ui/StatusBadge.svelte';
+  import { loadStatusMap } from '$lib/web/services/file-list-status-loader';
   import {
     flattenFiles,
     projectTreeLoader,
     type ProjectTreeNode,
   } from '$lib/web/services/project-tree-loader';
   import { type ScoredFile, scoreFiles } from '$lib/web/services/quick-open-scorer';
-  import {
-    readStoredQuickOpenIncludeUntracked,
-    resolveQuickOpenIncludeUntracked,
-  } from '$lib/web/stores/quick-open-store';
+  import { removeLegacyQuickOpenSetting } from '$lib/web/stores/quick-open-store';
+  import type { ComparisonDraft } from '$lib/web/types/comparison-draft';
 
   let {
     open = false,
     activeWorkspaceId = null as string | null,
+    comparisonDraft = null as ComparisonDraft | null,
     onAccept = undefined as ((path: string, newTab: boolean) => void) | undefined,
     onClose = undefined as (() => void) | undefined,
   }: {
     open?: boolean;
     activeWorkspaceId?: string | null;
+    comparisonDraft?: ComparisonDraft | null;
     onAccept?: (path: string, newTab: boolean) => void;
     onClose?: () => void;
   } = $props();
@@ -34,7 +38,7 @@
   let index = $state<ProjectTreeNode[]>([]);
   let loading = $state(false);
   let error = $state<string | null>(null);
-  let includeUntracked = $state(false);
+  let statusMap = $state<Map<string, FileChangeStatus> | null>(null);
   let activeIndex = $state(0);
 
   // Native modal: showModal() when open, close() when dismissed. The browser
@@ -49,15 +53,15 @@
     }
   });
 
-  // Reset state and autofocus the filter whenever the dialog opens.
+  // Reset state and autofocus the filter whenever the dialog opens. The
+  // obsolete include-untracked localStorage key is cleaned on every open.
   $effect(() => {
     if (!open) return;
     query = '';
     activeIndex = 0;
     error = null;
-    includeUntracked = resolveQuickOpenIncludeUntracked(
-      readStoredQuickOpenIncludeUntracked(window.localStorage),
-    );
+    statusMap = null;
+    removeLegacyQuickOpenSetting(window.localStorage);
     // Wait for the dialog to mount before focusing the input.
     const timer = window.setTimeout(() => {
       inputRef?.focus();
@@ -89,9 +93,30 @@
     };
   });
 
+  // Join the comparison-aware file-list status map by path; failures and
+  // missing comparisons degrade to no badges.
+  $effect(() => {
+    if (!open || !activeWorkspaceId || !comparisonDraft) {
+      statusMap = null;
+      return;
+    }
+    let cancelled = false;
+    loadStatusMap(activeWorkspaceId, comparisonDraft).then((map) => {
+      if (cancelled) return;
+      statusMap = map;
+    });
+    return () => {
+      cancelled = true;
+    };
+  });
   // Scoring is pure and derived: every keystroke re-scores the flattened
-  // index (capped at 512 results by the scorer).
-  const results = $derived(scoreFiles(index, query, { includeUntracked }));
+  // index (capped at 512 results by the scorer). Status rides along through
+  // the scorer without affecting ranking.
+  const statusByPath = $derived(statusMap);
+  const indexWithStatus = $derived(
+    statusByPath ? index.map((f) => ({ ...f, status: statusByPath.get(f.path) })) : index,
+  );
+  const results = $derived(scoreFiles(indexWithStatus, query));
 
   // Keep the active index inside the result bounds.
   $effect(() => {
@@ -275,8 +300,10 @@
               {result.path}
             {/if}
           </span>
-          {#if result.tracked === false}
-            <span class="quick-open-untracked" aria-label="Untracked">untracked</span>
+          {#if result.status}
+            <StatusBadge tone={statusTone(result.status)} data-testid="quick-open-status-badge">
+              {statusLabel(result.status)}
+            </StatusBadge>
           {/if}
         </div>
       {/each}
@@ -401,13 +428,6 @@
     color: var(--text-primary);
     border-radius: 2px;
     padding: 0 1px;
-  }
-
-  .quick-open-untracked {
-    flex-shrink: 0;
-    font-size: var(--text-2xs);
-    color: var(--text-tertiary);
-    font-family: var(--font-sans);
   }
 
   .quick-open-state {

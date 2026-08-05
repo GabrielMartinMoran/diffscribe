@@ -1,29 +1,19 @@
 /**
- * DiffScribe — Quick Open untracked-inclusion preference (client-only).
+ * Quick Open untracked-inclusion preference (obsolete).
  *
- * Follows the wrap-store pattern: stored exclusively in browser
- * localStorage, defaults to `false` (Quick Open shows tracked files only),
- * and resolved defensively against invalid stored values. The setting
- * affects only Quick Open — never the Git/file list.
+ * Quick Open now always includes nonignored untracked files; the legacy
+ * localStorage key `diffscribe-quick-open-include-untracked` no longer has
+ * any effect. The dialog removes the key on every open so stale values can
+ * never affect behavior.
  */
 
 export const QUICK_OPEN_INCLUDE_UNTRACKED_STORAGE_KEY = 'diffscribe-quick-open-include-untracked';
 
-export const DEFAULT_QUICK_OPEN_INCLUDE_UNTRACKED = false;
-
-export function resolveQuickOpenIncludeUntracked(stored: string | null): boolean {
-  return stored === 'true';
-}
-
-export function readStoredQuickOpenIncludeUntracked(storage: Storage | null): string | null {
-  if (!storage) return null;
-  return storage.getItem(QUICK_OPEN_INCLUDE_UNTRACKED_STORAGE_KEY);
-}
-
-export function writeStoredQuickOpenIncludeUntracked(
-  enabled: boolean,
-  storage: Storage | null,
-): void {
+/**
+ * Remove the obsolete Quick Open include-untracked preference from storage.
+ * Called on every Quick Open open; tolerates null storage (SSR/browser-less).
+ */
+export function removeLegacyQuickOpenSetting(storage: Storage | null): void {
   if (!storage) return;
-  storage.setItem(QUICK_OPEN_INCLUDE_UNTRACKED_STORAGE_KEY, String(enabled));
+  storage.removeItem(QUICK_OPEN_INCLUDE_UNTRACKED_STORAGE_KEY);
 }

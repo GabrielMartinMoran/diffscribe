@@ -2,6 +2,8 @@
   import { SvelteMap } from 'svelte/reactivity';
   import { ChevronRight, File, Folder, FolderOpen } from 'svelte-lucide';
 
+  import { aggregateStatus, descendantStatuses } from '$lib/web/utils/status-aggregation';
+
   import ProjectTreeNode from './project-tree-node.svelte';
 
   // Client-side mirror of server WorkspaceTreeNode
@@ -82,6 +84,16 @@
     return map;
   });
 
+  // Directories derive their status dot from ALL descendants (not only
+  // direct children) using the deterministic precedence rule; a directory
+  // with only untracked descendants shows a green dot.
+  let directoryStatus = $derived.by(() => {
+    if (!isDirectory || !statusMap) return undefined;
+    return aggregateStatus(descendantStatuses(node.path, statusMap)) ?? undefined;
+  });
+
+  let dotStatus = $derived(isDirectory ? directoryStatus : status);
+
   let indentStyle = $derived(`padding-left: ${depth * 16 + 4}px;`);
 </script>
 
@@ -130,14 +142,15 @@
     {node.name}
   </span>
 
-  <!-- Change status indicator (files only) -->
-  {#if !isDirectory && status}
+  <!-- Change status indicator (files: direct status; directories: aggregated
+       descendant status) -->
+  {#if dotStatus}
     <span
-      class="change-indicator {statusClass(status)}"
+      class="change-indicator {statusClass(dotStatus)}"
       data-testid="change-indicator"
       role="status"
-      aria-label={status}
-      title={status}
+      aria-label={dotStatus}
+      title={dotStatus}
     ></span>
   {/if}
 </div>

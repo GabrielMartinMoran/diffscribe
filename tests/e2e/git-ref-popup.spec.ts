@@ -275,13 +275,19 @@ test.describe('Git ref popup (tranche C)', () => {
 
       // ArrowDown from the last visible option wraps to the first: the
       // active option is exposed via aria-activedescendant, not
-      // aria-selected (which reflects the slot value only).
+      // aria-selected (which reflects the slot value only). W8: with no
+      // search query the Working tree pseudo-option leads the list, so the
+      // wrap lands on it.
       await page.keyboard.press('End');
       await page.keyboard.press('ArrowDown');
-      await expect(search).toHaveAttribute('aria-activedescendant', 'branch-option-0');
+      await expect(search).toHaveAttribute('aria-activedescendant', 'working-tree-option');
       await expect(
         panel.getByRole('listbox', { name: 'Branches' }).getByRole('option').first(),
       ).toHaveClass(/active/);
+
+      // ArrowDown again moves to the first real branch option.
+      await page.keyboard.press('ArrowDown');
+      await expect(search).toHaveAttribute('aria-activedescendant', 'branch-option-0');
 
       // Home/End move the active option (visible via aria-activedescendant).
       await page.keyboard.press('End');
@@ -324,7 +330,8 @@ test.describe('Git ref popup (tranche C)', () => {
       const search = panel.getByRole('combobox', { name: 'Filter branches' });
       await expect(search).toBeVisible({ timeout: 8000 });
 
-      // "dv" fuzzy-matches "dev" and "origin/dev" across both groups.
+      // "dv" fuzzy-matches "dev" and "origin/dev" across both groups. W8:
+      // the Working tree pseudo-option is hidden while a query is active.
       await search.fill('dv');
       const options = panel.getByRole('listbox', { name: 'Branches' }).getByRole('option');
       await expect(options).toHaveCount(2, { timeout: 8000 });
@@ -484,7 +491,8 @@ test.describe('Git ref popup (tranche C)', () => {
       await expect(panel).toBeVisible({ timeout: 10000 });
       await panel.locator('.slot-base').click();
       const options = panel.getByRole('listbox', { name: 'Branches' }).getByRole('option');
-      await expect(options).toHaveCount(2, { timeout: 8000 });
+      // W8: the fixed Working tree pseudo-option leads the list (2 branches + 1).
+      await expect(options).toHaveCount(3, { timeout: 8000 });
 
       let release!: () => void;
       const gate = new Promise<void>((resolve) => {
@@ -497,7 +505,7 @@ test.describe('Git ref popup (tranche C)', () => {
 
       await panel.getByRole('button', { name: 'Refresh Git context' }).click();
       // Existing options remain; the popup never blanks into a loading state.
-      await expect(options).toHaveCount(2, { timeout: 5000 });
+      await expect(options).toHaveCount(3, { timeout: 5000 });
       await expect(panel.getByText('Loading branches…')).toHaveCount(0);
       release();
     } finally {
@@ -517,9 +525,10 @@ test.describe('Git ref popup (tranche C)', () => {
       const panel = page.locator('#git-context-panel');
       await expect(panel).toBeVisible({ timeout: 10000 });
       await panel.locator('.slot-base').click();
+      // W8: the fixed Working tree pseudo-option leads the list (2 branches + 1).
       await expect(
         panel.getByRole('listbox', { name: 'Branches' }).getByRole('option'),
-      ).toHaveCount(2, { timeout: 8000 });
+      ).toHaveCount(3, { timeout: 8000 });
 
       await page.route('**/api/workspaces/*/git-context*', (route) => route.abort());
       await panel.getByRole('button', { name: 'Refresh Git context' }).click();
@@ -547,9 +556,10 @@ test.describe('Git ref popup (tranche C)', () => {
       const panel = page.locator('#git-context-panel');
       await expect(panel).toBeVisible({ timeout: 10000 });
       await panel.locator('.slot-base').click();
+      // W8: the fixed Working tree pseudo-option leads the list (2 branches + 1).
       await expect(
         panel.getByRole('listbox', { name: 'Branches' }).getByRole('option'),
-      ).toHaveCount(2, { timeout: 8000 });
+      ).toHaveCount(3, { timeout: 8000 });
 
       let calls = 0;
       await page.route('**/api/workspaces/*/git-context*', async (route) => {
@@ -574,7 +584,7 @@ test.describe('Git ref popup (tranche C)', () => {
       });
       await expect(
         panel.getByRole('listbox', { name: 'Branches' }).getByRole('option'),
-      ).toHaveCount(2, { timeout: 8000 });
+      ).toHaveCount(3, { timeout: 8000 });
       expect(calls).toBeGreaterThanOrEqual(2);
     } finally {
       fixture.cleanup();

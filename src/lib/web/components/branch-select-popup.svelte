@@ -23,10 +23,12 @@
     slotLabel = 'Base' as string,
     branches = [] as BranchDto[],
     selectedCanonicalRef = null as string | null,
+    workingTreeSelected = false,
     loading = false,
     error = null as string | null,
     triggerRef = null as HTMLElement | null,
     onSelect = undefined as ((canonicalRef: string) => void) | undefined,
+    onSelectWorkingTree = undefined as (() => void) | undefined,
     onClose = undefined as (() => void) | undefined,
     onRetry = undefined as (() => void) | undefined,
   }: {
@@ -34,10 +36,12 @@
     slotLabel?: string;
     branches?: BranchDto[];
     selectedCanonicalRef?: string | null;
+    workingTreeSelected?: boolean;
     loading?: boolean;
     error?: string | null;
     triggerRef?: HTMLElement | null;
     onSelect?: (canonicalRef: string) => void;
+    onSelectWorkingTree?: () => void;
     onClose?: () => void;
     onRetry?: () => void;
   } = $props();
@@ -68,16 +72,32 @@
   const visibleGroups = $derived(filterBranchGroups(groups, query));
   const visibleOptions = $derived<BranchOption[]>(visibleGroups.flatMap((g) => g.options));
 
+  // W8: when no search query is active, the fixed Working tree pseudo-option
+  // leads the keyboard navigation (index 0); typing a query hides it.
+  const keyboardOptions = $derived<(BranchOption | null)[]>(
+    query.trim() === '' ? [null, ...visibleOptions] : visibleOptions,
+  );
+
   // Keep the active index inside the result bounds.
   $effect(() => {
-    if (activeIndex >= visibleOptions.length) {
-      activeIndex = Math.max(0, visibleOptions.length - 1);
+    if (activeIndex >= keyboardOptions.length) {
+      activeIndex = Math.max(0, keyboardOptions.length - 1);
     }
   });
 
+  function activeDescendant(): string | undefined {
+    const current = keyboardOptions[activeIndex];
+    if (current === undefined) return undefined;
+    if (current === null) return 'working-tree-option';
+    return `branch-option-${visibleOptions.indexOf(current)}`;
+  }
+
   function scrollActiveIntoView(): void {
     const list = listRef;
-    const item = list?.querySelector(`[data-branch-index="${activeIndex}"]`);
+    const current = keyboardOptions[activeIndex];
+    if (current === undefined) return;
+    if (current === null) return; // Working tree option sits at the top.
+    const item = list?.querySelector(`[data-branch-index="${visibleOptions.indexOf(current)}"]`);
     item?.scrollIntoView({ block: 'nearest' });
   }
 
@@ -85,6 +105,21 @@
     if (!option) return;
     onSelect?.(option.canonicalRef);
     onClose?.();
+  }
+
+  function acceptWorkingTree(): void {
+    onSelectWorkingTree?.();
+    onClose?.();
+  }
+
+  function acceptActive(): void {
+    const current = keyboardOptions[activeIndex];
+    if (current === undefined) return;
+    if (current === null) {
+      acceptWorkingTree();
+    } else {
+      accept(current);
+    }
   }
 
   function close(): void {
@@ -99,15 +134,15 @@
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
-        if (visibleOptions.length > 0) {
-          activeIndex = (activeIndex + 1) % visibleOptions.length;
+        if (keyboardOptions.length > 0) {
+          activeIndex = (activeIndex + 1) % keyboardOptions.length;
           scrollActiveIntoView();
         }
         break;
       case 'ArrowUp':
         e.preventDefault();
-        if (visibleOptions.length > 0) {
-          activeIndex = (activeIndex - 1 + visibleOptions.length) % visibleOptions.length;
+        if (keyboardOptions.length > 0) {
+          activeIndex = (activeIndex - 1 + keyboardOptions.length) % keyboardOptions.length;
           scrollActiveIntoView();
         }
         break;
@@ -118,12 +153,12 @@
         break;
       case 'End':
         e.preventDefault();
-        activeIndex = Math.max(0, visibleOptions.length - 1);
+        activeIndex = Math.max(0, keyboardOptions.length - 1);
         scrollActiveIntoView();
         break;
       case 'Enter':
         e.preventDefault();
-        accept(visibleOptions[activeIndex]);
+        acceptActive();
         break;
       case 'Escape':
         e.preventDefault();
@@ -147,9 +182,7 @@
         role="combobox"
         aria-expanded={true}
         aria-controls={LISTBOX_ID}
-        aria-activedescendant={visibleOptions[activeIndex]
-          ? `branch-option-${activeIndex}`
-          : undefined}
+        aria-activedescendant={activeDescendant()}
         aria-label="Filter branches"
         placeholder="Search branches…"
         onkeydown={handleKeydown}
@@ -180,11 +213,39 @@
             Retry
           </button>
         </div>
-      {:else if visibleGroups.length === 0}
+      {:else if visibleGroups.length === 0 && !workingTreeSelected}
         <div class="branch-popup-state" role="status">
           <span>{query.trim() ? 'No matching branches' : 'No branches'}</span>
         </div>
       {:else}
+        <!-- W8: fixed Working tree pseudo-option at the top of the listbox;
+             hidden while a search query is active -->
+        {#if query.trim() === ''}
+          <div
+            id="working-tree-option"
+            class="branch-option working-tree-option"
+            class:active={activeIndex === 0 && keyboardOptions[0] === null}
+            class:selected={workingTreeSelected}
+            role="option"
+            aria-selected={workingTreeSelected}
+            aria-label="Working tree"
+            tabindex="-1"
+            data-branch-option="working-tree"
+            title="Working tree"
+            onclick={acceptWorkingTree}
+            onkeydown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                acceptWorkingTree();
+              }
+            }}
+          >
+            <span class="branch-option-icon" aria-hidden="true"
+              >{workingTreeSelected ? '●' : '○'}</span
+            >
+            <span class="branch-option-label" title="Working tree">Working tree</span>
+          </div>
+        {/if}
         {#each visibleGroups as group (group.key)}
           <div class="branch-group" role="presentation">
             <div class="branch-group-title" role="presentation">{group.title}</div>
@@ -214,7 +275,7 @@
                 {#if option.isCurrent}
                   <span class="branch-current-marker" aria-label="Current branch">current</span>
                 {/if}
-                <span class="branch-option-label">{option.label}</span>
+                <span class="branch-option-label" title={option.label}>{option.label}</span>
                 {#if option.isRemote}
                   <span class="branch-remote-tag" aria-label="Cached remote branch">remote</span>
                 {/if}

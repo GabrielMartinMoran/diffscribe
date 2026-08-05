@@ -9,8 +9,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The desktop left collapse/expand control moved into a stable bottom footer
+  row spanning the rail + panel columns when expanded (rail width when
+  collapsed); Help stays in the rail directly above it. The old rail reopen
+  control was removed.
+- Desktop right-panel tab icons now sit on the panel's right edge via
+  `row-reverse` (DOM/keyboard order unchanged, inner separator border, outer
+  active indicator); the mobile horizontal sheet is unchanged.
+- The active central tab has no bottom border; inactive tabs show a subtle
+  bottom border.
+- The Git file list no longer exposes List/Tree controls; the Settings
+  "File list view" preference is the sole presentation source.
+- Panel/rail UX corrections (0002): the desktop right panel now navigates
+  with vertical icon tabs in both expanded and collapsed states (the
+  expanded branch previously rendered horizontal header tabs). Each desktop
+  state exposes exactly one vertical tablist; Comments/Review tabs link to
+  real consumer-rendered `tabpanel` elements with reciprocal
+  `aria-controls`/`aria-labelledby` (both panels stay mounted, the inactive
+  one hidden), and expanding via strip tab or reopen button returns focus to
+  the active tab.
+- Left rail: selecting a rail option while the left panel is collapsed now
+  selects the option AND opens the panel idempotently (mirroring the right
+  strip); selecting while open never toggles it closed. Collapsing the left
+  panel transfers focus to a visible rail control, and the collapsed desktop
+  subtree is `inert` + `aria-hidden` while staying mounted. The left reopen
+  button and Help form one bottom-pinned group (reopen above Help); the
+  right strip reopen stays bottom-pinned. Programmatic rail switches (Quick
+  Open, workspace landing, Git Ctrl/Cmd-click) still do not reopen a
+  collapsed panel.
+- The expanded right panel uses `box-sizing: border-box` so its 1 px border
+  stays inside the grid column (right edge flush with the viewport).
+- Icon-only rail/panel controls expose native `title` fallbacks
+  (`Open left/right panel`, `Collapse left/right panel`) alongside their
+  existing `aria-label`; the mobile sheet keeps its horizontal header tabs
+  and drawer behavior unchanged.
+
 ### Added
 
+- Workspace tabs, panels, and Quick Open refinements (0003): the complete
+  diff is now the first synthetic non-closable workspace-scoped tab of the
+  central viewer (stable id `complete-diff`, never a path sentinel). It
+  exists whenever a workspace is active, refreshes in place on comparison
+  change, survives file-tab coexistence, and is recreated after a workspace
+  switch clears file tabs; closing the last file tab returns to it, and the
+  generic "No file selected" empty state only remains for the no-workspace
+  case.
+- Quick Open now always includes nonignored untracked files (ignored files
+  stay excluded by Git standard ignore rules), shows working-tree status
+  badges joined from the comparison-aware `/file-list` result by path
+  through the existing `statusTone`/`statusLabel` mapping (`untracked` →
+  **New**, green), keeps the 512-result cap, and cleans the obsolete
+  `diffscribe-quick-open-include-untracked` localStorage key on every open.
+- Workspace context header: the active workspace display name and truncated
+  repository path render at the top of Project/Git/Settings panel content
+  (never on Workspaces).
 - Post-tranche C hardening: real refresh states wired into the Base/Target
   branch popup — the popup shows a loading state only while a refresh is in
   flight with no branches known, a failed refresh inside an open popup shows
@@ -63,9 +117,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   groups/order, current vs selected, keyboard/ARIA/IME/focus, states,
   responsive, visible label convention), `docs/domain.md` (canonical ref
   convention for GitRef branch values).
+- Workspace/Git review UX (0001-workspace-git-review-ux):
+  - **Added:** complete diff of the active comparison in the Git rail when no
+    file tab is open — new aggregate contract
+    (`GitCompleteDiffReader`, `GetCompleteDiffUseCase`,
+    `CompleteDiffResult` DTO, `SimpleGitCompleteDiffReader`,
+    `GET /api/workspaces/[id]/complete-diff`, `CompleteDiffViewer`);
+    deterministic path order; per-file caps (256 KB / 5 000 lines) and
+    aggregate caps (500 files / 4 096 KB / 40 000 lines); binary/truncation
+    markers; partial-error collection; plain index click scrolls to the
+    section, Ctrl/Cmd-click opens a full-file tab in Project mode.
+  - **Added:** visualization settings aggregate
+    (`diffscribe-visual-settings` v1) with read-through migration from the
+    legacy `diffscribe-file-list-view` key; Tree is the fresh-context
+    default; "Files" settings section controls file-list view and Markdown
+    default view.
+  - **Added:** Markdown Raw/Preview toggle in the source viewer (top right)
+    with a dependency-free, strictly escaping renderer
+    (`markdown-renderer.ts`) that rejects unsafe URLs; client language-map
+    mirror with parity tests.
+  - **Added:** Git-first landing (selecting a workspace activates the Git
+    rail); project directories show descendant-derived status dots with
+    deterministic precedence; technical `untracked` renders as the English
+    label **New** in green (API/domain value unchanged).
+  - **Added:** branch selector widening with long-name tooltips, reselectable
+    fixed Working tree target, removed redundant comparison caption; bottom
+    collapse footers for both desktop panels with a bottom reopen button on
+    the collapsed right strip; middle-click closes any file tab; keyboard-
+    accessible Help dialog from the bottom of the left rail.
+  - **Fixed:** deleting a workspace now refreshes the page data before
+    closing the dialog, so the sidebar drops the deleted workspace
+    immediately without a reload; the Open Workspace form keeps the editable
+    path and adds a feature-detected directory browser (name prefill +
+    limitation hint).
+  - **Changed:** fresh file-list default to Tree; `--tree-status-untracked`
+    token is green in all three theme blocks; panel collapse/expand controls
+    moved to bottom footers (desktop).
+  - Docs: `docs/PRD.md` §18 (Spanish preserved), `docs/architecture.md`
+    (aggregate contract, visual settings, Markdown security, Git landing),
+    `docs/design.md` (complete diff, status colors, selector, panels, toggle,
+    help), `docs/domain.md` (presentation mapping), `docs/versioning.md`
+    (additive 0.x route, no SQLite migration).
 
 ### Changed
 
+- Removed the obsolete Quick Open "Include untracked files" setting from
+  Settings and its localStorage contract (client-only preference; no version
+  bump).
+- Observations: seeded visual/accessibility coverage added; the populated
+  card styling met the existing tokens, so no card/panel corrections were
+  required.
 - Mobile hardening (H1-H4): the file list controls wrap in narrow panels
   (`flex-wrap: wrap`, `min-width: 0` on the filter input; the status select
   keeps its readability minimum) so List/Tree stay inside the panel and

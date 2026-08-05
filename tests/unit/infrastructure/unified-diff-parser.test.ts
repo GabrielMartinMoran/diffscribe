@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseUnifiedDiff } from '../../../src/lib/server/infrastructure/git/unified-diff-parser';
+import {
+  parseUnifiedDiff,
+  splitUnifiedDiffByFile,
+} from '../../../src/lib/server/infrastructure/git/unified-diff-parser';
 
 const SINGLE_HUNK_DIFF = `diff --git a/src/app.ts b/src/app.ts
 index 1234567..abcdefg 100644
@@ -305,6 +308,52 @@ describe('unified-diff-parser', () => {
 
       // Context lines have a single leading space that gets stripped
       expect(contextLine!.content).not.toMatch(/^ /);
+    });
+  });
+
+  describe('splitUnifiedDiffByFile', () => {
+    it('splits multi-file raw output on diff --git boundaries', () => {
+      const raw = `${SINGLE_HUNK_DIFF}\n${MULTI_HUNK_DIFF}`;
+      const sections = splitUnifiedDiffByFile(raw);
+      expect(sections).toHaveLength(2);
+      expect(sections[0]).toContain('diff --git a/src/app.ts b/src/app.ts');
+      expect(sections[1]).toContain('diff --git a/src/utils.ts b/src/utils.ts');
+    });
+
+    it('keeps every diff --git header at the start of its section', () => {
+      const raw = `${RENAMED_FILE_DIFF}\n${BINARY_DIFF}\n${ADDED_FILE_DIFF}`;
+      const sections = splitUnifiedDiffByFile(raw);
+      expect(sections).toHaveLength(3);
+      expect(sections[0].startsWith('diff --git a/old.ts b/new.ts')).toBe(true);
+      expect(sections[1].startsWith('diff --git a/logo.png b/logo.png')).toBe(true);
+      expect(sections[2].startsWith('diff --git a/src/new.ts b/src/new.ts')).toBe(true);
+    });
+
+    it('returns an empty array for empty input', () => {
+      expect(splitUnifiedDiffByFile('')).toEqual([]);
+    });
+
+    it('returns a single section for a single-file diff', () => {
+      expect(splitUnifiedDiffByFile(SINGLE_HUNK_DIFF)).toHaveLength(1);
+    });
+
+    it('preserves the trailing content of each section', () => {
+      const raw = `${DELETED_FILE_DIFF}\n${BINARY_DIFF}`;
+      const sections = splitUnifiedDiffByFile(raw);
+      expect(sections[0]).toContain('@@ -1,3 +0,0 @@');
+      expect(sections[1]).toContain('Binary files a/logo.png and b/logo.png differ');
+    });
+
+    it('handles diff headers containing spaces in paths', () => {
+      const withSpace = `diff --git a/my file.txt b/my file.txt
+--- a/my file.txt
++++ b/my file.txt
+@@ -1 +1 @@
+-old
++new
+`;
+      const sections = splitUnifiedDiffByFile(withSpace);
+      expect(sections).toHaveLength(1);
     });
   });
 });

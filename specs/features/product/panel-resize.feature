@@ -142,21 +142,26 @@ Feature: Panel resize and collapse — collapsible panels with bounded resize an
     Then a vertical strip with Comments and Review tabs is visible
     And the strip is 48 px wide
 
-  @product @layout @panels @etapa-1
-  Scenario: PANEL-STRIP-01 — collapsed desktop shows a vertical Comments/Review tablist
+  @product @layout @panels @etapa-1 @delta-modified
+  Scenario: PANEL-STRIP-01 — collapsed desktop shows a single vertical Comments/Review tablist
     Given the right panel is collapsed on desktop
-    Then the collapsed panel exposes a vertical tablist with Comments and Review tabs
+    When the user views the collapsed right panel
+    Then the collapsed panel exposes exactly one vertical tablist with Comments and Review tabs
     And each strip tab has an accessible label
+    # CHANGED: single tablist (was a nested wrapper tablist)
 
-  @product @layout @panels @etapa-1
+  @product @layout @panels @etapa-1 @delta-modified
   Scenario: PANEL-STRIP-02 — clicking a strip tab expands the panel and selects the tab
     Given the right panel is collapsed
     When the user clicks the Review strip tab
     Then the right panel expands
     And the Review tab is selected in the expanded panel
+    And the Review tab links to a visible tabpanel in the expanded panel
+    # CHANGED: real tabpanel relationship (aria-controls target exists)
 
-  @product @layout @panels @etapa-1
+  @product @layout @panels @etapa-1 @delta-modified
   Scenario: PANEL-STRIP-03 — collapsing returns focus to the active strip tab
     Given the right panel is expanded with the Comments tab active
     When the user collapses the right panel
     Then focus returns to the active strip tab
+    # CHANGED: focus target is the active tab of the single vertical tablist

@@ -1,11 +1,12 @@
 <script lang="ts">
-  import { FileText, X } from 'svelte-lucide';
+  import { FileText, ListChecks, X } from 'svelte-lucide';
 
   import {
     activateTab,
-    activeTabPath,
+    activeTabId,
     closeTab,
     openTabs,
+    tabId,
   } from '$lib/web/stores/active-file-store';
 
   const TABPANEL_ID = 'open-files-panel';
@@ -15,12 +16,12 @@
   function focusedTabIndex(): number {
     const focusedId = document.activeElement?.id;
     const tabs = $openTabs;
-    const idx = tabs.findIndex((t) => `open-file-tab-${t.path}` === focusedId);
+    const idx = tabs.findIndex((t) => `open-file-tab-${tabId(t)}` === focusedId);
     return idx >= 0
       ? idx
       : Math.max(
           0,
-          tabs.findIndex((t) => t.path === $activeTabPath),
+          tabs.findIndex((t) => tabId(t) === $activeTabId),
         );
   }
 
@@ -60,10 +61,13 @@
   tabindex="-1"
   onkeydown={handleKeydown}
 >
-  {#each $openTabs as tab, i (tab.path)}
-    {@const isActive = tab.path === $activeTabPath}
+  {#each $openTabs as tab, i (tabId(tab))}
+    {@const id = tabId(tab)}
+    {@const isActive = id === $activeTabId}
+    {@const isPinned = tab.kind === 'complete-diff'}
+    <!-- Pinned complete-diff tab: non-closable, rendered without a close button; middle-click never closes it. -->
     <div
-      id="open-file-tab-{tab.path}"
+      id={isPinned ? 'pinned-complete-diff-tab' : `open-file-tab-${id}`}
       class="file-tab"
       class:active={isActive}
       class:inactive={!isActive}
@@ -71,29 +75,44 @@
       tabindex={isActive ? 0 : -1}
       aria-selected={isActive}
       aria-controls={TABPANEL_ID}
-      data-testid="open-file-tab"
+      data-testid={isPinned ? 'pinned-complete-diff-tab' : 'open-file-tab'}
       bind:this={tabRefs[i]}
-      onclick={() => activateTab(tab.path)}
+      onclick={() => activateTab(id)}
+      onauxclick={isPinned
+        ? undefined
+        : (e) => {
+            // W10: middle-click closes any open tab (active or inactive) with
+            // the existing close-selection rules.
+            if (e.button === 1) {
+              e.preventDefault();
+              closeTab(tabId(tab));
+            }
+          }}
       onkeydown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          activateTab(tab.path);
+          activateTab(id);
         }
       }}
     >
-      <FileText size="14" strokeWidth="1.5" ariaLabel="File" />
-      <span class="file-label">{tab.label}</span>
-      <button
-        class="close-btn"
-        aria-label="Close {tab.label}"
-        data-testid="close-file-tab"
-        onclick={(e) => {
-          e.stopPropagation();
-          closeTab(tab.path);
-        }}
-      >
-        <X size="12" strokeWidth="2" ariaLabel="Close" />
-      </button>
+      {#if isPinned}
+        <ListChecks size="14" strokeWidth="1.5" ariaLabel="Complete diff" />
+        <span class="file-label">{tab.label}</span>
+      {:else}
+        <FileText size="14" strokeWidth="1.5" ariaLabel="File" />
+        <span class="file-label">{tab.label}</span>
+        <button
+          class="close-btn"
+          aria-label="Close {tab.label}"
+          data-testid="close-file-tab"
+          onclick={(e) => {
+            e.stopPropagation();
+            closeTab(tab.path);
+          }}
+        >
+          <X size="12" strokeWidth="2" ariaLabel="Close" />
+        </button>
+      {/if}
     </div>
   {/each}
 </div>
@@ -143,11 +162,16 @@
     outline-offset: -2px;
   }
 
-  /* Active tab is highlighted; inactive tabs are dimmed but readable. */
+  /* Active tab has no bottom border; inactive tabs show a subtle one. */
+  .file-tab.active {
+    border-bottom: none;
+  }
+
   .file-tab.inactive {
     color: var(--text-tertiary);
     background: color-mix(in srgb, var(--surface-primary) 60%, var(--surface-secondary));
     border-color: var(--border-subtle);
+    border-bottom: 1px solid var(--border-subtle);
   }
 
   .file-tab.inactive .close-btn {

@@ -36,7 +36,13 @@ test.describe('Panel resize and collapse (PANELS-UI-01)', () => {
     // No empty panel frames
     await expect(page.locator('[data-testid="left-contextual-panel"]')).not.toBeVisible();
     const rightPanel = page.locator('[data-testid="right-panel"]');
-    await expect(rightPanel).toHaveAttribute('role', 'tablist');
+    // Collapsed strip exposes exactly one vertical tablist (the kit's inner
+    // tablist; the wrapper no longer carries a tablist role).
+    await expect(rightPanel.locator('[role="tablist"]')).toHaveCount(1);
+    await expect(rightPanel.locator('[role="tablist"]')).toHaveAttribute(
+      'aria-orientation',
+      'vertical',
+    );
   });
 
   // ────── Collapse and expand ──────
@@ -72,28 +78,42 @@ test.describe('Panel resize and collapse (PANELS-UI-01)', () => {
     await collapseBtn.click();
 
     // Right panel switches to the collapsed strip: a vertical tablist.
-    await expect(rightPanel).toHaveAttribute('role', 'tablist');
+    await expect(rightPanel.locator('[role="tablist"]')).toHaveCount(1);
+    await expect(rightPanel.locator('[role="tablist"]')).toHaveAttribute(
+      'aria-orientation',
+      'vertical',
+    );
     await expect(rightPanel.locator('[role="tab"]').first()).toBeVisible();
 
     // Reopen by activating the Comments strip tab.
     await rightPanel.locator('[data-testid="right-tab-comments"]').click();
 
-    // Now back to expanded state with tabs
-    await expect(rightPanel).toHaveAttribute('role', 'tabpanel');
+    // Now back to expanded state with a visible Comments tabpanel.
+    await expect(page.locator('#ui-tab-panel-comments')).toBeVisible({ timeout: 5000 });
     await expect(commentsTab).toBeVisible();
   });
 
-  test('PANELS-UI-01: collapse state is preserved across tab switches', async ({ page }) => {
+  test('PANELS-UI-01: rail tab selection expands a collapsed left panel idempotently', async ({
+    page,
+  }) => {
     const leftPanel = page.locator('[data-testid="left-contextual-panel"]');
     const collapseBtn = page.locator('[data-testid="left-panel-collapse-btn"]');
 
     await collapseBtn.click();
     await expect(leftPanel).not.toBeVisible();
 
-    // Switch to Git tab — rail tabs are in the rail-tabs component
+    // 0002 correction: a direct rail click while collapsed selects the
+    // option AND opens the panel idempotently (old behavior kept it
+    // collapsed); while open it only changes selection, never toggles.
     const gitTab = page.locator('[data-testid="rail-tab-git"]');
     await gitTab.click();
-    await expect(leftPanel).not.toBeVisible();
+    await expect(gitTab).toHaveAttribute('aria-selected', 'true');
+    await expect(leftPanel).toBeVisible({ timeout: 5000 });
+
+    const projectTab = page.locator('[data-testid="rail-tab-project"]');
+    await projectTab.click();
+    await expect(projectTab).toHaveAttribute('aria-selected', 'true');
+    await expect(leftPanel).toBeVisible();
   });
 
   // ────── Resize handles ──────
@@ -189,7 +209,11 @@ test.describe('Panel resize and collapse (PANELS-UI-01)', () => {
 
     // Right panel shows collapsed vertical strip
     const rightPanel = page.locator('[data-testid="right-panel"]');
-    await expect(rightPanel).toHaveAttribute('role', 'tablist');
+    await expect(rightPanel.locator('[role="tablist"]')).toHaveCount(1);
+    await expect(rightPanel.locator('[role="tablist"]')).toHaveAttribute(
+      'aria-orientation',
+      'vertical',
+    );
 
     // Center content is still visible
     await expect(page.locator('[data-testid="center-content"]')).toBeVisible();
@@ -525,8 +549,9 @@ test.describe('Collapsed right panel strip (PANEL-STRIP / PANELS-UI-05)', () => 
     await collapseBtn.click();
 
     const strip = page.locator('[data-testid="right-panel"]');
-    await expect(strip).toHaveAttribute('role', 'tablist', { timeout: 5000 });
-    await expect(strip).toHaveAttribute('aria-orientation', 'vertical');
+    // Exactly one vertical tablist: the kit's inner tablist.
+    await expect(strip.locator('[role="tablist"]')).toHaveCount(1, { timeout: 5000 });
+    await expect(strip.locator('[role="tablist"]')).toHaveAttribute('aria-orientation', 'vertical');
 
     const stripBox = (await strip.boundingBox())!;
     expect(Math.round(stripBox.width)).toBe(48);
@@ -544,12 +569,12 @@ test.describe('Collapsed right panel strip (PANEL-STRIP / PANELS-UI-05)', () => 
   }) => {
     await page.locator('[data-testid="right-panel-collapse-btn"]').click();
     const strip = page.locator('[data-testid="right-panel"]');
-    await expect(strip).toHaveAttribute('role', 'tablist', { timeout: 5000 });
+    await expect(strip.locator('[role="tablist"]')).toHaveCount(1, { timeout: 5000 });
 
     await strip.locator('[data-testid="right-tab-review"]').click();
 
-    const panel = page.locator('[data-testid="right-panel"]');
-    await expect(panel).toHaveAttribute('role', 'tabpanel', { timeout: 5000 });
+    // The Review tab links to a visible tabpanel in the expanded panel.
+    await expect(page.locator('#ui-tab-panel-review')).toBeVisible({ timeout: 5000 });
     await expect(page.locator('[data-testid="right-tab-review"]')).toHaveAttribute(
       'aria-selected',
       'true',
@@ -561,10 +586,52 @@ test.describe('Collapsed right panel strip (PANEL-STRIP / PANELS-UI-05)', () => 
     // Comments is the default active tab; collapse and check focus return.
     await page.locator('[data-testid="right-panel-collapse-btn"]').click();
     const strip = page.locator('[data-testid="right-panel"]');
-    await expect(strip).toHaveAttribute('role', 'tablist', { timeout: 5000 });
+    await expect(strip.locator('[role="tablist"]')).toHaveCount(1, { timeout: 5000 });
 
     const activeStripTab = strip.locator('[data-testid="right-tab-comments"]');
     await expect(activeStripTab).toHaveAttribute('aria-selected', 'true');
     await expect(activeStripTab).toBeFocused({ timeout: 5000 });
+  });
+});
+
+test.describe('Bottom panel controls (W9)', () => {
+  test.beforeEach(async ({ page, request }) => {
+    await resetDb(request);
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+    await waitForHydration(page);
+  });
+
+  test('W9: left and right panels expose collapse controls at the bottom', async ({ page }) => {
+    // 0003: the left collapse control lives in the stable shell footer row
+    // (rail + panel columns), not inside the contextual panel.
+    const leftFooter = page.locator('.left-region-footer.left-panel-footer');
+    await expect(leftFooter).toBeVisible({ timeout: 10000 });
+    const leftCollapse = leftFooter.getByTestId('left-panel-collapse-btn');
+    await expect(leftCollapse).toBeVisible();
+    await expect(leftCollapse).toHaveAttribute('aria-label', 'Collapse left panel');
+
+    // The right panel footer hosts the desktop collapse control.
+    const rightFooter = page.locator('[data-testid="right-panel"] .right-panel-footer');
+    await expect(rightFooter).toBeVisible({ timeout: 10000 });
+    const rightCollapse = rightFooter.getByTestId('right-panel-collapse-btn');
+    await expect(rightCollapse).toBeVisible();
+    await expect(rightCollapse).toHaveAttribute('aria-label', 'Collapse right panel');
+  });
+
+  test('W9: collapsed right strip exposes a bottom expand control', async ({ page }) => {
+    await page.locator('[data-testid="right-panel-collapse-btn"]').click();
+
+    const strip = page.locator('[data-testid="right-panel"]');
+    await expect(strip.locator('[role="tablist"]')).toHaveCount(1, { timeout: 5000 });
+
+    const reopenBtn = strip.getByTestId('right-panel-reopen-btn');
+    await expect(reopenBtn).toBeVisible();
+    await expect(reopenBtn).toHaveAttribute('aria-label', 'Open right panel');
+    await expect(reopenBtn).toHaveAttribute('title', 'Open right panel');
+
+    // Clicking the bottom reopen expands the panel without changing the tab.
+    await reopenBtn.click();
+    await expect(page.locator('#ui-tab-panel-comments')).toBeVisible({ timeout: 5000 });
   });
 });

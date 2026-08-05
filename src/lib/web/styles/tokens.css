@@ -205,7 +205,7 @@
   --tree-status-deleted: #ef4444;
   --tree-status-renamed: #8b5cf6;
   --tree-status-type-changed: #6b7280;
-  --tree-status-untracked: #8b5cf6;
+  --tree-status-untracked: #22c55e;
   --tree-status-other: #6b7280;
 }
 
@@ -360,7 +360,7 @@ body {
   --tree-status-deleted: #ef4444;
   --tree-status-renamed: #a78bfa;
   --tree-status-type-changed: #9ca3af;
-  --tree-status-untracked: #a78bfa;
+  --tree-status-untracked: #22c55e;
   --tree-status-other: #9ca3af;
 }
 
@@ -485,7 +485,7 @@ body {
   --tree-status-deleted: #ef4444;
   --tree-status-renamed: #8b5cf6;
   --tree-status-type-changed: #6b7280;
-  --tree-status-untracked: #8b5cf6;
+  --tree-status-untracked: #22c55e;
   --tree-status-other: #6b7280;
 }
 

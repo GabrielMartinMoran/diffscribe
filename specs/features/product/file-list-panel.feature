@@ -170,12 +170,13 @@ Feature: File list panel — browsing changed files with filtering, sorting, and
 
   # ────── Mobile and narrow-panel controls (hardening H1) ──────
 
-  @delta-added @p1 @ui @e2e
+  @delta-modified @p1 @ui @e2e
   Scenario Outline: File list controls fit and stay interactive at narrow widths
+    # CHANGED: List/Tree controls moved to Settings; the Git panel exposes no view switcher
     Given the user views the file list panel at <width> px
     Then the file list controls fit within the panel without horizontal overflow
-    And the List and Tree controls are inside the panel
-    When the user clicks the Tree control and then the List control
+    And no List or Tree toggle is present in the Git panel
+    When the user switches the file list view in Settings
     Then the file list switches between Tree and List views
     And the chosen view persists across reloads
 

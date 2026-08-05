@@ -200,12 +200,14 @@ test.describe('Project view — tree and source viewer (PROJECT-VIEW-UI-01)', ()
       await expect(filePath).toBeVisible({ timeout: 15000 });
       await expect(filePath).toContainText('README.md');
 
-      // Source viewer content should be displayed
+      // Source viewer content should be displayed. README.md is Markdown, so
+      // W7 opens it in the configured default preview mode.
+      const previewContent = page.locator('[data-testid="markdown-preview-content"]');
       const sourceContent = page.locator('[data-testid="source-content"]');
-      await expect(sourceContent).toBeVisible();
+      await expect(previewContent.or(sourceContent).first()).toBeVisible();
 
       // The content should contain modified text
-      await expect(sourceContent).toContainText('modified content');
+      await expect(previewContent.or(sourceContent).first()).toContainText('modified content');
 
       // Source viewer is read-only — no textarea or contenteditable
       const sourceViewer = page.locator('[data-testid="source-viewer"]');
@@ -241,6 +243,14 @@ test.describe('Project view — tree and source viewer (PROJECT-VIEW-UI-01)', ()
       const fileEntry = readmeNode.locator('[data-testid="file-entry"]');
       await expect(fileEntry).toBeVisible({ timeout: 5000 });
       await fileEntry.click();
+
+      // README.md is Markdown: W7 opens it in preview by default. These
+      // line-number contracts exercise the raw view, so switch to Raw.
+      const rawToggle = page
+        .locator('[data-testid="markdown-view-toggle"]')
+        .getByRole('button', { name: 'Raw' });
+      await expect(rawToggle).toBeVisible({ timeout: 15000 });
+      await rawToggle.click();
 
       // Wait for source content to finish loading (observable readiness)
       const sourceViewer = page.locator('[data-testid="source-viewer"]');
@@ -284,6 +294,14 @@ test.describe('Project view — tree and source viewer (PROJECT-VIEW-UI-01)', ()
       const fileEntry = readmeNode.locator('[data-testid="file-entry"]');
       await expect(fileEntry).toBeVisible({ timeout: 5000 });
       await fileEntry.click();
+
+      // README.md is Markdown: W7 opens it in preview by default. Switch to
+      // Raw so the source lines render before switching rails.
+      const rawToggle = page
+        .locator('[data-testid="markdown-view-toggle"]')
+        .getByRole('button', { name: 'Raw' });
+      await expect(rawToggle).toBeVisible({ timeout: 15000 });
+      await rawToggle.click();
 
       // Wait for source content to load as observable readiness before switching tabs
       await expect(page.locator('[data-testid="source-content"]')).toBeVisible({ timeout: 15000 });

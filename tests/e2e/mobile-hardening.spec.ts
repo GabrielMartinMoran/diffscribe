@@ -85,7 +85,13 @@ async function openGitPanel(page: import('@playwright/test').Page, width: number
     await waitForDrawerSettled(page);
   }
   await expect(gitPanel).toBeVisible({ timeout: 15000 });
-  await expect(gitPanel.locator('.file-row').first()).toBeVisible({ timeout: 15000 });
+  // 0003: the Git panel exposes no List/Tree toggles; Settings is the sole
+  // presentation source. Fresh contexts default to the tree view.
+  await expect(gitPanel.getByTestId('file-list-view-list')).toHaveCount(0);
+  await expect(gitPanel.getByTestId('file-list-view-tree')).toHaveCount(0);
+  await expect(gitPanel.locator('[data-testid="file-list-tree"]').first()).toBeVisible({
+    timeout: 15000,
+  });
 }
 
 /**
@@ -125,7 +131,7 @@ function boxOf(locator: import('@playwright/test').Locator) {
 
 test.describe('H1 — file list controls fit, stay inside the panel, and hit-test (FILE-LIST-PANEL-01)', () => {
   for (const width of [320, 375, 768, 1280]) {
-    test(`file list controls fit, Tree/List work, and the view persists at ${width}px`, async ({
+    test(`Settings view controls fit, Tree/List work, and the view persists at ${width}px`, async ({
       page,
       request,
     }) => {
@@ -136,12 +142,7 @@ test.describe('H1 — file list controls fit, stay inside the panel, and hit-tes
         await registerAndSelectWorkspace(page, setup.repoDir, setup.name, 'git');
         await openGitPanel(page, width);
 
-        const panel = page.locator('#file-list-panel');
-        const switcher = page.locator('.view-switcher');
-        const treeBtn = page.locator('[data-testid="file-list-view-tree"]');
-        const listBtn = page.locator('[data-testid="file-list-view-list"]');
-
-        // ── Controls fit without horizontal overflow (wrap + min-width:0) ──
+        // ── Git panel: no local List/Tree toggles; controls fit ──
         await expect(async () => {
           const fit = await page.evaluate(() => {
             const el = document.querySelector('#file-list-panel .controls');
@@ -158,8 +159,24 @@ test.describe('H1 — file list controls fit, stay inside the panel, and hit-tes
         });
         expect(selectMinWidth).toBeGreaterThanOrEqual(100);
 
-        // ── Tree/List controls are inside the panel ──
-        const panelBox = await boxOf(panel);
+        // ── Settings owns the view switcher: fit inside the panel ──
+        if (isMobileWidth(width)) {
+          // The open drawer overlays the rail; close it before switching.
+          await page.keyboard.press('Escape');
+          await expect(page.locator('[data-testid="left-contextual-panel"]')).not.toBeVisible();
+        }
+        await page.locator('[data-testid="rail-tab-settings"]').click();
+        const settingsPanel = page.locator('[data-testid="settings-panel"]');
+        await expect(settingsPanel).toBeVisible({ timeout: 10000 });
+        if (isMobileWidth(width)) {
+          await waitForDrawerSettled(page);
+        }
+        const switcher = page.locator('[data-testid="settings-file-list-view"]');
+        const treeBtn = page.getByTestId('settings-file-list-tree');
+        const listBtn = page.getByTestId('settings-file-list-list');
+        await expect(switcher).toBeVisible({ timeout: 10000 });
+
+        const panelBox = await boxOf(settingsPanel);
         const switcherBox = await boxOf(switcher);
         const treeBox = await boxOf(treeBtn);
         expect(panelBox).not.toBeNull();
@@ -179,7 +196,7 @@ test.describe('H1 — file list controls fit, stay inside the panel, and hit-tes
 
         // ── Hit-testable: elementFromPoint resolves to the Tree button ──
         const hitTest = await page.evaluate(() => {
-          const btn = document.querySelector('[data-testid="file-list-view-tree"]');
+          const btn = document.querySelector('[data-testid="settings-file-list-tree"]');
           if (!btn) return false;
           const rect = btn.getBoundingClientRect();
           const el = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
@@ -187,15 +204,39 @@ test.describe('H1 — file list controls fit, stay inside the panel, and hit-tes
         });
         expect(hitTest).toBe(true);
 
-        // ── Real click: List → Tree switch ──
+        // ── Real click: List → Tree switch inside Settings ──
+        await listBtn.click();
+        await expect(listBtn).toHaveAttribute('aria-pressed', 'true');
         await treeBtn.click();
-        await expect(page.locator('[data-testid="file-list-tree"]')).toBeVisible({
-          timeout: 10000,
-        });
         await expect(treeBtn).toHaveAttribute('aria-pressed', 'true');
+        await listBtn.click();
+        await expect(listBtn).toHaveAttribute('aria-pressed', 'true');
+
+        // ── The Git panel follows the Settings choice ──
+        if (isMobileWidth(width)) {
+          // The open drawer overlays the rail; close it before switching.
+          await page.keyboard.press('Escape');
+          await expect(page.locator('[data-testid="left-contextual-panel"]')).not.toBeVisible();
+        }
+        await page.locator('[data-testid="rail-tab-git"]').click();
+        if (isMobileWidth(width)) {
+          await waitForDrawerSettled(page);
+        }
+        await expect(page.locator('#git-context-panel')).toBeVisible({ timeout: 15000 });
+        await expect(page.locator('.file-row').first()).toBeVisible({ timeout: 10000 });
+        await expect(page.locator('[data-testid="file-list-tree"]')).toHaveCount(0);
 
         // ── Persistence: view survives a reload ──
         await page.reload();
+        // MQ barrier: after the reload the responsive shell must re-apply the
+        // media query before clicking the rail (a pre-effect click can land
+        // while the desktop layout is still active and never open the drawer).
+        await expect(async () => {
+          const isMobile = await page.evaluate(
+            () => document.querySelector('.shell-layout')?.classList.contains('is-mobile') ?? false,
+          );
+          expect(isMobile).toBe(isMobileWidth(width));
+        }).toPass({ timeout: 15000 });
         await expect(async () => {
           await page.locator('[data-testid="rail-tab-git"]').click();
           await expect(page.locator('#git-context-panel')).toBeVisible({ timeout: 3000 });
@@ -204,21 +245,11 @@ test.describe('H1 — file list controls fit, stay inside the panel, and hit-tes
           await waitForDrawerSettled(page);
         }
         await expect(page.locator('#git-context-panel')).toBeVisible({ timeout: 15000 });
-        await expect(page.locator('[data-testid="file-list-tree"]')).toBeVisible({
-          timeout: 15000,
-        });
-        await expect(page.locator('[data-testid="file-list-view-tree"]')).toHaveAttribute(
-          'aria-pressed',
-          'true',
-        );
-
-        // ── Real click: Tree → List switch back ──
-        await page.locator('[data-testid="file-list-view-list"]').click();
-        await expect(page.locator('.file-row').first()).toBeVisible({ timeout: 10000 });
-        await expect(page.locator('[data-testid="file-list-view-list"]')).toHaveAttribute(
-          'aria-pressed',
-          'true',
-        );
+        await expect(page.locator('.file-row').first()).toBeVisible({ timeout: 15000 });
+        await expect(page.locator('[data-testid="file-list-tree"]')).toHaveCount(0);
+        // The Git panel still exposes no toggles after the reload.
+        await expect(page.getByTestId('file-list-view-list')).toHaveCount(0);
+        await expect(page.getByTestId('file-list-view-tree')).toHaveCount(0);
       } finally {
         setup.fixture.cleanup();
       }
@@ -452,6 +483,35 @@ test.describe('H4 — Git panel is the single scroll owner (GIT-CONTEXT-PANEL-01
         await page.goto('/');
         await registerAndSelectWorkspace(page, setup.repoDir, setup.name, 'git');
         await openGitPanel(page, width);
+
+        // H4 exercises the flat list (pagination); the list view is owned by
+        // Settings, so seed the versioned preference and re-enter Git.
+        await page.evaluate(() => {
+          localStorage.setItem(
+            'diffscribe-visual-settings',
+            JSON.stringify({ version: 1, fileListView: 'list', markdownView: 'preview' }),
+          );
+        });
+        if (isMobileWidth(width)) {
+          // The open drawer overlays the rail; close it before switching.
+          await page.keyboard.press('Escape');
+          await expect(page.locator('[data-testid="left-contextual-panel"]')).not.toBeVisible();
+        }
+        await page.locator('[data-testid="rail-tab-workspaces"]').click();
+        if (isMobileWidth(width)) {
+          // The workspaces drawer also overlays the rail; close it again.
+          await page.keyboard.press('Escape');
+          await expect(page.locator('[data-testid="left-contextual-panel"]')).not.toBeVisible();
+        }
+        await expect(async () => {
+          await page.locator('[data-testid="rail-tab-git"]').click();
+          await expect(page.locator('#git-context-panel')).toBeVisible({ timeout: 3000 });
+        }).toPass({ timeout: 20000 });
+        if (isMobileWidth(width)) {
+          await waitForDrawerSettled(page);
+        }
+        await expect(page.locator('#git-context-panel')).toBeVisible({ timeout: 15000 });
+        await expect(page.locator('.file-row').first()).toBeVisible({ timeout: 15000 });
 
         const gitPanel = page.locator('#git-context-panel');
         const viewportHeight = VIEWPORT_HEIGHT[width];

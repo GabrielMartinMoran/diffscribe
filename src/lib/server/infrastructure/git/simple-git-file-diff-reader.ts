@@ -15,7 +15,11 @@ import { parseUnifiedDiff } from './unified-diff-parser';
 const MAX_SIZE_BYTES = 256 * 1024; // 256 KB
 const MAX_LINES = 5000;
 
-function buildDiffArgs(
+/** Shared with the complete-diff aggregate reader (same module family). */
+export const FILE_DIFF_MAX_SIZE_BYTES = MAX_SIZE_BYTES;
+export const FILE_DIFF_MAX_LINES = MAX_LINES;
+
+export function buildDiffArgs(
   comparisonType: ComparisonType,
   baseRef: string,
   targetRef: string,
@@ -51,7 +55,7 @@ function buildDiffArgs(
   return args;
 }
 
-function shouldReadUntrackedFromDisk(comparisonType: ComparisonType): boolean {
+export function shouldReadUntrackedFromDisk(comparisonType: ComparisonType): boolean {
   return (
     comparisonType === ComparisonType.WORKING_TREE_VS_HEAD ||
     comparisonType === ComparisonType.COMMIT_VS_WORKING_TREE ||
@@ -59,7 +63,7 @@ function shouldReadUntrackedFromDisk(comparisonType: ComparisonType): boolean {
   );
 }
 
-function isBinaryContent(filePath: string): boolean {
+export function isBinaryContent(filePath: string): boolean {
   try {
     const buf = readFileSync(filePath, { flag: 'r' });
     const maxCheck = Math.min(buf.length, 8000);
@@ -72,7 +76,7 @@ function isBinaryContent(filePath: string): boolean {
   }
 }
 
-function synthesizeUntrackedDiff(filePath: string): string {
+export function synthesizeUntrackedDiff(filePath: string): string {
   try {
     const content = readFileSync(filePath, 'utf-8');
     const lines = content.split('\n');
@@ -98,7 +102,7 @@ function synthesizeUntrackedDiff(filePath: string): string {
   }
 }
 
-function applySizeCap<T extends { lines: Array<{ content: string }> }>(
+export function applySizeCap<T extends { lines: Array<{ content: string }> }>(
   hunks: T[],
 ): {
   hunks: T[];

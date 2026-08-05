@@ -91,17 +91,21 @@ describe('quick-open-scorer terms and normalization', () => {
   });
 });
 
-describe('quick-open-scorer tracked filtering and highlights', () => {
-  it('excludes untracked files by default', () => {
+describe('quick-open-scorer eligibility and metadata', () => {
+  it('untracked files are always eligible without any option', () => {
     const files = [file('src/app.ts', true), file('src/scratch.ts', false)];
     const results = scoreFiles(files, 'scratch');
-    expect(results).toEqual([]);
+    expect(pathsOf(results)).toEqual(['src/scratch.ts']);
   });
 
-  it('includes untracked files when requested', () => {
-    const files = [file('src/app.ts', true), file('src/scratch.ts', false)];
-    const results = scoreFiles(files, 'scratch', { includeUntracked: true });
-    expect(pathsOf(results)).toEqual(['src/scratch.ts']);
+  it('status metadata passes through to results without affecting ranking', () => {
+    const files: ScorableFile[] = [
+      { path: 'src/alpha.ts', status: 'modified' },
+      { path: 'src/scratch.ts', status: 'untracked' },
+    ];
+    const results = scoreFiles(files, 'ts');
+    // Same category/bonus: lexical path order decides; status rides along.
+    expect(results.map((r) => r.status)).toEqual(['modified', 'untracked']);
   });
 
   it('reports highlight ranges for the matched characters', () => {
@@ -111,10 +115,8 @@ describe('quick-open-scorer tracked filtering and highlights', () => {
     expect('src/lib/util.ts'.slice(match.start, match.end)).toBe('util');
   });
 
-  it('tracks untracked flag through to results', () => {
-    const results = scoreFiles([file('src/scratch.ts', false)], 'scratch', {
-      includeUntracked: true,
-    });
+  it('tracks the tracked flag through to results', () => {
+    const results = scoreFiles([file('src/scratch.ts', false)], 'scratch');
     expect(results[0].tracked).toBe(false);
   });
 });

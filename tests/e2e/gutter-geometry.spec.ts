@@ -5,7 +5,7 @@ import type { Page } from '@playwright/test';
 
 import { expect, test } from './fixtures';
 import { createGitFixture } from './helpers/git-fixture';
-import { registerAndSelectWorkspace } from './helpers/register-workspace';
+import { registerAndSelectWorkspace, switchFileListToListView } from './helpers/register-workspace';
 import { resetDb } from './helpers/reset-db';
 
 /**
@@ -144,6 +144,7 @@ async function openDiffForFile(page: Page, fileName: string, width: number): Pro
 
   const fileList = page.locator('#file-list-panel');
   await expect(fileList).toBeVisible({ timeout: 8000 });
+  await switchFileListToListView(page);
   const fileRow = fileList.locator('.file-row').filter({ hasText: fileName });
   await expect(fileRow).toBeVisible({ timeout: 10000 });
 

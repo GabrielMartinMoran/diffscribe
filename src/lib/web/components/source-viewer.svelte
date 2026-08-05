@@ -2,8 +2,11 @@
   /* eslint-disable svelte/no-at-html-tags */
   import { File, FileText, Info, LoaderCircle } from 'svelte-lucide';
 
+  import { readVisualSettings } from '$lib/web/stores/visual-settings-store';
   import { readStoredWrap, resolveWrap } from '$lib/web/stores/wrap-store';
   import type { ComparisonDraft } from '$lib/web/types/comparison-draft';
+  import { resolveLanguage } from '$lib/web/utils/language-map';
+  import { renderMarkdown } from '$lib/web/utils/markdown-renderer';
   import { createRequestGuard } from '$lib/web/utils/request-guard';
 
   // Client-side mirror of server FileSourceResult types
@@ -43,9 +46,22 @@
   let loading = $state(false);
   let error = $state<string | null>(null);
   let wrapLines = $state(false);
+  // Per-file Markdown view mode: starts from the configured default whenever
+  // a different file opens; the toggle overrides it for this file only (not
+  // persisted).
+  let markdownMode = $state<'raw' | 'preview'>('preview');
   // Monotonic guard: stale responses must not overwrite newer file content
   // when the user switches tabs/files quickly.
   const requestGuard = createRequestGuard();
+
+  const isMarkdown = $derived(filePath ? resolveLanguage(filePath) === 'markdown' : false);
+
+  let markdownSource = $derived.by(() => {
+    if (!sourceResult) return '';
+    return sourceResult.lines.map((line) => line.text ?? line.content ?? '').join('\n');
+  });
+
+  let markdownPreviewHtml = $derived(isMarkdown ? renderMarkdown(markdownSource) : '');
 
   // Per-file wrap state: start from the global Settings default whenever a
   // different file opens; the contextual toggle overrides it for this file
@@ -53,10 +69,15 @@
   $effect(() => {
     if (!filePath) return;
     wrapLines = resolveWrap(readStoredWrap(window.localStorage));
+    markdownMode = readVisualSettings(window.localStorage).markdownView;
   });
 
   function toggleWrap() {
     wrapLines = !wrapLines;
+  }
+
+  function setMarkdownMode(mode: 'raw' | 'preview') {
+    markdownMode = mode;
   }
 
   // Fetch source when file path changes
@@ -197,6 +218,33 @@
       <File size="14" class="header-icon" ariaLabel="File" />
       <span class="header-path">{sourceResult.path}</span>
       <span class="header-lang">{sourceResult.language}</span>
+      {#if isMarkdown}
+        <div
+          class="markdown-view-toggle"
+          data-testid="markdown-view-toggle"
+          role="group"
+          aria-label="Markdown view"
+        >
+          <button
+            type="button"
+            class="markdown-view-btn"
+            class:active={markdownMode === 'raw'}
+            aria-pressed={markdownMode === 'raw'}
+            onclick={() => setMarkdownMode('raw')}
+          >
+            Raw
+          </button>
+          <button
+            type="button"
+            class="markdown-view-btn"
+            class:active={markdownMode === 'preview'}
+            aria-pressed={markdownMode === 'preview'}
+            onclick={() => setMarkdownMode('preview')}
+          >
+            Preview
+          </button>
+        </div>
+      {/if}
       <button
         class="wrap-btn"
         onclick={toggleWrap}
@@ -207,53 +255,66 @@
       </button>
     </div>
 
-    <div
-      class="source-lines"
-      class:wrap-enabled={wrapLines}
-      data-testid="source-content"
-      role="list"
-      aria-label="Source lines"
-    >
-      {#each sourceResult.lines as line (line.lineNumber)}
-        <div
-          class="source-line"
-          class:added={line.changeType === 'added'}
-          class:removed={line.changeType === 'removed'}
-          class:modified={line.changeType === 'modified'}
-          role="listitem"
-        >
-          <!-- Line number -->
-          <span class="line-number" data-testid="line-number">{line.lineNumber}</span>
+    {#if isMarkdown && markdownMode === 'preview'}
+      <div
+        class="markdown-preview"
+        data-testid="markdown-preview-content"
+        role="region"
+        aria-label="Markdown preview"
+      >
+        <!-- Only post-escape output from the dependency-free renderer is
+             interpolated; raw source HTML is never emitted. -->
+        {@html markdownPreviewHtml}
+      </div>
+    {:else}
+      <div
+        class="source-lines"
+        class:wrap-enabled={wrapLines}
+        data-testid="source-content"
+        role="list"
+        aria-label="Source lines"
+      >
+        {#each sourceResult.lines as line (line.lineNumber)}
+          <div
+            class="source-line"
+            class:added={line.changeType === 'added'}
+            class:removed={line.changeType === 'removed'}
+            class:modified={line.changeType === 'modified'}
+            role="listitem"
+          >
+            <!-- Line number -->
+            <span class="line-number" data-testid="line-number">{line.lineNumber}</span>
 
-          <!-- Change marker -->
-          {#if line.changeType && line.changeType !== 'unchanged'}
-            <span
-              class="change-marker {markerClass(line.changeType)}"
-              data-testid="change-marker"
-              aria-label={markerLabel(line.changeType)}
-            ></span>
-          {:else}
-            <span class="change-marker marker-none"></span>
-          {/if}
-
-          <!-- Line content: syntax-highlighted HTML or plain text -->
-          <span class="line-content" data-testid="line-content">
-            {#if line.html}
-              {@html line.html}
+            <!-- Change marker -->
+            {#if line.changeType && line.changeType !== 'unchanged'}
+              <span
+                class="change-marker {markerClass(line.changeType)}"
+                data-testid="change-marker"
+                aria-label={markerLabel(line.changeType)}
+              ></span>
             {:else}
-              <code>{line.text ?? line.content}</code>
+              <span class="change-marker marker-none"></span>
             {/if}
-          </span>
-        </div>
-      {/each}
 
-      {#if sourceResult.isTruncated}
-        <div class="truncation-notice" role="status">
-          <Info size="14" ariaLabel="Info" />
-          <span>{sourceResult.truncationReason ?? 'File truncated'}</span>
-        </div>
-      {/if}
-    </div>
+            <!-- Line content: syntax-highlighted HTML or plain text -->
+            <span class="line-content" data-testid="line-content">
+              {#if line.html}
+                {@html line.html}
+              {:else}
+                <code>{line.text ?? line.content}</code>
+              {/if}
+            </span>
+          </div>
+        {/each}
+
+        {#if sourceResult.isTruncated}
+          <div class="truncation-notice" role="status">
+            <Info size="14" ariaLabel="Info" />
+            <span>{sourceResult.truncationReason ?? 'File truncated'}</span>
+          </div>
+        {/if}
+      </div>
+    {/if}
   {/if}
 </div>
 
@@ -384,6 +445,118 @@
     background: var(--accent);
     color: var(--text-inverse);
     border-color: var(--accent);
+  }
+
+  /* ── Markdown Raw/Preview toggle ── */
+  .markdown-view-toggle {
+    display: inline-flex;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .markdown-view-btn {
+    padding: var(--space-1) var(--space-2);
+    border: none;
+    border-left: 1px solid var(--border-default);
+    background: var(--surface-secondary);
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    font-family: inherit;
+    cursor: pointer;
+  }
+
+  .markdown-view-btn:first-child {
+    border-left: none;
+  }
+
+  .markdown-view-btn.active {
+    background: var(--accent);
+    color: var(--text-inverse);
+  }
+
+  .markdown-view-btn:focus-visible {
+    outline: var(--focus-ring-offset) solid var(--focus-ring);
+    outline-offset: -2px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ── Markdown preview ── */
+  .markdown-preview {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-4) var(--space-5);
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    color: var(--text-primary);
+  }
+
+  .markdown-preview :global(h1),
+  .markdown-preview :global(h2),
+  .markdown-preview :global(h3),
+  .markdown-preview :global(h4),
+  .markdown-preview :global(h5),
+  .markdown-preview :global(h6) {
+    margin: var(--space-4) 0 var(--space-2);
+    line-height: 1.3;
+  }
+
+  .markdown-preview :global(h1:first-child),
+  .markdown-preview :global(h2:first-child),
+  .markdown-preview :global(h3:first-child) {
+    margin-top: 0;
+  }
+
+  .markdown-preview :global(p) {
+    margin: 0 0 var(--space-3);
+  }
+
+  .markdown-preview :global(pre) {
+    overflow-x: auto;
+    padding: var(--space-3);
+    border-radius: var(--radius-sm);
+    background: var(--surface-secondary);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+  }
+
+  .markdown-preview :global(code) {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    background: var(--surface-hover);
+    border-radius: var(--radius-xs);
+    padding: 0 var(--space-1);
+  }
+
+  .markdown-preview :global(pre code) {
+    background: none;
+    padding: 0;
+  }
+
+  .markdown-preview :global(a) {
+    color: var(--accent);
+    text-decoration: underline;
+  }
+
+  .markdown-preview :global(ul) {
+    margin: 0 0 var(--space-3);
+    padding-left: var(--space-5);
+  }
+
+  .markdown-preview :global(blockquote) {
+    margin: 0 0 var(--space-3);
+    padding: var(--space-1) var(--space-3);
+    border-left: 3px solid var(--border-default);
+    color: var(--text-secondary);
+  }
+
+  .markdown-preview :global(hr) {
+    margin: var(--space-4) 0;
+    border: none;
+    border-top: 1px solid var(--border-default);
   }
 
   /* ── Lines ── */

@@ -69,7 +69,7 @@ Feature: Base UI kit — generic stateless primitives
     When the user presses the Escape key
     Then the dialog closes and focus returns to the invoker
 
-  @product @ui @p1 @e2e
+  @product @ui @p1 @e2e @delta-modified
   Scenario: Tabs expose roving tabindex and arrow navigation
     Given a Tabs primitive with three tabs is rendered
     Then the tablist exposes one tab stop and aria-controls links each tab to its panel
@@ -79,6 +79,9 @@ Feature: Base UI kit — generic stateless primitives
     Then focus moves to the first tab
     When the user presses End
     Then focus moves to the last tab
+    When a vertical Tabs primitive is rendered
+    Then the vertical tablist navigates with ArrowUp or ArrowDown
+    # CHANGED: vertical orientation contract for desktop right navigation
 
   @product @ui @p1 @e2e
   Scenario: Menu opens with aria-expanded and closes with Escape returning focus

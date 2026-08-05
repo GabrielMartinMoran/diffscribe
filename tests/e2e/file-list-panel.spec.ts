@@ -4,7 +4,11 @@ import path from 'node:path';
 
 import { expect, test } from './fixtures';
 import { createGitFixture } from './helpers/git-fixture';
-import { registerAndSelectWorkspace, selectRailTab } from './helpers/register-workspace';
+import {
+  registerAndSelectWorkspace,
+  selectRailTab,
+  switchFileListToListView,
+} from './helpers/register-workspace';
 import { resetDb } from './helpers/reset-db';
 
 test.describe('File List Panel (E2E)', () => {
@@ -13,6 +17,11 @@ test.describe('File List Panel (E2E)', () => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
   });
+
+  // W4/0003: fresh contexts default to the tree view and Settings is the sole
+  // presentation source; these list-view contracts opt into the flat list
+  // through the shared helper.
+  const switchToListView = switchFileListToListView;
 
   test('shows file list with entries for a modified workspace', async ({ page }) => {
     const fixture = createGitFixture();
@@ -30,6 +39,7 @@ test.describe('File List Panel (E2E)', () => {
 
       const panel = page.locator('#file-list-panel');
       await expect(panel).toBeVisible({ timeout: 8000 });
+      await switchToListView(page);
       // A modified file should appear in the file list — wait with auto-retry
       const rows = panel.locator('.file-row');
       await expect(rows.first()).toBeVisible({ timeout: 10000 });
@@ -116,6 +126,7 @@ test.describe('File List Panel (E2E)', () => {
 
       const panel = page.locator('#file-list-panel');
       await expect(panel).toBeVisible({ timeout: 8000 });
+      await switchToListView(page);
 
       // Type filter
       const filterInput = panel.locator('input[aria-label="Filter files by path"]');
@@ -159,6 +170,7 @@ test.describe('File List Panel (E2E)', () => {
 
       const panel = page.locator('#file-list-panel');
       await expect(panel).toBeVisible({ timeout: 8000 });
+      await switchToListView(page);
 
       // Click the File sort header twice to ensure ascending order
       // (first click toggles to desc since default is already path-asc,
@@ -214,6 +226,7 @@ test.describe('File List Panel (E2E)', () => {
 
       const panel = page.locator('#file-list-panel');
       await expect(panel).toBeVisible({ timeout: 8000 });
+      await switchToListView(page);
 
       // Pagination controls should be visible
       await expect(panel.locator('[aria-label="File list pagination"]')).toBeVisible({
@@ -244,6 +257,7 @@ test.describe('File List Panel (E2E)', () => {
 
       const panel = page.locator('#file-list-panel');
       await expect(panel).toBeVisible({ timeout: 8000 });
+      await switchToListView(page);
 
       // Click a file row
       const row = panel.locator('.file-row').first();
@@ -280,6 +294,7 @@ test.describe('File List Panel (E2E)', () => {
 
       const panel = page.locator('#file-list-panel');
       await expect(panel).toBeVisible({ timeout: 8000 });
+      await switchToListView(page);
 
       // Focus the first file row
       const firstRow = panel.locator('.file-row').first();

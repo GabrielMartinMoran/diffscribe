@@ -49,25 +49,29 @@ test.describe('File list — list and tree views', () => {
     await expect(fileList).toBeVisible({ timeout: 8000 });
   }
 
-  test('panel exposes List and Tree toggles with pressed state', async ({ page }) => {
+  test('Git panel exposes no List/Tree toggles; Settings owns the view', async ({ page }) => {
     await openPanelWithNestedFiles(page);
 
-    const listToggle = page.getByTestId('file-list-view-list');
-    const treeToggle = page.getByTestId('file-list-view-tree');
-    await expect(listToggle).toBeVisible();
-    await expect(listToggle).toHaveAttribute('aria-pressed', 'true');
-    await expect(treeToggle).toHaveAttribute('aria-pressed', 'false');
+    // 0003: the Git panel no longer renders a local view switcher.
+    await expect(page.getByTestId('file-list-view-list')).toHaveCount(0);
+    await expect(page.getByTestId('file-list-view-tree')).toHaveCount(0);
+    // The tree view (the default) renders directly.
+    await expect(page.getByTestId('file-list-tree')).toBeVisible();
 
-    await treeToggle.click();
-    await expect(listToggle).toHaveAttribute('aria-pressed', 'false');
-    await expect(treeToggle).toHaveAttribute('aria-pressed', 'true');
+    // Settings is the sole source: it exposes the segmented control with the
+    // tree view pressed by default.
+    await page.getByTestId('rail-tab-settings').click();
+    await expect(page.getByTestId('settings-panel')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('settings-file-list-tree')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
   });
 
   test('tree view groups files by directory with directories expanded by default', async ({
     page,
   }) => {
     await openPanelWithNestedFiles(page);
-    await page.getByTestId('file-list-view-tree').click();
 
     const tree = page.getByTestId('file-list-tree');
     await expect(tree).toBeVisible();
@@ -87,7 +91,6 @@ test.describe('File list — list and tree views', () => {
 
   test('directories can be collapsed and expanded manually', async ({ page }) => {
     await openPanelWithNestedFiles(page);
-    await page.getByTestId('file-list-view-tree').click();
 
     const srcToggle = page.getByTestId('file-tree-toggle-src');
     await expect(srcToggle).toHaveAttribute('aria-expanded', 'true');
@@ -106,7 +109,6 @@ test.describe('File list — list and tree views', () => {
 
   test('directory expansion is not persisted across reloads', async ({ page }) => {
     await openPanelWithNestedFiles(page);
-    await page.getByTestId('file-list-view-tree').click();
 
     const srcToggle = page.getByTestId('file-tree-toggle-src');
     await srcToggle.click();
@@ -117,7 +119,6 @@ test.describe('File list — list and tree views', () => {
     await page.getByTestId('rail-tab-git').click();
     const fileList = page.locator('#file-list-panel');
     await expect(fileList).toBeVisible({ timeout: 8000 });
-    await page.getByTestId('file-list-view-tree').click();
 
     // Directories are expanded by default again after the reload.
     const reloadedToggle = page.getByTestId('file-tree-toggle-src');
@@ -125,27 +126,59 @@ test.describe('File list — list and tree views', () => {
     await expect(page.getByTestId('file-tree-node-src/app.ts')).toBeVisible();
   });
 
-  test('chosen view persists across reloads', async ({ page }) => {
+  test('chosen view persists across reloads via Settings', async ({ page }) => {
     await openPanelWithNestedFiles(page);
-    await page.getByTestId('file-list-view-tree').click();
-    await expect(page.getByTestId('file-list-tree')).toBeVisible();
 
-    const stored = await page.evaluate(() => localStorage.getItem('diffscribe-file-list-view'));
-    expect(stored).toBe('tree');
+    // The user switches to the list view inside Settings (the Git panel has
+    // no local toggle).
+    await page.getByTestId('rail-tab-settings').click();
+    await expect(page.getByTestId('settings-panel')).toBeVisible({ timeout: 10000 });
+    await page.getByTestId('settings-file-list-list').click();
+    await expect(page.getByTestId('settings-file-list-list')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+
+    // The explicit choice is stored in the versioned aggregate.
+    const stored = await page.evaluate(() => localStorage.getItem('diffscribe-visual-settings'));
+    expect(stored).toBeTruthy();
+    const parsed = JSON.parse(stored ?? '{}');
+    expect(parsed.version).toBe(1);
+    expect(parsed.fileListView).toBe('list');
+
+    // The legacy key is gone after the first write (read-through migration).
+    const legacy = await page.evaluate(() => localStorage.getItem('diffscribe-file-list-view'));
+    expect(legacy).toBeNull();
 
     await page.reload();
     await page.waitForLoadState('networkidle');
     // The workspace stays registered in the isolated DB; re-select the Git
-    // rail so the file list panel renders again.
+    // rail so the file list panel renders again in the list view.
     await page.getByTestId('rail-tab-git').click();
     const fileList = page.locator('#file-list-panel');
     await expect(fileList).toBeVisible({ timeout: 8000 });
-    await expect(page.getByTestId('file-list-tree')).toBeVisible({ timeout: 8000 });
+    await expect(fileList.locator('.file-row').first()).toBeVisible({ timeout: 8000 });
+    await expect(page.getByTestId('file-list-tree')).toHaveCount(0);
+  });
+
+  test('an explicit legacy list preference is preserved', async ({ page }) => {
+    await openPanelWithNestedFiles(page);
+
+    // Simulate the legacy stored choice before the aggregate exists.
+    await page.evaluate(() => {
+      localStorage.setItem('diffscribe-file-list-view', 'list');
+    });
+
+    // Re-enter the panel: read-through migration honors the legacy list.
+    await page.getByTestId('rail-tab-workspaces').click();
+    await page.getByTestId('rail-tab-git').click();
+    await expect(page.locator('#file-list-panel')).toBeVisible({ timeout: 8000 });
+    await expect(page.locator('.file-row').first()).toBeVisible({ timeout: 8000 });
+    await expect(page.getByTestId('file-list-tree')).toHaveCount(0);
   });
 
   test('selecting a file inside a directory opens the diff viewer', async ({ page }) => {
     await openPanelWithNestedFiles(page);
-    await page.getByTestId('file-list-view-tree').click();
 
     // Directories are expanded by default, so the file is directly reachable.
     const fileRow = page.getByTestId('file-tree-node-src/app.ts');

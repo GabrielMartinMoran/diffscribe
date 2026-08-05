@@ -251,9 +251,7 @@ test.describe('Quick Open', () => {
     }
   });
 
-  test('tracked files only by default; include-untracked setting exposes untracked', async ({
-    page,
-  }) => {
+  test('untracked files are always included and the legacy setting is inert', async ({ page }) => {
     const fixture = createGitFixture('diffscribe-e2e-qo-');
     try {
       makeRepoWithUntracked(fixture);
@@ -261,33 +259,28 @@ test.describe('Quick Open', () => {
       await page.reload();
       await waitForHydration(page);
 
-      // Default: untracked file is hidden.
+      // Seed the obsolete localStorage setting before the first open.
+      await page.evaluate(() =>
+        localStorage.setItem('diffscribe-quick-open-include-untracked', 'false'),
+      );
+
+      // Untracked files are always shown, regardless of the legacy value.
       await openQuickOpen(page, 'Control+p');
       const combobox = page.getByRole('combobox');
       await combobox.fill('scratch');
-      await expect(page.getByText('No matching files')).toBeVisible();
-      await page.keyboard.press('Escape');
+      await expectResult(page, 'src/scratch.ts');
 
-      // Enable the setting in Settings.
-      await selectRailTab(page, 'settings');
-      const untrackedSwitch = page.getByTestId('settings-quick-open-untracked-switch');
-      await expect(untrackedSwitch).toBeVisible({ timeout: 10000 });
-      await untrackedSwitch.locator('..').click();
-      await expect(untrackedSwitch).toBeChecked();
+      // Opening Quick Open cleans the obsolete key.
       const stored = await page.evaluate(() =>
         localStorage.getItem('diffscribe-quick-open-include-untracked'),
       );
-      expect(stored).toBe('true');
+      expect(stored).toBeNull();
 
-      // Reload: the switch survives and Quick Open now shows untracked files.
-      await page.reload();
-      await waitForHydration(page);
+      // The obsolete switch no longer exists in Settings.
+      await page.keyboard.press('Escape');
       await selectRailTab(page, 'settings');
-      await expect(page.getByTestId('settings-quick-open-untracked-switch')).toBeChecked();
-
-      await openQuickOpen(page, 'Control+p');
-      await page.getByRole('combobox').fill('scratch');
-      await expectResult(page, 'src/scratch.ts');
+      await expect(page.getByTestId('settings-panel')).toBeVisible({ timeout: 10000 });
+      await expect(page.getByTestId('settings-quick-open-untracked-switch')).toHaveCount(0);
     } finally {
       fixture.cleanup();
     }
@@ -341,7 +334,7 @@ test.describe('Quick Open', () => {
     }
   });
 
-  test('empty query lists every tracked file', async ({ page }) => {
+  test('empty query lists every nonignored file including untracked', async ({ page }) => {
     const fixture = createGitFixture('diffscribe-e2e-qo-');
     try {
       makeRepoWithUntracked(fixture);
@@ -351,11 +344,89 @@ test.describe('Quick Open', () => {
 
       await openQuickOpen(page, 'Control+p');
       await expect(page.getByTestId('quick-open-result').first()).toBeVisible({ timeout: 10000 });
-      await expect(page.getByTestId('quick-open-result')).toHaveCount(4);
-      // The untracked scratch.ts is not listed.
+      // README.md, app.ts, util.ts, more.ts, and the untracked scratch.ts.
+      await expect(page.getByTestId('quick-open-result')).toHaveCount(5);
       await expect(
         page.getByTestId('quick-open-result').filter({ hasText: 'scratch' }),
-      ).toHaveCount(0);
+      ).toHaveCount(1);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  test('ignored files stay excluded from results', async ({ page }) => {
+    const fixture = createGitFixture('diffscribe-e2e-qo-');
+    try {
+      mkdirSync(join(fixture.repoPath, 'src'), { recursive: true });
+      writeFileSync(join(fixture.repoPath, '.gitignore'), 'src/ignored.ts\n');
+      writeFileSync(join(fixture.repoPath, 'src', 'app.ts'), 'export const app = 1;\n');
+      writeFileSync(join(fixture.repoPath, 'src', 'ignored.ts'), 'export const ignored = 0;\n');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
+
+      await registerAndActivate(page, fixture.repoPath, `QO-Ignored-${Date.now()}`);
+      await page.reload();
+      await waitForHydration(page);
+
+      await openQuickOpen(page, 'Control+p');
+      await page.getByRole('combobox').fill('ignored');
+      await expect(page.getByText('No matching files')).toBeVisible();
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  test('working-tree status badges render through the UI mapping', async ({ page }) => {
+    const fixture = createGitFixture('diffscribe-e2e-qo-');
+    try {
+      mkdirSync(join(fixture.repoPath, 'src'), { recursive: true });
+      writeFileSync(join(fixture.repoPath, 'src', 'app.ts'), 'export const app = 1;\n');
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'init']);
+      // Working tree: app.ts modified, scratch.ts untracked.
+      writeFileSync(join(fixture.repoPath, 'src', 'app.ts'), 'export const app = 2;\n');
+      writeFileSync(join(fixture.repoPath, 'src', 'scratch.ts'), 'export const scratch = 0;\n');
+
+      await registerAndActivate(page, fixture.repoPath, `QO-Badges-${Date.now()}`);
+      await page.reload();
+      await waitForHydration(page);
+
+      await openQuickOpen(page, 'Control+p');
+      const results = page.getByTestId('quick-open-result');
+      await expect(results.first()).toBeVisible({ timeout: 10000 });
+
+      const appResult = results.filter({ hasText: 'src/app.ts' });
+      await expect(appResult.locator('[data-testid="quick-open-status-badge"]')).toHaveText(
+        'modified',
+      );
+
+      const scratchResult = results.filter({ hasText: 'src/scratch.ts' });
+      const scratchBadge = scratchResult.locator('[data-testid="quick-open-status-badge"]');
+      await expect(scratchBadge).toHaveText('New');
+      // The untracked → New mapping renders with the green (success) tone.
+      await expect(scratchBadge).toHaveClass(/ui-status-badge--success/);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  test('results stay capped at 512 with an empty filter', async ({ page }) => {
+    const fixture = createGitFixture('diffscribe-e2e-qo-');
+    try {
+      mkdirSync(join(fixture.repoPath, 'src'), { recursive: true });
+      for (let i = 0; i < 600; i++) {
+        writeFileSync(join(fixture.repoPath, 'src', `file-${i}.ts`), `export const f${i} = 1;\n`);
+      }
+      fixture.runGit(['add', '.']);
+      fixture.runGit(['commit', '-m', 'many files']);
+
+      await registerAndActivate(page, fixture.repoPath, `QO-Cap-${Date.now()}`);
+      await page.reload();
+      await waitForHydration(page);
+
+      await openQuickOpen(page, 'Control+p');
+      await expect(page.getByTestId('quick-open-result').first()).toBeVisible({ timeout: 15000 });
+      await expect(page.getByTestId('quick-open-result')).toHaveCount(512);
     } finally {
       fixture.cleanup();
     }

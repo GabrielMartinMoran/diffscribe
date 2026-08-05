@@ -53,6 +53,7 @@ export default defineConfig({
       'tests/steps/quick-open.steps.ts',
       'tests/steps/git-ref-popup.steps.ts',
       'tests/steps/mobile-hardening.steps.ts',
+      'tests/steps/workspace-git-review-ux.steps.ts',
     ],
   },
 });

@@ -17,6 +17,14 @@ const FILE_LIST_PATH = path.resolve(__dirname, '../../src/lib/web/components/fil
 const BRANCH_PATH = path.resolve(__dirname, '../../src/lib/web/components/file-tree-branch.svelte');
 const PAGE_PATH = path.resolve(__dirname, '../../src/routes/+page.svelte');
 const DIFF_PATH = path.resolve(__dirname, '../../src/lib/web/components/diff-viewer.svelte');
+const COMPLETE_DIFF_VIEWER_PATH = path.resolve(
+  __dirname,
+  '../../src/lib/web/components/complete-diff-viewer.svelte',
+);
+const GIT_PANEL_PATH = path.resolve(
+  __dirname,
+  '../../src/lib/web/components/git-context-panel.svelte',
+);
 
 function requireMarker(file: string, marker: string): void {
   const src = fs.readFileSync(file, 'utf-8');
@@ -161,6 +169,14 @@ Then('the active tab has the highlighted state', (_w: World) => {
   requireMarker(TABS_PATH, 'class:active');
 });
 
+Then('the active tab has no bottom border', (_w: World) => {
+  requireMarker(TABS_PATH, 'border-bottom: none');
+});
+
+Then('the inactive tab has a visible bottom border', (_w: World) => {
+  requireMarker(TABS_PATH, 'border-bottom: 1px solid var(--border-subtle)');
+});
+
 Then('the inactive tab has the dimmed state and remains readable', (_w: World) => {
   requireMarker(TABS_PATH, 'file-tab.inactive');
 });
@@ -206,3 +222,108 @@ Then('each tab has an aria-controls reference to its panel', (_w: World) => {
 Then('each close button has an accessible name', (_w: World) => {
   requireMarker(TABS_PATH, 'aria-label="Close ');
 });
+
+// ────────────────────────────────────────────────────────────────────────────
+//  0003 pinned complete-diff tab
+// ────────────────────────────────────────────────────────────────────────────
+
+Given('the active workspace has changes', (_w: World) => {
+  requireMarker(PAGE_PATH, 'pinCompleteDiff');
+  requireMarker(PAGE_PATH, 'activeTabId === COMPLETE_DIFF_TAB_ID');
+});
+
+Given('the complete diff tab is the first tab', (_w: World) => {
+  requireMarker(STORE_PATH, 'pinCompleteDiff');
+  requireMarker(TABS_PATH, 'pinned-complete-diff-tab');
+});
+
+Given('the complete diff tab is active', (_w: World) => {
+  requireMarker(STORE_PATH, 'pinCompleteDiff');
+  requireMarker(TABS_PATH, 'pinned-complete-diff-tab');
+});
+
+Given('the central viewer shows the complete diff tab and {string}', (_w: World, _f: string) => {
+  requireMarker(TABS_PATH, 'pinned-complete-diff-tab');
+  requireMarker(STORE_PATH, 'openFileTab');
+});
+
+When('the user views the central tab strip', (_w: World) => {
+  requireMarker(TABS_PATH, 'pinned-complete-diff-tab');
+});
+
+When('the user middle-clicks the complete diff tab', (_w: World) => {
+  requireMarker(TABS_PATH, 'non-closable');
+});
+
+When('the user clicks the complete diff tab', (_w: World) => {
+  requireMarker(TABS_PATH, 'pinned-complete-diff-tab');
+});
+
+When('the user opens {string} from the Project tree', (_w: World, _file: string) => {
+  requireMarker(TREE_NODE_PATH, 'file-entry');
+  requireMarker(PAGE_PATH, 'openFileTab');
+});
+
+When('the user changes the comparison target', (_w: World) => {
+  requireMarker(GIT_PANEL_PATH, 'onComparisonChange');
+});
+
+Then('the first tab is the complete diff tab', (_w: World) => {
+  requireMarker(TABS_PATH, 'pinned-complete-diff-tab');
+});
+
+Then('the complete diff tab has no close button', (_w: World) => {
+  requireMarker(TABS_PATH, 'without a close button');
+});
+
+Then('the complete diff tab remains open', (_w: World) => {
+  requireMarker(STORE_PATH, 'id === COMPLETE_DIFF_TAB_ID');
+});
+
+Then(
+  'the central viewer shows the complete diff tab followed by {string}',
+  (_w: World, _file: string) => {
+    requireMarker(TABS_PATH, 'pinned-complete-diff-tab');
+    requireMarker(STORE_PATH, 'openFileTab');
+  },
+);
+
+Then('the complete diff viewer is shown', (_w: World) => {
+  requireMarker(PAGE_PATH, 'activeTabId === COMPLETE_DIFF_TAB_ID');
+});
+
+Then('"No file selected" is not shown', (_w: World) => {
+  requireMarker(PAGE_PATH, 'activeTabId === COMPLETE_DIFF_TAB_ID');
+  requireMarker(TABS_PATH, '$openTabs.length === 0');
+});
+
+Then('the complete diff tab is the only tab', (_w: World) => {
+  requireMarker(STORE_PATH, 'COMPLETE_DIFF_TAB_ID');
+});
+
+Then('the central viewer shows only the new workspace complete diff tab', (_w: World) => {
+  requireMarker(STORE_PATH, 'resetTabs');
+  requireMarker(TABS_PATH, 'pinned-complete-diff-tab');
+});
+
+Then('the complete diff tab remains the first tab', (_w: World) => {
+  requireMarker(STORE_PATH, 'pinCompleteDiff');
+});
+
+Then('the complete diff viewer reloads for the new comparison', (_w: World) => {
+  requireMarker(PAGE_PATH, 'activeTabId === COMPLETE_DIFF_TAB_ID');
+  requireMarker(COMPLETE_DIFF_VIEWER_PATH, 'comparisonDraft');
+});
+
+Then('the central viewer shows no complete diff tab', (_w: World) => {
+  requireMarker(STORE_PATH, 'resetTabs');
+  requireMarker(TABS_PATH, '$openTabs.length === 0');
+});
+
+Then(
+  'the central viewer shows "No file selected"',
+  (_w: World) => {
+    requireMarker(TABS_PATH, 'No file selected');
+  },
+  1,
+);

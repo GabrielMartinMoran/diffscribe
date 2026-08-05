@@ -4,15 +4,13 @@
   import { browser } from '$app/environment';
   import type { FileListEntry } from '$lib/server/application/dto/results/file-list-results';
   import {
-    DEFAULT_FILE_LIST_VIEW,
+    DEFAULT_VISUAL_SETTINGS,
     type FileListView,
-    readStoredFileListView,
-    resolveFileListView,
-    writeStoredFileListView,
-  } from '$lib/web/stores/file-list-view-store';
+    readVisualSettings,
+  } from '$lib/web/stores/visual-settings-store';
 
   import { buildFileTree, type FileTreeNode } from './file-list-tree';
-  import { statusTone } from './file-status';
+  import { statusLabel, statusTone } from './file-status';
   import FileTreeBranch from './file-tree-branch.svelte';
   import StatusBadge from './ui/StatusBadge.svelte';
 
@@ -42,21 +40,17 @@
   let sortDir = $state<'asc' | 'desc'>('asc');
   let currentPage = $state(1);
   let activeFile = $state<string | null>(null);
-  let view = $state<FileListView>(DEFAULT_FILE_LIST_VIEW);
+  let view = $state<FileListView>(DEFAULT_VISUAL_SETTINGS.fileListView);
   let expandedDirs = new SvelteSet<string>();
 
-  // Restore the persisted view preference on load.
+  // Restore the persisted view preference on load (read-through migration
+  // honors an explicit legacy list choice; fresh contexts default to tree).
+  // 0003: Settings is the sole presentation source — the Git panel exposes no
+  // local List/Tree controls and never writes the preference.
   $effect(() => {
     if (!browser) return;
-    view = resolveFileListView(readStoredFileListView(window.localStorage));
+    view = readVisualSettings(window.localStorage).fileListView;
   });
-
-  function setView(next: FileListView) {
-    view = next;
-    if (browser) {
-      writeStoredFileListView(next, window.localStorage);
-    }
-  }
 
   function toggleDir(node: FileTreeNode) {
     if (expandedDirs.has(node.path)) {
@@ -99,21 +93,6 @@
   const treeNodes = $derived.by(() => buildFileTree(filtered));
 
   const PAGE_SIZE = 50;
-
-  function statusLabel(status: string): string {
-    const map: Record<string, string> = {
-      added: 'added',
-      modified: 'modified',
-      deleted: 'deleted',
-      renamed: 'renamed',
-      copied: 'copied',
-      'type-changed': 'type changed',
-      unmerged: 'unmerged',
-      untracked: 'untracked',
-      unknown: 'unknown',
-    };
-    return map[status] ?? status;
-  }
 
   let filtered = $derived.by(() => {
     let result = entries;
@@ -259,24 +238,6 @@
           <option value={status}>{statusLabel(status)}</option>
         {/each}
       </select>
-      <div class="view-switcher" role="group" aria-label="File list view">
-        <button
-          class="view-toggle"
-          data-testid="file-list-view-list"
-          aria-pressed={view === 'list'}
-          onclick={() => setView('list')}
-        >
-          List
-        </button>
-        <button
-          class="view-toggle"
-          data-testid="file-list-view-tree"
-          aria-pressed={view === 'tree'}
-          onclick={() => setView('tree')}
-        >
-          Tree
-        </button>
-      </div>
     </div>
 
     <!-- Table header (sortable) -->

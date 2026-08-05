@@ -6,7 +6,11 @@ import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import type { GitFixture } from './helpers/git-fixture';
 import { createGitFixture } from './helpers/git-fixture';
-import { registerAndSelectWorkspace, selectRightPanelTab } from './helpers/register-workspace';
+import {
+  registerAndSelectWorkspace,
+  selectRightPanelTab,
+  switchFileListToListView,
+} from './helpers/register-workspace';
 import { resetDb } from './helpers/reset-db';
 
 async function createReviewAndSelectFile(page: Page, fileName = 'src/app.ts'): Promise<void> {
@@ -39,6 +43,9 @@ async function createReviewAndSelectFile(page: Page, fileName = 'src/app.ts'): P
   // Right panel stays on Review after invalidateAll. Switch back to Comments
   // so #observation-panel is available for downstream tests.
   await selectRightPanelTab(page, 'comments');
+
+  // W4: fresh contexts default to tree; this contract drives the flat list.
+  await switchFileListToListView(page);
 
   const fileRow = page
     .locator('[role="listbox"] [role="option"]')
@@ -350,13 +357,17 @@ test.describe('Observation CRUD E2E', () => {
       await page.locator('.slot-target').click();
       const branchList = page.getByRole('listbox', { name: /branches/i });
       await branchList.getByText('feature', { exact: true }).click();
-      await expect(page.locator('.comparison-type')).toContainText(/branch vs branch/);
+      // W8: the redundant comparison caption is removed; the target slot
+      // reflects the selected branch instead.
+      await expect(page.locator('.comparison-type')).toHaveCount(0);
+      await expect(page.locator('.slot-target .slot-value')).toHaveText(/feature/);
 
       // The diff refetches automatically when the comparison changes; select
       // the file again (the reload cleared the active file) and wait for the
       // fresh diff before selecting a line.
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
+      await switchFileListToListView(page);
       const fileRow = fileList.locator('.file-row').filter({ hasText: 'src/app.ts' });
       await expect(fileRow).toBeVisible({ timeout: 10000 });
 

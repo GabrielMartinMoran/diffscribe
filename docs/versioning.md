@@ -233,6 +233,15 @@ The compatibility contract is:
 During `0.x`, since MINOR may include breaking changes, it is recommended to
 back up data before upgrading between MINOR versions.
 
+### Additive API route note (workspace‑git‑review‑ux)
+
+`GET /api/workspaces/[id]/complete-diff` is an additive 0.x API surface
+(additive route → 0.x MINOR). This change introduces **no SQLite migration**:
+the database schema is untouched, the domain `FileChangeStatus` values are
+unchanged (`untracked` remains the wire value), and the only client-side
+preference change is a versioned localStorage aggregate with read-through
+migration from the legacy key.
+
 ### Rollback
 
 Automatic migration rollback is not supported. If a migration fails, the

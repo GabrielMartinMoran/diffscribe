@@ -3,7 +3,11 @@ import path from 'node:path';
 
 import { expect, test } from './fixtures';
 import { createGitFixture } from './helpers/git-fixture';
-import { registerAndSelectWorkspace, selectRailTab } from './helpers/register-workspace';
+import {
+  registerAndSelectWorkspace,
+  selectRailTab,
+  switchFileListToListView,
+} from './helpers/register-workspace';
 import { resetDb } from './helpers/reset-db';
 
 function initRepo(fixture: { repoPath: string; runGit(args: readonly string[]): void }): void {
@@ -11,6 +15,11 @@ function initRepo(fixture: { repoPath: string; runGit(args: readonly string[]): 
   fixture.runGit(['add', '.']);
   fixture.runGit(['commit', '-m', 'init']);
 }
+
+// W4/0003: fresh contexts default to the tree view and Settings is the sole
+// presentation source; these list-view contracts opt into the flat list
+// through the shared helper.
+const switchToListView = switchFileListToListView;
 
 test.describe('Comparison Propagation (E2E)', () => {
   test.beforeEach(async ({ page, request }) => {
@@ -29,9 +38,9 @@ test.describe('Comparison Propagation (E2E)', () => {
       await page.reload();
       await page.waitForLoadState('networkidle');
       await selectRailTab(page, 'git');
+      await switchToListView(page);
 
       const fileList = page.locator('#file-list-panel');
-      await expect(fileList).toBeVisible({ timeout: 8000 });
 
       // Click a file to load diff
       const fileRow = fileList.locator('.file-row').first();
@@ -51,20 +60,17 @@ test.describe('Comparison Propagation (E2E)', () => {
       // Target should show working tree
       await expect(slotValues.nth(1)).toContainText(/working tree/i, { timeout: 3000 });
 
-      // Diff viewer should show the selected file path
-      const filePath = await fileRow.locator('.file-path').textContent();
-      expect(filePath).toBeTruthy();
-      await expect(diffViewer).toContainText(filePath ?? '');
-
-      // Both panels should be visible and showing same comparison context
-      await expect(fileList).toBeVisible();
-      await expect(diffViewer).toBeVisible();
+      // Diff viewer should show the actual changed content for the default
+      // comparison (content assertion, not selector labels).
+      await expect(diffViewer).toContainText('# changed', { timeout: 5000 });
     } finally {
       fixture.cleanup();
     }
   });
 
-  test('changing base updates both panels and persists comparison', async ({ page }) => {
+  test('changing base updates file list, complete diff, and per-file diff content', async ({
+    page,
+  }) => {
     const fixture = createGitFixture('diffscribe-e2e-cp-');
     try {
       initRepo(fixture);
@@ -85,14 +91,18 @@ test.describe('Comparison Propagation (E2E)', () => {
 
       const fileList = page.locator('#file-list-panel');
       await expect(fileList).toBeVisible({ timeout: 8000 });
+      await switchToListView(page);
 
-      // Click a file to load diff with default comparison
-      const fileRow = fileList.locator('.file-row').first();
-      await expect(fileRow).toBeVisible({ timeout: 10000 });
-      await fileRow.click();
+      // Default comparison (working tree vs HEAD): only README.md changed.
+      const rows = fileList.locator('.file-row');
+      await expect(rows.first()).toBeVisible({ timeout: 10000 });
+      await expect(fileList).toContainText('README.md');
+      await expect(fileList).not.toContainText('feature.txt');
 
-      const diffViewer = page.locator('.diff-viewer');
-      await expect(diffViewer).toBeVisible({ timeout: 8000 });
+      // The complete diff shows the default comparison content.
+      const viewer = page.locator('[data-testid="complete-diff-viewer"]');
+      await expect(viewer).toBeVisible({ timeout: 10000 });
+      await expect(viewer).toContainText('# modified', { timeout: 5000 });
 
       // Change the base slot to feature-branch (via the branch popup)
       const comparisonSlots = page.locator('.comparison-slots');
@@ -113,10 +123,22 @@ test.describe('Comparison Propagation (E2E)', () => {
       // Base slot should now show feature-branch
       await expect(slotValues.nth(0)).toContainText(/feature-branch/i, { timeout: 10000 });
 
-      // File rows should reflect the changed comparison
-      const rows = fileList.locator('.file-row');
-      const rowCount = await rows.count();
-      expect(rowCount).toBeGreaterThanOrEqual(0);
+      // The file list now includes feature.txt (deleted in the working tree
+      // relative to feature-branch).
+      await expect(fileList).toContainText('feature.txt', { timeout: 10000 });
+
+      // The complete diff shows content from the new comparison: the
+      // feature.txt lines are deleted relative to feature-branch.
+      await expect(viewer).toContainText('feature content', { timeout: 5000 });
+
+      // Open feature.txt: the per-file diff shows the actual content too.
+      const featureRow = fileList.locator('.file-row', { hasText: 'feature.txt' });
+      await expect(featureRow).toBeVisible({ timeout: 10000 });
+      await featureRow.click();
+
+      const diffViewer = page.locator('.diff-viewer');
+      await expect(diffViewer).toBeVisible({ timeout: 8000 });
+      await expect(diffViewer).toContainText('feature content', { timeout: 5000 });
     } finally {
       fixture.cleanup();
     }

@@ -244,6 +244,13 @@ untracked, unknown
 `FileListEntry`, never a `FileChangeStatus` value. Implemented in
 `src/lib/server/domain/value-objects/file-change-status.ts`.
 
+**Client presentation (0003):** Quick Open consumes the existing
+`FileChangeStatus`/`FileListEntry` values by path — the client joins the
+comparison-aware `/file-list` result and renders the technical statuses
+through the existing UI mapping (`statusTone`/`statusLabel`). No domain
+change: the values, the endpoint contract, and the Git readers are
+untouched.
+
 ### FileListEntry / FileListResult
 
 Application DTOs representing a file list entry and the aggregated result:
@@ -636,6 +643,26 @@ as `[PENDIENTE]` without inventing answers:
 
 6. `[PENDIENTE]` How will the precedence of multiple `AGENTS.md` files be
    resolved? — affects `ContextConfiguration` and auto-detection.
+
+## Presentation mapping (workspace‑git‑review‑ux)
+
+The domain vocabulary is unchanged; the following mappings live only at the
+consumer (web) layer:
+
+- **`FileChangeStatus.UNTRACKED` → UI label `New`** (always English). The
+  domain/API/DTO value remains `untracked`; no localization is introduced.
+- **Untracked tone**: `untracked` maps to the success (green) tone in the UI;
+  `added` stays green too.
+- **Directory status aggregation**: directories in the Project tree show a
+  single dot derived from descendant statuses with deterministic precedence
+  (highest wins): `unmerged > deleted > modified > type-changed > added >
+  renamed > copied > untracked > unknown`. This is a presentation rule, not a
+  domain invariant — the precedence lives in
+  `src/lib/web/utils/status-aggregation.ts`.
+- **Working tree as target**: the Git comparison target accepts a fixed
+  `working-tree` ref (serialized label "Working tree"); `ComparisonType`
+  inference produces `working-tree-vs-head`, `branch-vs-working-tree`, or
+  `commit-vs-working-tree` as before.
 
 ---
 

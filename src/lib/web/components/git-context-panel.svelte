@@ -165,20 +165,29 @@
     internalDraft = updated;
   }
 
-  const COMPARISON_LABELS: Record<string, string> = {
-    'working-tree-vs-head': 'working tree vs HEAD',
-    'staged-vs-head': 'staged vs HEAD',
-    unstaged: 'unstaged changes',
-    'branch-vs-branch': 'branch vs branch',
-    'commit-vs-commit': 'commit vs commit',
-    'commit-vs-working-tree': 'commit vs working tree',
-    'branch-vs-working-tree': 'branch vs working tree',
-    'commit-range': 'commit range',
-  };
-
-  function comparisonLabel(type: string): string {
-    return COMPARISON_LABELS[type] ?? type;
+  /**
+   * W8: select the working tree as the target. The target becomes the fixed
+   * working-tree ref; the type is inferred (working-tree-vs-head with the
+   * untouched HEAD base, branch-vs-working-tree otherwise).
+   */
+  function selectWorkingTree() {
+    if (!internalDraft) return;
+    const updated = { ...internalDraft };
+    updated.target = {
+      type: 'working-tree' as const,
+      value: 'WORKING_TREE',
+      label: 'Working tree',
+    };
+    updated.comparisonType = inferComparisonType(
+      { type: updated.base.type as GitRefLike['type'], value: updated.base.value },
+      { type: updated.target.type as GitRefLike['type'], value: updated.target.value },
+    );
+    internalDraft = updated;
   }
+
+  const isWorkingTreeTarget = $derived(
+    internalDraft?.target.type === 'working-tree' || internalDraft?.target.label === 'Working tree',
+  );
 
   function selectCommit(shortHash: string) {
     if (!openSlot || !internalDraft) return;
@@ -359,6 +368,7 @@
           aria-pressed={openSlot === 'base'}
           aria-haspopup="listbox"
           aria-expanded={openSlot === 'base'}
+          title={internalDraft?.base.label ?? ''}
           onclick={() => (openSlot = openSlot === 'base' ? null : 'base')}
         >
           <span class="slot-label">Base</span>
@@ -390,6 +400,7 @@
           aria-pressed={openSlot === 'target'}
           aria-haspopup="listbox"
           aria-expanded={openSlot === 'target'}
+          title={internalDraft?.target.label ?? ''}
           onclick={() => (openSlot = openSlot === 'target' ? null : 'target')}
         >
           <span class="slot-label">Target</span>
@@ -403,18 +414,17 @@
             selectedCanonicalRef={internalDraft?.target.type === 'branch'
               ? internalDraft.target.value
               : null}
+            workingTreeSelected={isWorkingTreeTarget}
             loading={refreshing && gitContext.branches.length === 0}
             error={refreshError}
             triggerRef={targetTriggerRef}
             onSelect={(canonicalRef) => selectBranchByCanonical(canonicalRef, 'target')}
+            onSelectWorkingTree={selectWorkingTree}
             onRetry={retryContext}
             onClose={() => (openSlot = null)}
           />
         {/if}
       </div>
-      {#if internalDraft?.comparisonType}
-        <span class="comparison-type">{comparisonLabel(internalDraft.comparisonType)}</span>
-      {/if}
     </div>
 
     <!-- File list -->
@@ -605,7 +615,7 @@
     background: var(--surface-secondary);
     color: var(--text-primary);
     cursor: pointer;
-    min-width: 100px;
+    min-width: 160px;
     width: 100%;
     transition: border-color 0.15s;
   }
@@ -617,7 +627,7 @@
   .slot-wrap {
     position: relative;
     flex: 1 1 auto;
-    min-width: 100px;
+    min-width: 160px;
   }
 
   .slot-btn:hover {
@@ -646,18 +656,12 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    max-width: 120px;
+    max-width: 200px;
   }
 
   .vs-separator {
     color: var(--text-tertiary);
     font-size: var(--text-xs);
-  }
-
-  .comparison-type {
-    font-size: var(--text-xs);
-    color: var(--text-tertiary);
-    margin-left: auto;
   }
 
   /* Branch & commit lists */

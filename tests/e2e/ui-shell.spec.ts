@@ -1,6 +1,31 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
+import type { Page } from '@playwright/test';
+
 import { expect, test } from './fixtures';
+import { createGitFixture } from './helpers/git-fixture';
 import { waitForHydration } from './helpers/hydration';
 import { resetDb } from './helpers/reset-db';
+
+async function registerWorkspace(page: Page, repoPath: string, displayName: string): Promise<void> {
+  await waitForHydration(page);
+  await page.getByTestId('open-workspace-toggle').click();
+  await page.waitForSelector('[data-testid="open-workspace-form"]', {
+    state: 'visible',
+    timeout: 10000,
+  });
+  await page.fill('#ws-path', repoPath);
+  await page.fill('#ws-name', displayName);
+  await page.click('#open-workspace-form button[type="submit"]');
+  await page.waitForLoadState('networkidle');
+}
+
+function initRepo(fixture: { repoPath: string; runGit(args: readonly string[]): void }): void {
+  fs.writeFileSync(path.join(fixture.repoPath, 'README.md'), '# e2e');
+  fixture.runGit(['add', '.']);
+  fixture.runGit(['commit', '-m', 'init']);
+}
 
 test.describe('UI Shell — Rail tabs, theme switcher, file tabs, right panel tabs (SHELL-UI-01)', () => {
   test.beforeEach(async ({ page, request }) => {
@@ -214,6 +239,15 @@ test.describe('UI Shell — Rail tabs, theme switcher, file tabs, right panel ta
     await expect(tabs).toHaveCount(2);
     await expect(tabs.nth(0)).toHaveAttribute('aria-label', /comments/i);
     await expect(tabs.nth(1)).toHaveAttribute('aria-label', /review/i);
+
+    // Desktop right navigation is vertical (both expanded and collapsed).
+    await expect(rightPanel.locator('[role="tablist"]')).toHaveAttribute(
+      'aria-orientation',
+      'vertical',
+    );
+
+    // The active tab links to a visible tabpanel in the expanded panel.
+    await expect(rightPanel.locator('[role="tabpanel"]:visible')).toHaveCount(1);
   });
 
   test('SHELL-UI-01: Comments tab renders ObservationPanel content', async ({ page }) => {
@@ -262,5 +296,38 @@ test.describe('UI Shell — Rail tabs, theme switcher, file tabs, right panel ta
 
     const rightPanel = page.locator('[data-testid="right-panel"]');
     await expect(rightPanel).toBeVisible();
+  });
+
+  // ────── Git-first landing (W3) ──────
+
+  test('SHELL-UI-01: selecting a workspace lands on the Git rail', async ({ page }) => {
+    const fixture = createGitFixture('diffscribe-e2e-landing-');
+    const uniqueName = `E2E-Landing-${Date.now()}`;
+
+    try {
+      initRepo(fixture);
+      await registerWorkspace(page, fixture.repoPath, uniqueName);
+
+      // Select the workspace from the sidebar.
+      await page
+        .locator(`#workspace-sidebar li:has-text("${uniqueName}") .select-btn`)
+        .first()
+        .click();
+
+      // W3: the shell lands on the Git rail (aria-selected true).
+      const gitTab = page.locator('[data-testid="rail-tab-git"]');
+      await expect(gitTab).toHaveAttribute('aria-selected', 'true', { timeout: 10000 });
+
+      // The Git context panel is rendered.
+      await expect(page.locator('#git-context-panel')).toBeVisible();
+
+      // Project remains reachable.
+      const projectTab = page.locator('[data-testid="rail-tab-project"]');
+      await projectTab.click();
+      await expect(projectTab).toHaveAttribute('aria-selected', 'true');
+      await expect(gitTab).toHaveAttribute('aria-selected', 'false');
+    } finally {
+      fixture.cleanup();
+    }
   });
 });

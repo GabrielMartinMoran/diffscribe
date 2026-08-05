@@ -107,6 +107,15 @@ test.describe('Workspace Management UI (E2E)', () => {
         .first();
       await sidebarItem.click();
 
+      // W3: selecting lands on the Git rail; return to Workspaces to assert
+      // the active state in the sidebar.
+      await expect(page.locator('[data-testid="rail-tab-git"]')).toHaveAttribute(
+        'aria-selected',
+        'true',
+        { timeout: 10000 },
+      );
+      await page.getByTestId('rail-tab-workspaces').click();
+
       // Check that the workspace is marked as active
       await page.waitForSelector('#workspace-sidebar li.active', {
         state: 'visible',
@@ -252,6 +261,15 @@ test.describe('Workspace Management UI (E2E)', () => {
       // Enter to select the second workspace
       await page.keyboard.press('Enter');
 
+      // W3: selecting lands on the Git rail; return to Workspaces to assert
+      // the active state in the sidebar.
+      await expect(page.locator('[data-testid="rail-tab-git"]')).toHaveAttribute(
+        'aria-selected',
+        'true',
+        { timeout: 10000 },
+      );
+      await page.getByTestId('rail-tab-workspaces').click();
+
       // Wait for the second workspace to be marked as active
       const activeItem = page.locator('#workspace-sidebar li.active').first();
       await activeItem.waitFor({ state: 'visible', timeout: 10000 });
@@ -292,6 +310,13 @@ test.describe('Workspace Management UI (E2E)', () => {
         .locator(`#workspace-sidebar li:has-text("${uniqueName}") .select-btn`)
         .first();
       await selectBtn.click();
+      // W3: selecting lands on the Git rail; return to Workspaces to delete.
+      await expect(page.locator('[data-testid="rail-tab-git"]')).toHaveAttribute(
+        'aria-selected',
+        'true',
+        { timeout: 10000 },
+      );
+      await page.getByTestId('rail-tab-workspaces').click();
       await page.waitForSelector('#workspace-sidebar li.active', {
         state: 'visible',
         timeout: 10000,

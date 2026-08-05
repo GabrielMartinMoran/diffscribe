@@ -104,11 +104,12 @@ Feature: Rail tabs — compact icon rail, left contextual panel, and right panel
     Then the Git tab becomes active
     And the center region shows the Git content
 
-  @product @navigation @p1 @p2 @ui @e2e
-  Scenario: Keyboard navigation moves focus across right panel tabs
+  @product @navigation @p1 @p2 @ui @e2e @delta-modified
+  Scenario: Keyboard navigation moves focus across desktop right panel tabs
     Given the right panel is focused
-    When the user presses ArrowLeft or ArrowRight
+    When the user presses ArrowUp or ArrowDown
     Then focus moves between the Comments and Review tabs
+    # CHANGED: desktop right navigation is vertical (was ArrowLeft/ArrowRight); mobile sheet stays horizontal
 
   # ────── Hydration stability ──────
 

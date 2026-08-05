@@ -6,7 +6,11 @@ import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import type { GitFixture } from './helpers/git-fixture';
 import { createGitFixture } from './helpers/git-fixture';
-import { registerAndSelectWorkspace, selectRightPanelTab } from './helpers/register-workspace';
+import {
+  registerAndSelectWorkspace,
+  selectRightPanelTab,
+  switchFileListToListView,
+} from './helpers/register-workspace';
 import { resetDb } from './helpers/reset-db';
 
 async function createReviewAndSelectFile(page: Page, fileName = 'src/app.ts'): Promise<void> {
@@ -29,6 +33,10 @@ async function createReviewAndSelectFile(page: Page, fileName = 'src/app.ts'): P
   await page.waitForLoadState('networkidle');
 
   await selectRightPanelTab(page, 'comments');
+
+  // W4: fresh contexts default to the tree view; this contract drives the
+  // flat list rows.
+  await switchFileListToListView(page);
 
   const fileRow = page
     .locator('[role="listbox"] [role="option"]')
@@ -371,6 +379,8 @@ test.describe('Missing context inline errors (OBS-ERR)', () => {
       await resetDb(page.request);
       await page.goto('/', { waitUntil: 'networkidle' });
       await registerAndSelectWorkspace(page, repoDir, 'draft-no-review', 'git');
+      // W4: fresh contexts default to the tree view; opt into the flat list.
+      await switchFileListToListView(page);
 
       const fileRow = page
         .locator('[role="listbox"] [role="option"]')

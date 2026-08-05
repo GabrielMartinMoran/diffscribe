@@ -2,15 +2,16 @@
 Feature: Quick Open — keyboard-driven file search over the Project tree
 
   Ctrl/Cmd+P opens a Quick Open modal with an autofocused filter. It searches
-  the shared Project workspace tree, flattening file nodes only. By default it
-  shows tracked files; the localStorage setting
-  `diffscribe-quick-open-include-untracked` (default false) exposes untracked
-  files when enabled. Fuzzy matching is a pure client-side scorer: exact path
-  beats basename prefix, basename prefix beats basename subsequence, basename
-  subsequence beats path fuzzy; consecutive, case, start-of-word, and
-  separator matches are boosted; ties are broken deterministically; all
+  the shared Project workspace tree, flattening file nodes only. It always
+  includes nonignored untracked files; ignored files stay excluded. The
+  obsolete localStorage setting `diffscribe-quick-open-include-untracked` no
+  longer affects results. Fuzzy matching is a pure client-side scorer: exact
+  path beats basename prefix, basename prefix beats basename subsequence,
+  basename subsequence beats path fuzzy; consecutive, case, start-of-word,
+  and separator matches are boosted; ties are broken deterministically; all
   whitespace terms are required; matches carry highlight ranges; results are
-  capped at 512. Every acceptance of Quick Open routes to the Project rail so
+  capped at 512. Results show working-tree status badges through the existing
+  UI mapping. Every acceptance of Quick Open routes to the Project rail so
   the Source Viewer is shown.
 
   Background:
@@ -83,30 +84,48 @@ Feature: Quick Open — keyboard-driven file search over the Project tree
     And the central viewer still shows "src/app.ts"
     And focus returns to the previously focused element
 
-  @product @navigation @quick-open @p1 @e2e
-  Scenario: Quick Open shows tracked files only by default
+  @product @navigation @quick-open @p1 @e2e @delta-modified
+  Scenario: Quick Open always includes nonignored untracked files
+    # CHANGED: untracked files are always included (was: tracked files only by default)
     Given the working tree has an untracked file "src/scratch.ts"
-    When the user opens Quick Open and types "scratch"
-    Then no results are shown
-
-  @product @navigation @quick-open @p1 @e2e
-  Scenario: The include-untracked setting exposes untracked files
-    Given the working tree has an untracked file "src/scratch.ts"
-    And the Quick Open setting "diffscribe-quick-open-include-untracked" is enabled
     When the user opens Quick Open and types "scratch"
     Then "src/scratch.ts" is shown as a result
 
-  @product @navigation @quick-open @p1 @e2e
+  @product @navigation @quick-open @p1 @e2e @delta-modified
+  Scenario: The obsolete include-untracked setting no longer affects Quick Open
+    # CHANGED: the include-untracked setting was removed; the legacy key is inert
+    Given the working tree has an untracked file "src/scratch.ts"
+    And localStorage has "diffscribe-quick-open-include-untracked" set to "false"
+    When the user opens Quick Open and types "scratch"
+    Then "src/scratch.ts" is still shown as a result
+
+  @product @navigation @quick-open @p1 @e2e @delta-modified
   Scenario: An empty query shows the full file index
+    # CHANGED: the index includes nonignored untracked files (was: tracked files only)
     Given Quick Open is open
     When the filter is empty
-    Then the results show every tracked file in the workspace
+    Then the results show every nonignored file in the workspace
 
-  @product @navigation @quick-open @p1 @e2e
+  @product @navigation @quick-open @p1 @e2e @delta-modified
   Scenario: Results are capped at 512
-    Given the workspace repository has more than 512 tracked files
+    # CHANGED: the cap applies to the nonignored index (was: tracked files only)
+    Given the workspace repository has more than 512 nonignored files
     When the user opens Quick Open with an empty filter
     Then no more than 512 results are shown
+
+  @product @navigation @quick-open @p1 @e2e @delta-added
+  Scenario: Quick Open excludes ignored files
+    Given the working tree has an ignored file "src/ignored.ts"
+    When the user opens Quick Open and types "ignored"
+    Then no results are shown
+
+  @product @navigation @quick-open @p1 @e2e @delta-added
+  Scenario: Quick Open shows working-tree status badges
+    Given the working tree has a modified file "src/app.ts"
+    And the working tree has an untracked file "src/scratch.ts"
+    When the user opens Quick Open with an empty filter
+    Then the result "src/app.ts" shows the status "modified"
+    And the result "src/scratch.ts" shows the status "New" in green
 
   @product @navigation @quick-open @p1 @e2e
   Scenario: Ctrl+Shift+P does not open Quick Open

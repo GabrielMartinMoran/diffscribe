@@ -284,9 +284,14 @@ The full source of a file is served through the
 
 ### Client-side preferences
 
-The active theme (`ThemeKey`), resized panel widths, and the Quick Open
-untracked-inclusion flag (`diffscribe-quick-open-include-untracked`, default
-`false`) are stored exclusively in the browser's `localStorage`. These values:
+The active theme (`ThemeKey`) and resized panel widths are stored exclusively
+in the browser's `localStorage`. The Quick Open untracked-inclusion
+preference (`diffscribe-quick-open-include-untracked`) is **obsolete since
+0003**: Quick Open always includes nonignored untracked files, so the
+setting, its Settings switch, and its store module were removed.
+`src/lib/web/stores/quick-open-store.ts` now exposes only
+`removeLegacyQuickOpenSetting(storage)`, called on every Quick Open open to
+clean the legacy key. These values:
 
 - Are not persisted in SQLite or on the server.
 - Are not part of the server-side domain model.
@@ -294,35 +299,47 @@ untracked-inclusion flag (`diffscribe-quick-open-include-untracked`, default
 - Are resolved on the client and applied via the `data-theme` attribute on the
   `<html>` element.
 
-The Quick Open flag follows the `wrap-store` pattern (default `false`,
-defensive `resolve`), lives in `src/lib/web/stores/quick-open-store.ts`, and
-affects only the Quick Open dialog — the Git/file list never reads it.
+The Git file list view preference moved into the versioned
+`diffscribe-visual-settings` aggregate (see Persistence); **Settings is the
+sole presentation source** — the Git panel no longer renders List/Tree
+controls and never writes the preference.
 
 #### Client tab state
 
 The central viewer tab collection is session-only client state in
-`src/lib/web/stores/active-file-store.ts` (extended in place; existing exports
-`activeFile`, `activeFilePath`, `activeFileLabel`, `setActiveFile`,
-`clearActiveFile` stay available). The store keeps the ordered tab list and
-the active path, and exposes:
+`src/lib/web/stores/active-file-store.ts` (existing exports `activeFile`,
+`activeFilePath`, `activeFileLabel`, `setActiveFile`, `clearActiveFile` stay
+available and stay file-only). The store keeps an ordered list of a
+discriminated `CentralTab` union — file tabs
+(`{kind: 'file', path, label}`) and the synthetic pinned tab
+(`{kind: 'complete-diff', id: 'complete-diff'}`) — plus the active tab id
+(`activeTabId`: a file path or `COMPLETE_DIFF_TAB_ID`). It exposes:
 
-- `openFileTab(path, label, newTab)` — normal open reuses the active tab;
-  modifier open appends a tab unless the path is already open (dedup by
-  repo-relative path);
-- `activateTab(path)` — switches the active tab;
-- `closeTab(path)` — active close selects next, else previous, else empty;
-  inactive close preserves the active tab;
-- `resetTabs()` — clears tabs and the active path (workspace switch).
+- `pinCompleteDiff()` — materializes the pinned tab first and activates it;
+  idempotent; workspace-scoped (the shell calls it when a workspace becomes
+  active and `resetTabs()` on every workspace switch);
+- `openFileTab(path, label, newTab)` — normal open reuses the active FILE
+  tab (never the pin; with the pin active it appends); modifier open appends
+  a tab unless the path is already open (dedup by repo-relative path);
+- `activateTab(id)` — switches the active tab (path or pin id);
+- `closeTab(id)` — the pin cannot be closed; closing the last file tab
+  activates the pin; active close selects next, else previous;
+- `resetTabs()` — clears tabs, the pin, and the active id.
 
-Tabs are never persisted (no localStorage, no SQLite) and are unique within
-`activeWorkspaceId`; switching workspace resets the collection so stale paths
-cannot leak into the next workspace.
+The pinned tab is never a path sentinel: no viewer ever receives
+`complete-diff` as a file path. Tabs are never persisted (no localStorage,
+no SQLite) and are unique within `activeWorkspaceId`; switching workspace
+resets the collection so stale paths cannot leak into the next workspace,
+then recreates the new workspace's pin.
 
-#### Quick Open index (client-side)
+#### Quick Open index and status join (client-side)
 
 Quick Open (`src/lib/web/components/quick-open-dialog.svelte`) builds its
-index from the shared tree loader, flattening file nodes only. Matching uses
-a pure TypeScript fuzzy scorer
+index from the shared tree loader, flattening file nodes only. The tree
+reader already supplies tracked files and nonignored untracked files while
+excluding ignored files (`git ls-files --cached` + `--others
+--exclude-standard`); since 0003 the client applies **no untracked filter**.
+Matching uses a pure TypeScript fuzzy scorer
 (`src/lib/web/services/quick-open-scorer.ts`), inspired by VS Code's
 `fuzzyScorer` principles without transplanting its internals:
 
@@ -330,7 +347,18 @@ a pure TypeScript fuzzy scorer
 - boosts: consecutive matches, case, start-of-word, and separator matches;
 - compactness, deterministic lexical tie-break, highlights, all
   whitespace-separated terms required, result cap 512;
-- query normalization handles case and path separators.
+- query normalization handles case and path separators;
+- optional `status` metadata passes through results without affecting
+  ranking.
+
+Status badges come from a shared comparison-aware loader
+(`src/lib/web/services/file-list-status-loader.ts`): it fetches the existing
+`GET /api/workspaces/[id]/file-list` endpoint, builds a path→status map,
+caches per workspace+comparison signature with a monotonic request guard,
+and returns `null` (no badges) on failure or missing comparison. The dialog
+merges the map by path and renders `StatusBadge` via the existing
+`statusTone`/`statusLabel` UI mapping (`untracked` → **New**, green). The
+server is untouched: tree and file-list contracts are unchanged.
 
 The scorer is product logic (not generic UI kit) and is fully unit-tested.
 There is no server-side Quick Open endpoint, search, or pagination in this
@@ -761,3 +789,97 @@ The `selectedFile` state propagates from `GitContextPanel.onFileSelect` to
 persistence. Main layout uses `grid-template-columns: 300px 1fr` with a
 sub‑grid `grid-template-rows: auto 1fr` in the main area to stack
 GitContextPanel + DiffViewer vertically.
+
+### Complete diff aggregate (workspace‑git‑review‑ux)
+
+The Git rail shows the **complete diff** of the active comparison when no file
+tab is open. This is a new aggregate contract, additive to the existing
+single‑file manifest and diff readers:
+
+- **Application port** — `GitCompleteDiffReader` in
+  `src/lib/server/application/git-complete-diff-reader.ts`.
+- **Use case** — `GetCompleteDiffUseCase` resolves the comparison refs and
+  passes them through to the reader (no highlighting at aggregate level; the
+  per‑file `file-diff`/`source` routes keep their own highlighting).
+- **DTO** — `CompleteDiffResult` / `CompleteDiffFile` in
+  `src/lib/server/application/dto/results/complete-diff-results.ts`:
+  deterministic ascending path order, rename `oldPath`, binary flag,
+  per‑file/aggregate truncation metadata, `partialErrors` collection, single
+  `readAt` snapshot.
+- **Adapter** — `SimpleGitCompleteDiffReader`: one `git diff --unified=3
+  -M -C -C <args> --` invocation (snapshot consistency), `--name-status -z`
+  for rename/copy metadata, `git ls-files --others` for untracked files only
+  when the comparison includes the working tree, per‑file synthesis for
+  untracked content reusing the shared helpers from
+  `simple-git-file-diff-reader.ts`. Caps: per‑file 256 KB / 5 000 lines
+  (reused), aggregate 500 files (default, max 1 000 via `limit`) / 4 096 KB /
+  40 000 diff lines. Per‑file failures are collected, never fatal.
+- **Route** — `GET /api/workspaces/[id]/complete-diff?comparison=...&limit=...`
+  with the same comparison guard as `file-diff`; `limit` validated 1..1 000;
+  404 unknown workspace; 400 invalid parameters. Additive 0.x API surface;
+  no SQLite migration.
+- **Viewer** — `CompleteDiffViewer` fetches the aggregate with the existing
+  request‑guard pattern, renders a file index (`role="list"`) and per‑file
+  sections (`role="region"`, encoded path testids). Plain index clicks scroll
+  to the section; Ctrl/Cmd‑click opens a full‑file tab and switches the rail
+  to Project (same semantics as Quick Open). The single‑file `DiffViewer`
+  behavior and selection remain intact.
+- **Shell wiring** (`+page.svelte`): Git rail + no open tab → complete diff;
+  Git rail + open tab → `DiffViewer`; Project rail → `SourceViewer`.
+
+### Client visualization settings aggregate
+
+`src/lib/web/stores/visual-settings-store.ts` replaces the legacy
+`file-list-view-store.ts` with a versioned client aggregate
+`diffscribe-visual-settings` (`{version: 1, fileListView, markdownView}`).
+Read‑through migration honors an explicit legacy `diffscribe-file-list-view =
+list` once; the legacy key is removed on the first write. Fresh contexts
+default to tree/list‑preview. Consumers: `file-list.svelte` (initial view),
+`source-viewer.svelte` (initial Markdown mode), `settings-panel.svelte`
+("Files" section controls).
+
+### Markdown preview security boundary
+
+`src/lib/web/utils/markdown-renderer.ts` is a dependency‑free, line‑based
+renderer. Every source character is HTML‑escaped before interpolation; raw
+HTML is never emitted; `sanitizeLink` allowlists `http:`, `https:`, `mailto:`
+only. `{@html}` is used exclusively with the renderer's escaped output.
+
+### Client visualization settings aggregate
+
+`src/lib/web/stores/visual-settings-store.ts` replaces the legacy
+`file-list-view-store.ts` with a versioned client aggregate
+`diffscribe-visual-settings` (`{version: 1, fileListView, markdownView}`).
+Read‑through migration honors an explicit legacy `diffscribe-file-list-view =
+list` once; the legacy key is removed on the first write. Fresh contexts
+default to tree/list‑preview. Consumers: `file-list.svelte` (initial view —
+reads only, since 0003 the Git panel has no local switcher and never writes),
+`source-viewer.svelte` (initial Markdown mode), `settings-panel.svelte`
+("Files" section controls — the sole presentation writer).
+
+### Complete-diff shell wiring and workspace context
+
+The shell (`src/routes/+page.svelte`) materializes the pinned complete-diff
+tab whenever a workspace becomes active (`pinCompleteDiff()`) and resets the
+tab collection on every workspace switch. The work area renders by the active
+tab id: the pin active → `CompleteDiffViewer` (from any rail, refreshing in
+place on comparison change); a file tab with the Project rail → `SourceViewer`;
+a file tab otherwise → `DiffViewer`; nothing selected (no workspace) → the
+empty viewer. Git file-list plain clicks keep scrolling the pinned viewer
+(W6); Ctrl/Cmd-click opens a file tab and switches to Project.
+
+`workspace-context-header.svelte` renders the active workspace `displayName`
+and truncated `repositoryPath` at the top of Project/Git/Settings panel
+content; it is hidden on the Workspaces rail (the list already identifies the
+workspace). It consumes the existing `WorkspaceListItem` DTO — no server
+change.
+
+### Git/diff landing and workspace lifecycle
+
+Selecting a workspace lands on the Git rail (`activeRailTab` initializes from
+the page data and the workspace‑switch effect); deleting the active workspace
+returns the shell to the Workspaces rail. The delete dialog awaits
+`invalidateAll()` before closing so the sidebar drops the deleted workspace
+immediately. The Open Workspace form keeps the editable path and adds a
+feature‑detected directory browser (`webkitdirectory`) that pre‑fills the
+directory name plus the approved limitation hint.

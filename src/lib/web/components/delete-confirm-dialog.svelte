@@ -2,6 +2,7 @@
   import type { SubmitFunction } from '@sveltejs/kit';
 
   import { enhance } from '$app/forms';
+  import { invalidateAll } from '$app/navigation';
 
   import Button from './ui/Button.svelte';
   import Dialog from './ui/Dialog.svelte';
@@ -27,6 +28,10 @@
       if (result.type === 'failure') {
         error = result.data?.error ?? 'Delete failed';
       } else if (result.type === 'success') {
+        // Refresh the page data consumed by the sidebar before closing so the
+        // deleted workspace disappears immediately (same pattern as
+        // open-workspace-form.svelte).
+        await invalidateAll();
         onClose();
       }
     };
