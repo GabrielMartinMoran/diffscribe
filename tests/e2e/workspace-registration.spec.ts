@@ -4,10 +4,17 @@ import path from 'node:path';
 import type { Page } from '@playwright/test';
 
 import { expect, test } from './fixtures';
+import { captureEnhanceObserverSnapshot } from './helpers/enhance-diagnostics';
 import { createGitFixture } from './helpers/git-fixture';
 import { waitForHydration } from './helpers/hydration';
 import { openWorkspaceActionsMenu } from './helpers/open-workspace-menu';
+import {
+  openWorkspaceForm as openRegistrationForm,
+  submitRegistration,
+} from './helpers/register-workspace';
 import { resetDb } from './helpers/reset-db';
+import { createStabilityLedger, writeLedgerFile } from './helpers/stability-ledger';
+import { createWorkerTelemetry, type WorkerTelemetryRecorder } from './helpers/worker-telemetry';
 
 function initRepo(fixture: { repoPath: string; runGit(args: readonly string[]): void }): void {
   fs.writeFileSync(path.join(fixture.repoPath, 'README.md'), '# e2e');
@@ -28,10 +35,59 @@ async function openWorkspaceForm(page: Page): Promise<void> {
 }
 
 test.describe('Workspace Registration UI (E2E)', () => {
-  test.beforeEach(async ({ page, request }) => {
+  // 0005 Phase 9: failure-time diagnostics for the 175 probe. The stability
+  // ledger records every 175 run (pass/fail) with worker/port/stderr context;
+  // the worker telemetry and the enhance-observer snapshot are attached on
+  // failure. Strictly additive — the test flow and assertions are untouched.
+  const stabilityLedger = createStabilityLedger();
+  let telemetry: WorkerTelemetryRecorder | null = null;
+  /** Probe events captured by the 175 test body, for the afterEach capture. */
+  let lastProbeEvents: string[] = [];
+
+  test.beforeEach(async ({ page, request, workerServer }) => {
+    telemetry = createWorkerTelemetry(page, {
+      workerIndex: workerServer.workerIndex,
+      parallelIndex: workerServer.parallelIndex,
+      port: workerServer.port,
+      baseURL: workerServer.baseURL,
+      stderrSnapshot: () => workerServer.readiness.stderrSnapshot,
+    });
     await resetDb(request);
     await page.goto('/');
     await page.waitForLoadState('networkidle');
+  });
+
+  test.afterEach(async ({ page, workerServer }, testInfo) => {
+    if (testInfo.title !== 'sequential workspace registrations open fresh forms') return;
+    const observerSnapshot = await captureEnhanceObserverSnapshot(page);
+    const workerSnapshot = telemetry?.snapshot() ?? null;
+    const diagnostics = {
+      worker: workerSnapshot,
+      observer: observerSnapshot,
+      probe: lastProbeEvents,
+    };
+    stabilityLedger.record({
+      spec: 'tests/e2e/workspace-registration.spec.ts',
+      test: testInfo.title,
+      workerIndex: workerServer.workerIndex,
+      parallelIndex: workerServer.parallelIndex,
+      port: workerServer.port,
+      status: testInfo.status === 'passed' ? 'passed' : 'failed',
+      error:
+        testInfo.status === 'passed' ? null : (testInfo.error?.message ?? String(testInfo.error)),
+      stderrSnapshot: workerServer.readiness.stderrSnapshot,
+    });
+    console.error(`[175-diagnostics] ${JSON.stringify(diagnostics)}`);
+    if (testInfo.status !== 'passed') {
+      await testInfo.attach('175-failure-diagnostics', {
+        body: JSON.stringify(diagnostics, null, 2),
+        contentType: 'application/json',
+      });
+    }
+  });
+
+  test.afterAll(() => {
+    writeLedgerFile(stabilityLedger);
   });
 
   test('hydration smoke proves Svelte 5 delegated handler is attached', async ({ page }) => {
@@ -178,40 +234,72 @@ test.describe('Workspace Registration UI (E2E)', () => {
     const name1 = `E2E-Seq1-${Date.now()}`;
     const name2 = `E2E-Seq2-${Date.now()}`;
 
+    // 0005-175 probe (diagnostic only): a native form submit navigates the
+    // page (use:enhance NOT attached); an enhanced submit does not. The
+    // probe records any navigation/request around the register submits so a
+    // missing-hydration condition is observable under load without touching
+    // production or hydration.ts.
+    const probeEvents: string[] = [];
+    const probeNavigation = (frame: { url(): string }): void => {
+      if (probeEvents.length < 20) {
+        probeEvents.push(`framenavigated ${frame.url()} t=${Date.now() % 100000}`);
+      }
+    };
+    const probeRequest = (request: { url(): string; method(): string }): void => {
+      if (request.url().includes('/register')) {
+        probeEvents.push(
+          `req ${request.method()} ${request.url().replace('http://127.0.0.1:', '')} t=${Date.now() % 100000}`,
+        );
+      }
+    };
+    page.on('framenavigated', probeNavigation);
+    page.on('request', probeRequest);
+
     try {
-      // First registration
+      // First registration — open-only helper, then the canonical
+      // fill+submit+barrier+settling helper.
       initRepo(fixture1);
-      await openWorkspaceForm(page);
-      await page.fill('#ws-path', fixture1.repoPath);
-      await page.fill('#ws-name', name1);
-      await page.click('#open-workspace-form button[type="submit"]');
-      await expect(page.locator('[data-testid="open-workspace-form"]')).toBeHidden({
-        timeout: 10000,
-      });
-
-      // Second registration — form must be fresh (empty inputs)
-      initRepo(fixture2);
-      await openWorkspaceForm(page);
-      await expect(page.locator('[data-testid="open-workspace-form"]')).toBeVisible();
-
-      // Form inputs must be empty (fresh form)
+      await waitForHydration(page);
+      await openRegistrationForm(page);
       const pathInput = page.locator('#ws-path');
       const nameInput = page.locator('#ws-name');
       await expect(pathInput).toHaveValue('');
       await expect(nameInput).toHaveValue('');
+      await submitRegistration(page, fixture1.repoPath, name1);
 
-      // Fill and submit second
-      await pathInput.fill(fixture2.repoPath);
-      await nameInput.fill(name2);
-      await page.click('#open-workspace-form button[type="submit"]');
+      // After registration the form must be closed (fresh form for the
+      // second registration — no state leak).
+      await expect(page.locator('[data-testid="open-workspace-form"]')).toBeHidden({
+        timeout: 10000,
+      });
+      await expect(page.getByTestId('open-workspace-toggle')).toHaveText(/Open Workspace/i);
+
+      // Second registration — the first one has fully settled, so the
+      // second opens a FRESH form: the inputs must be empty again.
+      initRepo(fixture2);
+      await openRegistrationForm(page);
+      await expect(page.locator('[data-testid="open-workspace-form"]')).toBeVisible();
+      await expect(pathInput).toHaveValue('');
+      await expect(nameInput).toHaveValue('');
+      await submitRegistration(page, fixture2.repoPath, name2);
+
+      // Form must be closed again after the second registration
       await expect(page.locator('[data-testid="open-workspace-form"]')).toBeHidden({
         timeout: 10000,
       });
 
-      // Both workspaces should appear in the sidebar
+      // Both workspaces should appear in the sidebar (the second one with
+      // its own name — proving the fresh form did not leak the first
+      // registration's values).
       await expect(page.locator(`#workspace-sidebar li:has-text("${name1}")`)).toBeVisible();
       await expect(page.locator(`#workspace-sidebar li:has-text("${name2}")`)).toBeVisible();
     } finally {
+      page.off('framenavigated', probeNavigation);
+      page.off('request', probeRequest);
+      console.error(`[probe-175] ${JSON.stringify(probeEvents)}`);
+      // Phase 9: hand the probe events to the describe-level afterEach so the
+      // failure-time diagnostics include the navigation/request evidence.
+      lastProbeEvents = probeEvents;
       fixture1.cleanup();
       fixture2.cleanup();
     }

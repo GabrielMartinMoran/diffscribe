@@ -159,9 +159,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     help), `docs/domain.md` (presentation mapping), `docs/versioning.md`
     (additive 0.x route, no SQLite migration).
 
-### Changed
+- Fast menu and panel interactions (feat-fast-menu-interactions):
+  - **Added:** per-resource web loader contract
+    (`src/lib/web/services/resource-loader.ts` — `ResourceLoader<TKey, TValue>`:
+    `load`/`invalidate`/`clear`, canonical key, in-flight dedupe, per-key stale
+    guards, failures never cached, session-memory only, no inactive-workspace
+    prefetch). `fileListStatusLoader` rewritten to the contract: canonical key
+    without `createdAt`, workspace-scoped pending-safe invalidation, shared
+    `loadEntries` for the Git panel; `projectTreeLoader` conforms at the type
+    level. The three `/file-list` consumers (Project tree badges, Git panel
+    file list, Quick Open badges) share one fetch per workspace+comparison.
+  - **Added:** single `/reviews` load per open (the click handler no longer
+    duplicates the reactive effect load) and monotonic guard + AbortController
+    on observation loads so stale responses from a previous review never
+    overwrite newer observations.
+  - **Added:** targeted SvelteKit invalidation through declared keys in
+    `+page.server.ts` (`depends('app:workspaces')`,
+    `depends('app:git-context')`, `depends('app:active-review')`); register,
+    delete, rename/repair → `invalidate('app:workspaces')`, review mutations →
+    `invalidate('app:active-review')`, git retry → `app:workspaces` +
+    `app:git-context`; loader-level targeted invalidation for rename/repair
+    (tree + file-list of the affected workspace only).
+  - **Added:** E2E performance harness — `performance-timing.ts`
+    (marks/measures, long-task + resource observers), `request-tracking.ts`
+    (per-interaction request counting, page errors), `fast-menu-baseline.spec.ts`
+    (dev + production via worker-server production mode) generating
+    `tests/fast-menu-baseline.md` (measurement only; budgets remain an
+    explicit user decision); behavioral spec `fast-menu-interactions.spec.ts`
+    (menu without API, shell-before-data, single fetches, workspace scoping,
+    invalidation, SSR seed, stale observation race); BDD feature
+    `fast-menu-interactions.feature` + static step pins.
+  - Docs: `docs/architecture.md` (per-resource web loader cache boundary,
+    `depends()` keys). No TTL/SWR, no localStorage/IndexedDB cache, no global
+    fetch wrapper, no server-side cache (gated behind the runtime baseline).
 
-- Removed the obsolete Quick Open "Include untracked files" setting from
+### Changed
   Settings and its localStorage contract (client-only preference; no version
   bump).
 - Observations: seeded visual/accessibility coverage added; the populated

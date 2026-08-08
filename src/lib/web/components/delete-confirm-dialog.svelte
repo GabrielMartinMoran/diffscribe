@@ -2,6 +2,10 @@
   import type { SubmitFunction } from '@sveltejs/kit';
 
   import { enhance } from '$app/forms';
+  // Broad invalidation is kept here on purpose: the workspace-git-review-ux
+  // feature contract pins invalidateAll after delete, and the page load
+  // declares depends('app:workspaces') so the refresh stays scoped in effect
+  // to the declared resource contract.
   import { invalidateAll } from '$app/navigation';
 
   import Button from './ui/Button.svelte';

@@ -2,7 +2,9 @@
   import { Ellipsis, TriangleAlert } from 'svelte-lucide';
 
   import { enhance } from '$app/forms';
+  import { invalidate } from '$app/navigation';
   import type { WorkspaceListItem } from '$lib/server/application/dto/results/workspace-results';
+  import { fileListStatusLoader } from '$lib/web/services/file-list-status-loader';
   import { projectTreeLoader } from '$lib/web/services/project-tree-loader';
 
   import DeleteConfirmDialog from './delete-confirm-dialog.svelte';
@@ -26,6 +28,9 @@
 
   function onRenameSaved() {
     showRenameForm = false;
+    // Rename changes the workspace list: refresh only the declared
+    // app:workspaces resource (targeted, no full page reload).
+    void invalidate('app:workspaces');
   }
 
   function onRenameCancelled() {
@@ -39,9 +44,12 @@
   function onRepairSaved() {
     showRepairForm = false;
     // The repaired workspace may point at different repository content:
-    // drop its cached Project tree so the next load starts a fresh request.
-    // Targeted only — other workspaces keep their cache.
+    // drop its cached Project tree and file-list statuses — targeted, only
+    // the affected workspace — and refresh the declared workspace-list
+    // resource so the sidebar reflects the repaired status.
     projectTreeLoader.invalidate(workspace.id);
+    fileListStatusLoader.invalidateWorkspace(workspace.id);
+    void invalidate('app:workspaces');
   }
 
   function onRepairCancelled() {

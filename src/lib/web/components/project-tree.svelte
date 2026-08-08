@@ -2,6 +2,7 @@
   import { SvelteMap } from 'svelte/reactivity';
   import { Folder, Info, LoaderCircle } from 'svelte-lucide';
 
+  import { fileListStatusLoader } from '$lib/web/services/file-list-status-loader';
   import {
     projectTreeLoader,
     type ProjectTreeNode as LoadedTreeNode,
@@ -11,18 +12,6 @@
   import { createRequestGuard, type RequestGuard } from '$lib/web/utils/request-guard';
 
   import ProjectTreeNode from './project-tree-node.svelte';
-
-  interface FileEntry {
-    path: string;
-    status: string;
-    binary: boolean;
-  }
-
-  interface FileListResult {
-    entries: FileEntry[];
-    readAt: string;
-    error?: { message: string; errorCode: string };
-  }
 
   let {
     activeWorkspaceId = null as string | null,
@@ -75,25 +64,22 @@
     }
   }
 
+  // Change indicators come from the shared file-list status loader: the Git
+  // context panel and Quick Open consume the same per-workspace cache, so
+  // the endpoint is fetched once per workspace+comparison.
   async function fetchChangeStatus(): Promise<void> {
     if (!activeWorkspaceId || !comparisonDraft) return;
     const generation = statusGuard.begin();
-    try {
-      const comparisonParam = encodeURIComponent(JSON.stringify(comparisonDraft));
-      const res = await fetch(
-        `/api/workspaces/${activeWorkspaceId}/file-list?comparison=${comparisonParam}`,
-      );
-      if (!statusGuard.isCurrent(generation)) return;
-      const data: FileListResult = await res.json();
-      if (!statusGuard.isCurrent(generation)) return;
-      if (!data.error) {
-        changeStatusMap.clear();
-        for (const entry of data.entries) {
-          changeStatusMap.set(entry.path, entry.status);
-        }
+    const map = await fileListStatusLoader.load({
+      workspaceId: activeWorkspaceId,
+      comparison: comparisonDraft,
+    });
+    if (!statusGuard.isCurrent(generation)) return;
+    changeStatusMap.clear();
+    if (map) {
+      for (const [path, status] of map) {
+        changeStatusMap.set(path, status);
       }
-    } catch {
-      // Non-critical — tree renders without change indicators
     }
   }
 

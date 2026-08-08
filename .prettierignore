@@ -1,5 +1,6 @@
 # Generated artifacts — not source code
 .pas/
+.nas/
 session-*.md
 
 .svelte-kit/

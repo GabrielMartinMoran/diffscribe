@@ -1,12 +1,9 @@
 <script lang="ts">
-  import { invalidateAll } from '$app/navigation';
-  import type {
-    FileListEntry,
-    FileListResult,
-  } from '$lib/server/application/dto/results/file-list-results';
+  import { invalidate } from '$app/navigation';
   import type { GitContextAggregate } from '$lib/server/application/services/get-git-context-use-case';
   import BranchSelectPopup from '$lib/web/components/branch-select-popup.svelte';
   import FileList from '$lib/web/components/file-list.svelte';
+  import { fileListStatusLoader } from '$lib/web/services/file-list-status-loader';
   import { projectTreeLoader } from '$lib/web/services/project-tree-loader';
   import { type GitRefLike, inferComparisonType } from '$lib/web/types/comparison-inference';
   import { createRequestGuard, type RequestGuard } from '$lib/web/utils/request-guard';
@@ -63,7 +60,9 @@
   let internalDraft = $state<ComparisonDraft | null>(null);
 
   // File list state
-  let fileListEntries = $state<FileListEntry[]>([]);
+  let fileListEntries = $state<
+    import('$lib/server/application/dto/results/file-list-results').FileListEntry[]
+  >([]);
   let fileListLoading = $state(false);
   let fileListError = $state<string | null>(null);
 
@@ -90,24 +89,25 @@
     }
   });
 
+  // Fetch the file list when the comparison draft changes. The entries come
+  // from the shared file-list status loader: the Project tree and Quick Open
+  // consume the same per-workspace cache (one fetch per workspace+comparison).
   async function fetchFileList(draft: ComparisonDraft) {
     if (!activeWorkspaceId) return;
     const generation = fileListGuard.begin();
     fileListLoading = true;
     fileListError = null;
     try {
-      const comparisonParam = encodeURIComponent(JSON.stringify(draft));
-      const res = await fetch(
-        `/api/workspaces/${activeWorkspaceId}/file-list?comparison=${comparisonParam}`,
-      );
+      const entries = await fileListStatusLoader.loadEntries({
+        workspaceId: activeWorkspaceId,
+        comparison: draft,
+      });
       if (!fileListGuard.isCurrent(generation)) return;
-      const data: FileListResult = await res.json();
-      if (!fileListGuard.isCurrent(generation)) return;
-      if (data.error) {
-        fileListError = data.error.message;
+      if (entries === null) {
+        fileListError = 'Failed to load file list';
         fileListEntries = [];
       } else {
-        fileListEntries = data.entries;
+        fileListEntries = entries;
       }
     } catch (e: unknown) {
       if (!fileListGuard.isCurrent(generation)) return;
@@ -235,10 +235,12 @@
       }
       gitContext = data;
       // Successful refresh: the repository content may have changed, so the
-      // cached Project tree for this workspace is invalidated (targeted,
-      // pending-safe; other workspaces untouched). No refetch happens here —
-      // the next Project rail / Quick Open load starts one fresh request.
+      // cached Project tree AND the file-list status cache for this workspace
+      // are invalidated (targeted, pending-safe; other workspaces untouched).
+      // No refetch happens here — the next Project rail / Git panel / Quick
+      // Open load starts one fresh request.
       projectTreeLoader.invalidate(activeWorkspaceId);
+      fileListStatusLoader.invalidateWorkspace(activeWorkspaceId);
     } catch (e: unknown) {
       if (!refreshGuard.isCurrent(generation)) return;
       refreshError = e instanceof Error ? e.message : 'Failed to refresh Git context';
@@ -253,9 +255,10 @@
     if (!activeWorkspaceId) return;
     retrying = true;
     try {
-      // First re-validate the workspace via server-side invalidation
-      await invalidateAll();
-      // Then fetch fresh git context for the current workspace
+      // Targeted revalidation of the declared resources (workspace list +
+      // git context), then a fresh context fetch for the current workspace.
+      await invalidate('app:workspaces');
+      await invalidate('app:git-context');
       await refresh();
     } finally {
       retrying = false;

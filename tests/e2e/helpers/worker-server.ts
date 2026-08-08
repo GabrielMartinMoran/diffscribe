@@ -3,6 +3,8 @@ import { spawn } from 'node:child_process';
 
 // ── Types ──────────────────────────────────────────────
 
+export type WorkerServerMode = 'dev' | 'production';
+
 export interface WorkerServerOptions {
   /** Sequential worker index (0-based). */
   readonly workerIndex: number;
@@ -12,6 +14,12 @@ export interface WorkerServerOptions {
   readonly basePort?: number;
   /** Readiness timeout in ms; default 60_000. */
   readonly startupTimeoutMs?: number;
+  /**
+   * Server mode. `dev` (default) spawns `npm run dev`; `production` spawns
+   * `npm run preview` (requires a prior `npm run build`) so the baseline can
+   * be measured against the production build.
+   */
+  readonly mode?: WorkerServerMode;
   /** Test-only: override the command binary (default: `npm`). */
   readonly overrideCommand?: string;
   /** Test-only: override command arguments. */
@@ -20,12 +28,27 @@ export interface WorkerServerOptions {
   readonly overrideEnv?: Record<string, string>;
 }
 
+/**
+ * Additive readiness/stderr telemetry (0005 Phase 1). Recording this metadata
+ * never changes the readiness decision; it only makes the startup observable.
+ */
+export interface WorkerReadinessTelemetry {
+  /** Number of HTTP readiness probes attempted before the first 2xx. */
+  readonly attempts: number;
+  /** Epoch ms of the first 2xx readiness probe, or `null` if it never succeeded. */
+  readonly firstResponseAtMs: number | null;
+  /** Last captured stderr snapshot from the child process. */
+  readonly stderrSnapshot: string;
+}
+
 export interface WorkerServer {
   readonly workerIndex: number;
   readonly parallelIndex: number;
   readonly port: number;
   readonly baseURL: string;
   readonly pid: number;
+  /** Additive readiness/stderr telemetry. */
+  readonly readiness: WorkerReadinessTelemetry;
   /**
    * @internal Child process handle — exposed so that
    * `stopWorkerServer` can access it.
@@ -40,6 +63,7 @@ const STOP_SIGTERM_TIMEOUT_MS = 5_000;
 const DEFAULT_BASE_PORT = 5_173;
 const POLL_INTERVAL_MS = 200;
 const REQUEST_TIMEOUT_MS = 2_000;
+const MAX_STDERR_SNAPSHOT_CHARS = 2_000;
 
 // ── PID registry & backstop state ──────────────────────
 
@@ -51,6 +75,17 @@ let _sigintHandler: (() => void) | null = null;
 let _exitHandler: (() => void) | null = null;
 
 // ── Public API ─────────────────────────────────────────
+
+/**
+ * Build the default npm arguments for a server mode. Dev spawns the Vite dev
+ * server; production spawns `vite preview` over the last `vite build` output.
+ * Both bind to 127.0.0.1 on the given port and fail fast on port conflicts
+ * (`--strictPort`).
+ */
+export function buildServerArgs(mode: WorkerServerMode, port: number): string[] {
+  const script = mode === 'production' ? 'preview' : 'dev';
+  return ['run', script, '--', '--host', '127.0.0.1', '--port', String(port), '--strictPort'];
+}
 
 /**
  * Spawn a SvelteKit dev server for a single worker and wait until it
@@ -68,17 +103,9 @@ export async function startWorkerServer(options: WorkerServerOptions): Promise<W
   const baseURL = `http://127.0.0.1:${port}`;
   const timeoutMs = options.startupTimeoutMs ?? 60_000;
 
+  const mode = options.mode ?? 'dev';
   const command = options.overrideCommand ?? 'npm';
-  const args = options.overrideArgs ?? [
-    'run',
-    'dev',
-    '--',
-    '--host',
-    '127.0.0.1',
-    '--port',
-    String(port),
-    '--strictPort',
-  ];
+  const args = options.overrideArgs ?? buildServerArgs(mode, port);
 
   const child = spawn(command, [...args], {
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -86,7 +113,10 @@ export async function startWorkerServer(options: WorkerServerOptions): Promise<W
     detached: true,
     env: {
       ...process.env,
-      DIFFSCRIBE_E2E_IN_MEMORY_DB: '1',
+      // Dev-only: the in-memory test database. Production servers fail
+      // closed when this flag is set, so production mode omits it (the
+      // production baseline points DIFFSCRIBE_DB_DIR at a temp dir instead).
+      ...(mode === 'production' ? {} : { DIFFSCRIBE_E2E_IN_MEMORY_DB: '1' }),
       DIFFSCRIBE_E2E_RESET_SECRET: process.env.DIFFSCRIBE_E2E_RESET_SECRET ?? DEFAULT_RESET_SECRET,
       DIFFSCRIBE_E2E_WORKER_INDEX: String(options.workerIndex),
       ...options.overrideEnv,
@@ -98,16 +128,24 @@ export async function startWorkerServer(options: WorkerServerOptions): Promise<W
     stderr += chunk.toString();
   });
 
-  try {
-    await waitForReadiness(baseURL, timeoutMs, child, () => stderr);
-  } catch (err) {
-    killChild(child);
-    throw err;
+  // Register the PID BEFORE readiness so the backstop can clean up the
+  // process group even when startup fails (0005 H4). The child was spawned
+  // with `detached: true`, so it leads its own process group; killing that
+  // group never touches processes of other workers or projects.
+  const pid = child.pid;
+  if (pid) {
+    activePids.add(pid);
   }
 
-  // Register PID after successful readiness
-  if (child.pid) {
-    activePids.add(child.pid);
+  let readinessResult: ReadinessResult;
+  try {
+    readinessResult = await waitForReadiness(baseURL, timeoutMs, child, () => stderr);
+  } catch (err) {
+    killChild(child);
+    if (pid) {
+      activePids.delete(pid);
+    }
+    throw err;
   }
 
   return {
@@ -116,6 +154,11 @@ export async function startWorkerServer(options: WorkerServerOptions): Promise<W
     port,
     baseURL,
     pid: child.pid!,
+    readiness: {
+      attempts: readinessResult.attempts,
+      firstResponseAtMs: readinessResult.firstResponseAtMs,
+      stderrSnapshot: stderr.slice(-MAX_STDERR_SNAPSHOT_CHARS),
+    },
     _child: child,
   };
 }
@@ -264,16 +307,27 @@ function getStopTimeoutMs(): number {
 }
 
 /**
+ * Additive readiness telemetry result: how many probes were attempted and
+ * when the first 2xx response arrived.
+ */
+interface ReadinessResult {
+  attempts: number;
+  firstResponseAtMs: number | null;
+}
+
+/**
  * Poll `GET <url>/` until the server responds with a 2xx status, the child
- * exits, or the deadline is reached.
+ * exits, or the deadline is reached. Returns additive readiness telemetry.
  */
 async function waitForReadiness(
   url: string,
   timeoutMs: number,
   child: ChildProcess,
   getStderr: () => string,
-): Promise<void> {
+): Promise<ReadinessResult> {
   const deadline = Date.now() + timeoutMs;
+  let attempts = 0;
+  let firstResponseAtMs: number | null;
 
   while (Date.now() < deadline) {
     // Child exited before becoming ready
@@ -290,8 +344,19 @@ async function waitForReadiness(
     }
 
     // Try a single HTTP request with its own short timeout
-    const ok = await httpGet(url);
-    if (ok) return;
+    attempts += 1;
+    const probe = await httpGetText(url);
+    if (probe?.ok) {
+      firstResponseAtMs = Date.now();
+      // H3: readiness also requires every JS chunk referenced by the served
+      // HTML to be available. A failing chunk rejects readiness and reports
+      // the failing resource instead of merely repeating GET /.
+      const failedChunk = await findFailedJsChunk(url, probe.body);
+      if (failedChunk) {
+        throw new Error(failedChunk);
+      }
+      return { attempts, firstResponseAtMs };
+    }
 
     await sleep(POLL_INTERVAL_MS);
   }
@@ -306,27 +371,74 @@ async function waitForReadiness(
 }
 
 /**
- * Attempt a single HTTP GET. Returns `true` on any 2xx response.
- * Returns `false` on network errors, timeouts, or non-2xx statuses.
+ * Attempt a single HTTP GET with a short timeout, returning the status and
+ * body. Returns `null` on network errors or timeouts.
  */
-async function httpGet(url: string): Promise<boolean> {
+async function httpGetText(url: string): Promise<HttpProbeResult | null> {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     const res = await fetch(url, { signal: controller.signal });
     clearTimeout(timer);
-    return res.ok;
+    const body = await res.text();
+    return { ok: res.ok, status: res.status, body };
   } catch {
-    return false;
+    return null;
   }
 }
 
+/** Result of a single HTTP probe: status plus body. */
+interface HttpProbeResult {
+  ok: boolean;
+  status: number;
+  body: string;
+}
+
+/** Matches `<script ... src="...">` tags whose src points at a `.js` file. */
+const MODULE_SCRIPT_SRC_PATTERN = /<script[^>]*\bsrc\s*=\s*["']([^"']+\.js[^"']*)["']/gi;
+
 /**
- * Force-kill a child process. Safe to call on an already-dead process.
+ * H3: validate that every JavaScript chunk referenced by the served HTML is
+ * available. Returns a readable failure message naming the failing chunk, or
+ * `null` when every referenced chunk responds 2xx (or the HTML references
+ * no `.js` chunk at all — nothing to validate, readiness falls back to the
+ * `GET /` 2xx contract).
+ */
+async function findFailedJsChunk(baseUrl: string, html: string): Promise<string | null> {
+  const chunkUrls = [...html.matchAll(MODULE_SCRIPT_SRC_PATTERN)].map((match) =>
+    new URL(match[1], `${baseUrl}/`).toString(),
+  );
+  for (const chunkUrl of chunkUrls) {
+    const probe = await httpGetText(chunkUrl);
+    if (!probe) {
+      return `Readiness failed: required JS chunk ${chunkUrl} did not respond`;
+    }
+    if (probe.status >= 400) {
+      return `Readiness failed: required JS chunk ${chunkUrl} responded with HTTP ${probe.status}`;
+    }
+  }
+  return null;
+}
+
+/**
+ * Force-kill a child process and its descendants.
+ *
+ * The child was spawned with `detached: true`, making it the leader of its
+ * own process group, so `process.kill(-pid, 'SIGKILL')` kills the whole
+ * group (including any grandchild processes spawned before startup failed).
+ * On platforms without negative-PID process-group support (e.g. Windows) it
+ * falls back to killing the direct child. Safe to call on an already-dead
+ * process; never touches processes outside the child's own group.
  */
 function killChild(child: ChildProcess): void {
-  if (!child.killed) {
-    child.kill('SIGKILL');
+  const pid = child.pid;
+  if (!pid) return;
+  try {
+    process.kill(-pid, 'SIGKILL');
+  } catch {
+    if (!child.killed) {
+      child.kill('SIGKILL');
+    }
   }
 }
 

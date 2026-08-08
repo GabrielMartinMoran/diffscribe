@@ -169,6 +169,41 @@ describe('stale process guard — detection behaviour', () => {
     expect(report.processes[0].pid).toBe(pid);
     expect(report.processes[0].command).toContain('vite dev');
   });
+
+  it('H4 RED: detects vite dev on a dynamic worker port outside COMMON_PORTS', () => {
+    const pid = 42001;
+    // Dynamic worker port: 0005 workers bind to basePort + parallelIndex
+    // (e.g. 5173 + 28 = 5201), which the static COMMON_PORTS list never
+    // covers. The stale guard must accept the dynamic worker port range.
+    const port = 5999;
+    const exec = mockSingleViteProcess(pid, port, PROJECT_CWD);
+
+    const report = detectStaleProcesses(PROJECT_CWD, exec, [5173, 5999]);
+
+    expect(
+      report.processes,
+      'H4 RED: dynamic worker port not scanned by the stale guard',
+    ).toHaveLength(1);
+    expect(report.processes[0].pid).toBe(pid);
+    expect(report.processes[0].port).toBe(port);
+  });
+
+  it('derives the worker port range from DIFFSCRIBE_E2E_BASE_PORT by default', () => {
+    process.env.DIFFSCRIBE_E2E_BASE_PORT = '7000';
+    try {
+      const pid = 43001;
+      const port = 7003; // base + parallelIndex, inside the derived range
+      const exec = mockSingleViteProcess(pid, port, PROJECT_CWD);
+
+      const report = detectStaleProcesses(PROJECT_CWD, exec);
+
+      expect(report.processes).toHaveLength(1);
+      expect(report.processes[0].pid).toBe(pid);
+      expect(report.processes[0].port).toBe(port);
+    } finally {
+      delete process.env.DIFFSCRIBE_E2E_BASE_PORT;
+    }
+  });
 });
 
 describe('stale process guard — kill behaviour', () => {

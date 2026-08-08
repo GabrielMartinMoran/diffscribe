@@ -77,12 +77,12 @@ test.describe('Quick Open', () => {
       await waitForHydration(page);
 
       await openQuickOpen(page, 'Control+p');
-      await expect(page.getByRole('combobox')).toBeFocused();
+      await expect(page.getByTestId('quick-open-filter')).toBeFocused();
 
       await page.keyboard.press('Escape');
       await expect(page.getByRole('dialog')).not.toBeVisible();
       await openQuickOpen(page, 'Meta+p');
-      await expect(page.getByRole('combobox')).toBeFocused();
+      await expect(page.getByTestId('quick-open-filter')).toBeFocused();
     } finally {
       fixture.cleanup();
     }
@@ -97,7 +97,7 @@ test.describe('Quick Open', () => {
       await waitForHydration(page);
 
       await openQuickOpen(page, 'Control+p');
-      await page.getByRole('combobox').fill('util');
+      await page.getByTestId('quick-open-filter').fill('util');
       await expectResult(page, 'src/lib/util.ts');
       const result = page.getByTestId('quick-open-result').first();
       // The contiguous match renders as one highlighted mark.
@@ -117,7 +117,7 @@ test.describe('Quick Open', () => {
       await waitForHydration(page);
 
       await openQuickOpen(page, 'Control+p');
-      const combobox = page.getByRole('combobox');
+      const combobox = page.getByTestId('quick-open-filter');
       await combobox.fill('lib util');
       await expectResult(page, 'src/lib/util.ts');
       await combobox.fill('lib nope');
@@ -138,7 +138,7 @@ test.describe('Quick Open', () => {
       // Start from the Git rail: acceptance must route to Project.
       await selectRailTab(page, 'git');
       await openQuickOpen(page, 'Control+p');
-      await page.getByRole('combobox').fill('util');
+      await page.getByTestId('quick-open-filter').fill('util');
       await expectResult(page, 'src/lib/util.ts');
       await page.keyboard.press('ArrowDown');
       await page.keyboard.press('Enter');
@@ -167,7 +167,7 @@ test.describe('Quick Open', () => {
       await clickTreeFileByName(page, 'app.ts');
 
       await openQuickOpen(page, 'Control+p');
-      await page.getByRole('combobox').fill('util');
+      await page.getByTestId('quick-open-filter').fill('util');
       await expectResult(page, 'src/lib/util.ts');
       await page.keyboard.press('Control+Enter');
       await expect(page.getByRole('dialog')).not.toBeVisible();
@@ -186,7 +186,7 @@ test.describe('Quick Open', () => {
       await waitForHydration(page);
 
       await openQuickOpen(page, 'Control+p');
-      await page.getByRole('combobox').fill('more');
+      await page.getByTestId('quick-open-filter').fill('more');
       await expectResult(page, 'src/lib/more.ts');
       await page.getByTestId('quick-open-result').first().click();
       await expect(page.getByRole('dialog')).not.toBeVisible();
@@ -208,7 +208,7 @@ test.describe('Quick Open', () => {
       await waitForHydration(page);
 
       await openQuickOpen(page, 'Control+p');
-      const combobox = page.getByRole('combobox');
+      const combobox = page.getByTestId('quick-open-filter');
       await combobox.fill('ts');
       await expect(page.getByTestId('quick-open-result').first()).toBeVisible({ timeout: 10000 });
       await page.keyboard.press('End');
@@ -241,7 +241,7 @@ test.describe('Quick Open', () => {
       });
 
       await openQuickOpen(page, 'Control+p');
-      await page.getByRole('combobox').fill('util');
+      await page.getByTestId('quick-open-filter').fill('util');
       await page.keyboard.press('Escape');
       await expect(page.getByRole('dialog')).not.toBeVisible();
       await expect(page.getByTestId('source-file-path')).toContainText('src/app.ts');
@@ -266,7 +266,7 @@ test.describe('Quick Open', () => {
 
       // Untracked files are always shown, regardless of the legacy value.
       await openQuickOpen(page, 'Control+p');
-      const combobox = page.getByRole('combobox');
+      const combobox = page.getByTestId('quick-open-filter');
       await combobox.fill('scratch');
       await expectResult(page, 'src/scratch.ts');
 
@@ -310,7 +310,7 @@ test.describe('Quick Open', () => {
       await waitForHydration(page);
 
       await openQuickOpen(page, 'Control+p');
-      const combobox = page.getByRole('combobox');
+      const combobox = page.getByTestId('quick-open-filter');
       await combobox.fill('util');
       await expectResult(page, 'src/lib/util.ts');
 
@@ -369,7 +369,7 @@ test.describe('Quick Open', () => {
       await waitForHydration(page);
 
       await openQuickOpen(page, 'Control+p');
-      await page.getByRole('combobox').fill('ignored');
+      await page.getByTestId('quick-open-filter').fill('ignored');
       await expect(page.getByText('No matching files')).toBeVisible();
     } finally {
       fixture.cleanup();

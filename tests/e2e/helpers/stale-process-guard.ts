@@ -21,14 +21,32 @@ export type ExecFn = (command: string, options?: { encoding: string; timeout: nu
 // ── Constants ──────────────────────────────────────────
 
 const COMMON_PORTS = [5173, 56823, 5174, 5175, 5176, 4173];
+const DEFAULT_BASE_PORT = 5_173;
+/** How many consecutive worker ports the guard scans by default. */
+const MAX_WORKER_PORT_RANGE = 64;
 const TARGET_COMMAND_PATTERN = 'vite dev';
+
+/**
+ * Derive the default port scan list: the known common ports plus the
+ * dynamic worker port range (0005 H4). The worker base port comes from
+ * `DIFFSCRIBE_E2E_BASE_PORT` (default 5173) and each Playwright worker
+ * binds to `base + parallelIndex`, so the guard scans a bounded range of
+ * consecutive ports instead of a static list.
+ */
+function defaultPortScan(): number[] {
+  const rawBase = process.env.DIFFSCRIBE_E2E_BASE_PORT;
+  const base = rawBase !== undefined && rawBase !== '' ? Number(rawBase) : DEFAULT_BASE_PORT;
+  const range = Array.from({ length: MAX_WORKER_PORT_RANGE }, (_, index) => base + index);
+  return [...new Set([...COMMON_PORTS, ...range])];
+}
 
 // ── Public API ─────────────────────────────────────────
 
 /**
- * Detect stale `vite dev` processes running on common ports.
+ * Detect stale `vite dev` processes running on common or dynamic worker
+ * ports.
  *
- * Uses `lsof -i` (Linux/macOS) to find processes listening on the common
+ * Uses `lsof -i` (Linux/macOS) to find processes listening on the scanned
  * ports, then filters by command name and working directory.  Processes
  * running from a different `cwd` are reported as foreign and are **never**
  * killed by this guard.
@@ -37,15 +55,19 @@ const TARGET_COMMAND_PATTERN = 'vite dev';
  *   Defaults to `process.cwd()`.
  * @param exec - injectable exec function (defaults to `execSync`).
  *   Useful for testing without mocking native modules.
+ * @param ports - optional explicit port list to scan. Defaults to the
+ *   common ports plus the dynamic worker range derived from
+ *   `DIFFSCRIBE_E2E_BASE_PORT`.
  * @returns a report of detected and foreign processes.
  */
 export function detectStaleProcesses(
   projectCwd: string = cwd(),
   exec: ExecFn = execSync,
+  ports: readonly number[] = defaultPortScan(),
 ): StaleProcessReport {
   const report: StaleProcessReport = { processes: [], foreign: [] };
 
-  for (const port of COMMON_PORTS) {
+  for (const port of ports) {
     let output: string;
     try {
       output = exec(`lsof -i :${port} -t -s TCP:LISTEN 2>/dev/null`, {

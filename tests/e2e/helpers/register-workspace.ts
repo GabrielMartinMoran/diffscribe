@@ -1,10 +1,55 @@
 import type { Page, Response } from '@playwright/test';
 import { expect } from '@playwright/test';
 
+import { type EnhanceObserverState, installEnhanceObserver } from './enhance-diagnostics';
 import { waitForHydration } from './hydration';
 
 export type TargetRail = 'workspaces' | 'project' | 'git' | 'settings';
 export type RightPanelTab = 'comments' | 'review';
+
+/**
+ * Bound for the deferred invalidation barrier (0005): the `__data.json`
+ * response triggered by `invalidateAll()` must arrive within this window or
+ * the helper fails fast with a readable error instead of hanging until the
+ * test timeout (the failure mode observed under full-suite load).
+ */
+const REGISTRATION_BARRIER_TIMEOUT_MS = 15_000;
+
+/**
+ * Bound for the enhanced-submit readiness guard (0005 D20): the form's
+ * enhanced submit listener (SvelteKit `use:enhance`) must be attached before
+ * the helper submits. Without it the submit would navigate natively (no
+ * `__data.json`, torn-down DOM) — the guard fails fast instead.
+ */
+const ENHANCE_READY_TIMEOUT_MS = 10_000;
+
+/**
+ * Test-side observer hook (D20/D21). Installed via `page.evaluate` BEFORE the
+ * workspace form is mounted, so every `submit` listener attached to any form
+ * is recorded with per-form monotonic identity, attach/detach lifecycle, and
+ * bubble-phase submit evidence (ordinal, target, final `defaultPrevented`,
+ * submitter). The core lives in `tests/e2e/helpers/enhance-diagnostics.ts`
+ * and is observation-only: it never calls `preventDefault`, never dispatches
+ * events, and never mutates production behavior. Idempotent: a second
+ * install is a no-op.
+ */
+
+/** Test-only global: observed submit listeners per form (installed by the hook). */
+interface EnhanceObserverWindow extends Window {
+  __enhanceObserver?: EnhanceObserverState;
+}
+
+/**
+ * Browser-side predicate for the enhance-readiness guard: the workspace form
+ * (action="?/register") must have at least one observed `submit` listener.
+ */
+const ENHANCE_READY_PREDICATE = (action: string): boolean => {
+  const win = window as EnhanceObserverWindow;
+  const form = document.querySelector<HTMLFormElement>(`form[action="${action}"]`);
+  if (!form) return false;
+  const listeners = win.__enhanceObserver?.formListeners.get(form);
+  return !!listeners && listeners.size > 0;
+};
 
 /**
  * Pure predicate that matches SvelteKit deferred invalidation responses.
@@ -100,6 +145,173 @@ export async function selectRailTab(
   if (readinessPromise) {
     await readinessPromise;
   }
+}
+
+/**
+ * Minimal structural page surface used by the canonical registration helper.
+ *
+ * Deliberately narrower than Playwright's `Page` so the deferred-invalidation
+ * barrier contract can be exercised deterministically with a simulated page
+ * in integration tests (see `tests/integration/e2e-helpers/workspace-management-flake.test.ts`).
+ */
+export interface RegistrationPage {
+  getByTestId(testId: string): { click(): Promise<void>; isVisible(): Promise<boolean> };
+  locator(selector: string): { isVisible(): Promise<boolean> };
+  waitForSelector(
+    selector: string,
+    options?: { state?: 'attached' | 'detached' | 'hidden' | 'visible'; timeout?: number },
+  ): Promise<unknown>;
+  fill(selector: string, value: string): Promise<void>;
+  click(selector: string): Promise<void>;
+  waitForLoadState(state: 'networkidle'): Promise<void>;
+  evaluate<T, TArg>(script: string | ((arg: TArg) => T), arg?: TArg): Promise<T>;
+  waitForFunction<TArg>(
+    script: string | ((arg: TArg) => boolean),
+    arg?: TArg,
+    options?: { timeout?: number },
+  ): Promise<unknown>;
+  waitForResponse(
+    predicate: (response: { url(): string; request(): { method(): string } }) => boolean,
+    options?: { timeout?: number },
+  ): Promise<unknown>;
+}
+
+/**
+ * Open the workspace registration form WITHOUT filling or submitting.
+ *
+ * 0005 Phase 5: exposes the open-only step so specs can assert the fresh-form
+ * contract (empty inputs) between sequential registrations before delegating
+ * the fill+submit+barrier to `submitRegistration`. Event-driven only: no
+ * `waitForTimeout`, no reload.
+ */
+export async function openWorkspaceForm(page: RegistrationPage): Promise<void> {
+  // D20/D21: install the test-side observer hook BEFORE the form is mounted
+  // (the toggle below mounts it, and the `use:enhance` submit listener is
+  // attached at mount time). Idempotent: a second install is a no-op. The
+  // hook is self-contained so Playwright serializes it into the page.
+  await page.evaluate(installEnhanceObserver);
+
+  const toggle = page.getByTestId('open-workspace-toggle');
+  if (
+    !(await page
+      .locator('[data-testid="open-workspace-form"]')
+      .isVisible()
+      .catch(() => false))
+  ) {
+    await toggle.click();
+  }
+
+  await page.waitForSelector('[data-testid="open-workspace-form"]', {
+    state: 'visible',
+    timeout: 10000,
+  });
+}
+
+/**
+ * Register a workspace with the canonical event-driven barrier (0005 H2).
+ *
+ * The open-workspace form action uses `use:enhance` and calls
+ * `invalidateAll()` after a successful submit, which schedules a deferred GET
+ * to `__data.json` and the sidebar DOM update AFTER the action response. A
+ * `networkidle`-only helper can resolve before that deferred work finishes —
+ * that is the 0005 flake. This helper instead:
+ *
+ * 1. installs the `__data.json` response barrier BEFORE the submit;
+ * 2. awaits the deferred invalidation response after the submit;
+ * 3. asserts the registered workspace is visible in the sidebar.
+ *
+ * `networkidle` is never the completion signal; there is no
+ * `waitForTimeout` and no reload.
+ */
+export async function submitRegistration(
+  page: RegistrationPage,
+  repoPath: string,
+  name: string,
+): Promise<void> {
+  await openWorkspaceForm(page);
+
+  await page.fill('#ws-path', repoPath);
+  await page.fill('#ws-name', name);
+
+  // D20: the enhanced submit readiness guard. The observer hook was
+  // installed by openWorkspaceForm BEFORE the form mounted; here the guard
+  // waits (event-driven, no sleep/retry) for the `use:enhance` submit
+  // listener. If it never attaches, the helper fails fast with form/action
+  // diagnostics instead of submitting natively.
+  await ensureEnhancedSubmitReady(page);
+
+  // The barrier MUST be installed before the submit so it catches the
+  // deferred invalidateAll() GET issued after the action response. It is
+  // bounded: if the response never arrives (slow worker under load) the
+  // helper fails fast with a readable error instead of hanging until the
+  // test timeout.
+  const dataJsonPromise = page.waitForResponse(
+    (response) => isDataJsonResponse({ url: response.url(), method: response.request().method() }),
+    { timeout: REGISTRATION_BARRIER_TIMEOUT_MS },
+  );
+
+  await page.click('#open-workspace-form button[type="submit"]');
+
+  try {
+    await dataJsonPromise;
+  } catch (err) {
+    throw new Error(
+      `Registration barrier: deferred __data.json response never arrived after submit ` +
+        `(${err instanceof Error ? err.message : String(err)})`,
+      { cause: err },
+    );
+  }
+
+  // networkidle as a PRECONDITION (never the sole completion signal): the
+  // deferred response re-renders the page and fires revalidation traffic
+  // (invalid sidebar items, lazy modules). Waiting for it here guarantees
+  // the page has settled before the helper returns, so the interactions
+  // that immediately follow registration (overflow menu, delete dialog) do
+  // not hang on a busy main thread under full-suite load.
+  await page.waitForLoadState('networkidle');
+
+  // Completion requires the DOM assertion: the registered workspace is
+  // visible in the sidebar. No waitForTimeout, no reload.
+  await page.waitForSelector(`#workspace-sidebar li:has-text("${name}")`, {
+    state: 'visible',
+    timeout: 10000,
+  });
+}
+
+/**
+ * D20: enhanced submit readiness guard.
+ *
+ * Installs the test-side observer hook (idempotent) and waits — bounded and
+ * event-driven, no sleep/retry — until the workspace form
+ * (`action="?/register"`) has its enhanced `submit` listener attached
+ * (`use:enhance`). When the listener never attaches, the helper fails fast
+ * with form/action diagnostics instead of letting the form submit natively
+ * (the 0005 native-navigation failure mode).
+ */
+async function ensureEnhancedSubmitReady(page: RegistrationPage): Promise<void> {
+  try {
+    await page.waitForFunction(ENHANCE_READY_PREDICATE, '?/register', {
+      timeout: ENHANCE_READY_TIMEOUT_MS,
+    });
+  } catch (err) {
+    throw new Error(
+      `Enhanced submit not ready: the workspace form (action="?/register") has no enhanced ` +
+        `submit listener before submit — a native navigation would occur ` +
+        `(${err instanceof Error ? err.message : String(err)})`,
+      { cause: err },
+    );
+  }
+}
+
+/**
+ * Canonical register-only helper (0005): prove hydration, then run the
+ * event-driven registration barrier. Returns only after the deferred
+ * `__data.json` invalidation response arrives and the registered workspace
+ * is visible in the sidebar.
+ */
+export async function registerWorkspace(page: Page, repoPath: string, name: string): Promise<void> {
+  await waitForHydration(page);
+  await submitRegistration(page, repoPath, name);
 }
 
 /**

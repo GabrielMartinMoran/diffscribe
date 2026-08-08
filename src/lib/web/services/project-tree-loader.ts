@@ -12,7 +12,12 @@
  * promise is kept so concurrent loads keep sharing it (no overlapping
  * fetches), and the first load after it settles starts exactly one fresh
  * request. Failed loads are never cached.
+ *
+ * Implements the shared `ResourceLoader` contract (see `resource-loader.ts`);
+ * semantics are unchanged.
  */
+
+import type { ResourceLoader } from './resource-loader';
 
 export interface ProjectTreeNode {
   name: string;
@@ -50,7 +55,7 @@ interface CacheEntry {
   pending: boolean;
 }
 
-export interface ProjectTreeLoader {
+export interface ProjectTreeLoader extends ResourceLoader<string, ProjectTreeSnapshot> {
   /** Load (or reuse the cached) tree for a workspace; null on error. */
   load(workspaceId: string): Promise<ProjectTreeSnapshot | null>;
   /**

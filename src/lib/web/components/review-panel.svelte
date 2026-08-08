@@ -335,10 +335,7 @@
 
       <button
         class="action-btn list-btn"
-        onclick={() => {
-          showReviewList = !showReviewList;
-          if (showReviewList) loadReviewList();
-        }}
+        onclick={() => (showReviewList = !showReviewList)}
         aria-expanded={showReviewList}
         aria-label={showReviewList ? 'Hide review list' : 'Show review list'}
       >

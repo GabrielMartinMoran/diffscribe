@@ -14,7 +14,14 @@ function getServices() {
   return createWorkspaceServices(db);
 }
 
-export const load: PageServerLoad = async () => {
+export const load: PageServerLoad = async ({ depends }) => {
+  // Declared SvelteKit invalidation keys (feat-fast-menu-interactions):
+  // callers use `invalidate('app:…')` for the resource they touched instead
+  // of a broad `invalidateAll()`; only declared keys re-run this load.
+  depends('app:workspaces');
+  depends('app:git-context');
+  depends('app:active-review');
+
   const services = getServices();
   const result = await services.listUseCase.execute();
   const activeWorkspaceId = services.appState.get('active_workspace_id');

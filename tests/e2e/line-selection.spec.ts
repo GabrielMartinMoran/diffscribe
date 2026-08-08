@@ -12,6 +12,36 @@ import {
   switchFileListToListView,
 } from './helpers/register-workspace';
 import { resetDb } from './helpers/reset-db';
+import {
+  createStabilityLedger,
+  formatLedgerLines,
+  writeLedgerFile,
+} from './helpers/stability-ledger';
+
+// 0005 Phase 7: diagnostics-only ledger for the resolve test (line-selection
+// 307). The test itself is NOT modified; only its outcome is recorded with
+// exact name, worker/port context, and error/stderr.
+const stabilityLedger = createStabilityLedger();
+
+test.afterEach(async ({ workerServer }, testInfo) => {
+  if (testInfo.title !== 'resolves observation and reopens it') return;
+  stabilityLedger.record({
+    spec: 'tests/e2e/line-selection.spec.ts',
+    test: testInfo.title,
+    workerIndex: workerServer.workerIndex,
+    parallelIndex: workerServer.parallelIndex,
+    port: workerServer.port,
+    status: testInfo.status === 'passed' ? 'passed' : 'failed',
+    error:
+      testInfo.status === 'passed' ? null : (testInfo.error?.message ?? String(testInfo.error)),
+    stderrSnapshot: workerServer.readiness.stderrSnapshot,
+  });
+  console.error(`[stability-ledger]\n${formatLedgerLines(stabilityLedger)}`);
+});
+
+test.afterAll(() => {
+  writeLedgerFile(stabilityLedger);
+});
 
 async function createReviewAndSelectFile(page: Page, fileName = 'src/app.ts'): Promise<void> {
   // Right panel defaults to Comments on every page load; select Review first
@@ -288,16 +318,42 @@ test.describe('Observation CRUD E2E', () => {
       await page.fill('#obs-body', 'E2E range observation');
       await page.selectOption('#obs-type', 'issue');
       await page.selectOption('#obs-severity', 'major');
+
+      // 0005 observation-crud: event-driven barriers INSTALLED BEFORE the
+      // actions. The create flow is POST (201) → panel invalidate → reload
+      // GET (200); the card assertion runs only after both responses.
+      const createPost = page.waitForResponse(
+        (r) =>
+          r.url().includes('/observations') &&
+          r.request().method() === 'POST' &&
+          r.status() === 201,
+        { timeout: 15000 },
+      );
+      const reloadGet = page.waitForResponse(
+        (r) =>
+          r.url().includes('/observations') && r.request().method() === 'GET' && r.status() === 200,
+        { timeout: 15000 },
+      );
       await page.click('button:has-text("Create")');
-      await page.waitForLoadState('networkidle');
+      await createPost;
+      await reloadGet;
 
       const card = page.locator('.obs-card').first();
       await expect(card).toBeVisible({ timeout: 10000 });
       await expect(card).toContainText('E2E range observation');
 
+      // Delete barrier installed before the action; the removal assertion
+      // runs only after the DELETE (204) response.
+      const deleteResponse = page.waitForResponse(
+        (r) =>
+          r.url().includes('/observations/') &&
+          r.request().method() === 'DELETE' &&
+          r.status() === 204,
+        { timeout: 15000 },
+      );
       await card.hover();
       await card.getByRole('button', { name: 'Delete' }).click();
-      await page.waitForLoadState('networkidle');
+      await deleteResponse;
       await expect(page.locator('.obs-card')).toHaveCount(0);
     } finally {
       fixture.cleanup();

@@ -1,13 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import type { Page } from '@playwright/test';
+import type { Page, TestInfo } from '@playwright/test';
 
 import { expect, test } from './fixtures';
 import { createGitFixture } from './helpers/git-fixture';
-import { waitForHydration } from './helpers/hydration';
 import { openWorkspaceActionsMenu } from './helpers/open-workspace-menu';
+import { registerWorkspace } from './helpers/register-workspace';
 import { resetDb } from './helpers/reset-db';
+import type { WorkerServer } from './helpers/worker-server';
+import { createWorkerTelemetry, type WorkerTelemetryRecorder } from './helpers/worker-telemetry';
 
 function initRepo(fixture: { repoPath: string; runGit(args: readonly string[]): void }): void {
   fs.writeFileSync(path.join(fixture.repoPath, 'README.md'), '# e2e');
@@ -15,29 +17,50 @@ function initRepo(fixture: { repoPath: string; runGit(args: readonly string[]): 
   fixture.runGit(['commit', '-m', 'init']);
 }
 
-async function registerWorkspace(page: Page, repoPath: string, displayName: string): Promise<void> {
-  // Prove Svelte 5 hydration before any delegated-handler click
-  await waitForHydration(page);
+// ── Additive worker telemetry (0005 @diagnostics) ────────────
+//
+// Records worker index, port, stderr snapshot, first page error, and JS
+// resource status whenever a test fails. Never changes test behavior.
 
-  // Open the workspace form via the sidebar toggle button
-  const toggleBtn = page.getByTestId('open-workspace-toggle');
-  await toggleBtn.click();
-  await page.waitForSelector('[data-testid="open-workspace-form"]', {
-    state: 'visible',
-    timeout: 10000,
+function attachFailureTelemetry(page: Page, workerServer: WorkerServer): WorkerTelemetryRecorder {
+  return createWorkerTelemetry(page, {
+    workerIndex: workerServer.workerIndex,
+    parallelIndex: workerServer.parallelIndex,
+    port: workerServer.port,
+    baseURL: workerServer.baseURL,
+    stderrSnapshot: () => workerServer.readiness.stderrSnapshot,
   });
-  await page.fill('#ws-path', repoPath);
-  await page.fill('#ws-name', displayName);
-  await page.click('#open-workspace-form button[type="submit"]');
-  // Wait for the page to reload after invalidateAll + onRegistered
-  await page.waitForLoadState('networkidle');
+}
+
+async function reportTelemetryOnFailure(
+  recorder: WorkerTelemetryRecorder | null,
+  testInfo: TestInfo,
+): Promise<void> {
+  if (!recorder || testInfo.status === 'passed') return;
+  const snapshot = recorder.snapshot();
+  console.error(
+    `[worker-telemetry] worker ${snapshot.workerIndex} (parallel ${snapshot.parallelIndex}, port ${snapshot.port}) failed`,
+  );
+  console.error(JSON.stringify(snapshot, null, 2));
+  await testInfo.attach('worker-telemetry', {
+    body: JSON.stringify(snapshot, null, 2),
+    contentType: 'application/json',
+  });
 }
 
 test.describe('Workspace Management UI (E2E)', () => {
-  test.beforeEach(async ({ page, request }) => {
+  let telemetry: WorkerTelemetryRecorder | null = null;
+
+  test.beforeEach(async ({ page, request, workerServer }) => {
+    telemetry = attachFailureTelemetry(page, workerServer);
     await resetDb(request);
     await page.goto('/');
     await page.waitForLoadState('networkidle');
+  });
+
+  // eslint-disable-next-line no-empty-pattern
+  test.afterEach(async ({}, testInfo) => {
+    await reportTelemetryOnFailure(telemetry, testInfo);
   });
 
   test('displays sidebar with empty state when no workspaces', async ({ page }) => {
@@ -347,6 +370,17 @@ test.describe('Hydration race regression', () => {
   // sidebar visibility, which is insufficient when JS hydration is delayed.
   test.describe.configure({ timeout: 180_000 });
 
+  let telemetry: WorkerTelemetryRecorder | null = null;
+
+  test.beforeEach(async ({ page, workerServer }) => {
+    telemetry = attachFailureTelemetry(page, workerServer);
+  });
+
+  // eslint-disable-next-line no-empty-pattern
+  test.afterEach(async ({}, testInfo) => {
+    await reportTelemetryOnFailure(telemetry, testInfo);
+  });
+
   test('5 iterations under 200ms JS latency — delete dialog must appear', async ({ page }) => {
     // Inject 200ms latency on all JavaScript bundles
     await page.route('**/*.js', async (route) => {
@@ -359,8 +393,12 @@ test.describe('Hydration race regression', () => {
       const name = `E2E-Hydr-${Date.now()}-${i}`;
 
       try {
-        await page.goto('/');
-        await page.waitForLoadState('networkidle');
+        if (i === 0) {
+          // First iteration loads the app under the injected latency; the
+          // canonical helper proves real hydration before interacting.
+          await page.goto('/');
+          await page.waitForLoadState('networkidle');
+        }
 
         initRepo(fixture);
         await registerWorkspace(page, fixture.repoPath, name);

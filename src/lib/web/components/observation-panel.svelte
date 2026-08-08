@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { invalidateAll } from '$app/navigation';
+  import { invalidate } from '$app/navigation';
   import type { ObservationDraftStore } from '$lib/web/stores/observation-draft-store.svelte';
   import type { ObservationResult } from '$lib/web/stores/observation-store';
   import type { ComparisonDraft } from '$lib/web/types/comparison-draft';
@@ -44,13 +44,18 @@
     activeReview?.status === 'completed' || activeReview?.status === 'archived',
   );
 
-  // Fetch observations when review changes
+  // Fetch observations when review changes. Each effect generation gets its
+  // own AbortController: switching reviews (or unmounting the panel) aborts
+  // the previous in-flight request, so a stale response from an older review
+  // can never overwrite newer observations (fast-menu stale guard contract).
   $effect(() => {
     if (activeReview && activeWorkspaceId) {
-      loadObservations();
-    } else {
-      observations = [];
+      const controller = new AbortController();
+      loadObservations(controller.signal);
+      return () => controller.abort();
     }
+    observations = [];
+    loading = false;
   });
 
   // A new line selection opens the form in creation mode automatically.
@@ -64,21 +69,27 @@
     }
   });
 
-  async function loadObservations() {
+  async function loadObservations(signal: AbortSignal) {
     if (!activeWorkspaceId || !activeReview) return;
     loading = true;
     error = null;
     try {
       const res = await fetch(
         `/api/workspaces/${activeWorkspaceId}/reviews/${activeReview.id}/observations`,
+        { signal },
       );
+      if (signal.aborted) return;
       if (!res.ok) throw new Error('Failed to load observations');
       const data: ObservationResult[] = await res.json();
+      if (signal.aborted) return;
       observations = data;
     } catch (e: unknown) {
+      if (signal.aborted) return;
       error = e instanceof Error ? e.message : 'Failed to load';
     } finally {
-      loading = false;
+      if (!signal.aborted) {
+        loading = false;
+      }
     }
   }
 
@@ -95,7 +106,8 @@
         return;
       }
       observations = observations.filter((o) => o.id !== id);
-      invalidateAll();
+      // Targeted: only the declared app:active-review resource re-runs.
+      invalidate('app:active-review');
     } catch (e: unknown) {
       error = e instanceof Error ? e.message : 'Failed to delete';
     }
@@ -126,8 +138,9 @@
 
   function handleCreated() {
     showForm = false;
-    loadObservations();
-    invalidateAll();
+    loadObservations(new AbortController().signal);
+    // Targeted: only the declared app:active-review resource re-runs.
+    invalidate('app:active-review');
   }
 
   function handleCancel() {

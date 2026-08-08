@@ -266,6 +266,50 @@ context refresh (GitContextPanel) and after a *successful* workspace repair
 and file-list refreshes never invalidate and never clear the loader — the
 per-workspace cache is what makes rail switches request-free.
 
+### Per-resource web loaders (cache boundary)
+
+The cache boundary for remote workspace data lives in the web layer, in
+`src/lib/web/services/` — one loader per resource. Stores stay UI state;
+there is no global `fetch` wrapper and no universal mega-cache.
+
+The shared contract is `ResourceLoader<TKey, TValue>`
+(`src/lib/web/services/resource-loader.ts`): `load(key)` (reuse or fetch,
+`null` on error), `invalidate(key)` (pending-safe), and `clear()`. Every
+implementation honors the same semantics:
+
+- canonical semantic key per resource (the file-list key excludes the
+  informative `createdAt` metadata);
+- in-flight promise dedupe: concurrent loads for the same key share one
+  request;
+- failures never cached, so a retry starts a fresh request;
+- stale responses dropped: a snapshot invalidated while pending is never
+  cached; guards are per key, so one workspace never discards another
+  workspace's request;
+- session-memory only: no `localStorage`, no IndexedDB, no TTL/SWR; data is
+  never loaded ahead of an explicit `load()` call, so inactive workspaces are
+  never prefetched.
+
+Two loaders implement the contract today:
+
+| Loader | Key | Consumers | Invalidation |
+| --- | --- | --- | --- |
+| `projectTreeLoader` (`project-tree-loader.ts`) | `workspaceId` | Project rail, Quick Open index | `invalidate(workspaceId)` after Git refresh / repair |
+| `fileListStatusLoader` (`file-list-status-loader.ts`) | `workspaceId \| base \| target \| comparisonType` | Project rail badges, Git context panel file list, Quick Open badges | `invalidateWorkspace(workspaceId)` after Git refresh / repair |
+
+SSR-seeded data (workspaces, git context, active review delivered by
+`+page.server.ts`) is the initial source of truth: consumers receive it as
+props and never refetch it on first render. Client loaders fetch only what
+the server did not deliver. TTL/SWR adoption is gated behind a runtime
+baseline and an explicit user decision; the approved implementation is
+session cache plus targeted invalidation.
+
+SvelteKit invalidation is targeted through declared keys: `+page.server.ts`
+declares `depends('app:workspaces')`, `depends('app:git-context')`, and
+`depends('app:active-review')`; components call `invalidate('app:…')` for
+the resource they touched instead of a broad `invalidateAll()` (register,
+delete, rename/repair → `app:workspaces`; review mutations →
+`app:active-review`; git retry → `app:workspaces` + `app:git-context`).
+
 ### Source reader (Source View)
 
 The full source of a file is served through the
@@ -353,12 +397,16 @@ Matching uses a pure TypeScript fuzzy scorer
 
 Status badges come from a shared comparison-aware loader
 (`src/lib/web/services/file-list-status-loader.ts`): it fetches the existing
-`GET /api/workspaces/[id]/file-list` endpoint, builds a path→status map,
-caches per workspace+comparison signature with a monotonic request guard,
-and returns `null` (no badges) on failure or missing comparison. The dialog
-merges the map by path and renders `StatusBadge` via the existing
-`statusTone`/`statusLabel` UI mapping (`untracked` → **New**, green). The
-server is untouched: tree and file-list contracts are unchanged.
+`GET /api/workspaces/[id]/file-list` endpoint once per workspace+comparison
+and serves the Project tree badges, the Git context panel file list, and the
+Quick Open badges from one session-memory cache. The loader implements the
+`ResourceLoader` contract (canonical key without `createdAt`, in-flight
+promise dedupe, per-key stale guards, workspace-scoped targeted
+invalidation, `clear()`, failures never cached) and returns `null` (no
+badges) on failure or missing comparison. The dialog merges the map by path
+and renders `StatusBadge` via the existing `statusTone`/`statusLabel` UI
+mapping (`untracked` → **New**, green). The server is untouched: tree and
+file-list contracts are unchanged.
 
 The scorer is product logic (not generic UI kit) and is fully unit-tested.
 There is no server-side Quick Open endpoint, search, or pagination in this

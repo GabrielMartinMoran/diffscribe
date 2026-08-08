@@ -4,14 +4,48 @@ import { join } from 'node:path';
 
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { WorkerServer, WorkerServerOptions } from '../../e2e/helpers/worker-server';
+import {
+  createStabilityLedger,
+  formatLedgerLines,
+  writeLedgerFile,
+} from '../../e2e/helpers/stability-ledger';
+import type {
+  WorkerServer,
+  WorkerServerMode,
+  WorkerServerOptions,
+} from '../../e2e/helpers/worker-server';
 // RED: these imports fail — the module does not exist yet
 import {
+  buildServerArgs,
   cleanupAllActiveServers,
   resetBackstopForTesting,
   startWorkerServer,
   stopWorkerServer,
 } from '../../e2e/helpers/worker-server';
+
+// 0005 Phase 7: diagnostics-only ledger for the worker-server suite. Records
+// every test outcome with its exact name, run index, and error output — no
+// lifecycle change is applied from this evidence.
+const workerServerLedger = createStabilityLedger();
+
+afterEach((context) => {
+  const state = context.task.result?.state;
+  workerServerLedger.record({
+    spec: 'tests/integration/e2e-helpers/worker-server.test.ts',
+    test: context.task.name,
+    workerIndex: null,
+    parallelIndex: null,
+    port: null,
+    status: state === 'pass' ? 'passed' : 'failed',
+    error: state === 'fail' ? String(context.task.result?.errors?.[0]?.message ?? '') : null,
+    stderrSnapshot: '',
+  });
+});
+
+afterAll(() => {
+  console.error(`[stability-ledger]\n${formatLedgerLines(workerServerLedger)}`);
+  writeLedgerFile(workerServerLedger);
+});
 
 // ── Test infrastructure ──────────────────────────────────
 
@@ -56,6 +90,41 @@ function envWriterScript(): string {
 /** Inline script that hangs forever (for timeout testing). */
 function hangScript(): string {
   return 'setTimeout(()=>{},100000);';
+}
+
+/**
+ * H3 RED script: serves HTML 200 on `/` (so the current readiness probe
+ * succeeds) but 503 for any JavaScript chunk — the required-chunk
+ * availability gap from 0005 H3. The HTML references `/assets/app.js` as a
+ * module script so a chunk-aware readiness probe has a required chunk to
+ * validate.
+ */
+function chunkFailingServerScript(port: number): string {
+  return [
+    `const http=require('http');`,
+    `const s=http.createServer((q,r)=>{`,
+    `if(q.url==='/'||q.url===''){r.writeHead(200);r.end('<html><head><script type="module" src="/assets/app.js"></script></head><body>ok</body></html>');return;}`,
+    `if(q.url.includes('.js')){r.writeHead(503);r.end('chunk unavailable');return;}`,
+    `r.writeHead(200);r.end('OK');`,
+    `});`,
+    `s.listen(${port},'127.0.0.1');`,
+    `process.on('SIGTERM',()=>s.close(()=>process.exit(0)));`,
+  ].join('');
+}
+
+/**
+ * H4 RED script: spawns a hanging grandchild process, records its PID, then
+ * exits before readiness — the startup-failure descendant-orphan gap from
+ * 0005 H4.
+ */
+function spawnGrandchildThenExitScript(gcPidFile: string): string {
+  return [
+    `const cp=require('child_process');`,
+    `const fs=require('fs');`,
+    `const gc=cp.spawn(process.execPath,['-e','setTimeout(()=>{},100000)']);`,
+    `fs.writeFileSync('${gcPidFile}',String(gc.pid));`,
+    `process.exit(1);`,
+  ].join('');
 }
 
 afterEach(async () => {
@@ -190,68 +259,117 @@ describe('WorkerServer lifecycle', () => {
     await expect(stopWorkerServer(server)).resolves.toBeUndefined();
   }, 20_000);
 
-  it('kills grandchild process via process-group kill', async () => {
-    // Skip on non-Linux — negative-PID process-group kill is POSIX-only
-    if (process.platform !== 'linux') return;
-
+  it('records additive readiness telemetry without changing the readiness decision', async () => {
     const pi = portCounter++;
     const port = 18_900 + pi;
-    const gcPidFile = join(tmpDir, `gc-pid-${pi}`);
 
-    // Child script: starts HTTP server AND forks a hanging grandchild
     const server = await startWorkerServer({
       workerIndex: 0,
       parallelIndex: pi,
       basePort: 18_900,
       startupTimeoutMs: 10_000,
       overrideCommand: process.execPath,
-      overrideArgs: [
-        '-e',
-        [
-          `const http=require('http');`,
-          `const cp=require('child_process');`,
-          `const fs=require('fs');`,
-          `const s=http.createServer((_q,r)=>{r.writeHead(200);r.end('OK')});`,
-          `s.listen(${port},'127.0.0.1');`,
-          // Spawn a grandchild that hangs — inherits the process group
-          `const gc=cp.spawn(process.execPath,['-e','setTimeout(()=>{},100000)']);`,
-          `fs.writeFileSync('${gcPidFile}',String(gc.pid));`,
-          `process.on('SIGTERM',()=>s.close(()=>process.exit(0)));`,
-        ].join(''),
-      ],
+      overrideArgs: ['-e', httpServerScript(port)],
     });
+    cleanupServers.push(server);
 
-    // Read the grandchild PID
-    const gcPid = Number(readFileSync(gcPidFile, 'utf-8').trim());
+    expect(server.readiness.attempts).toBeGreaterThanOrEqual(1);
+    expect(server.readiness.firstResponseAtMs).not.toBeNull();
+    expect(server.readiness.stderrSnapshot).toBeTypeOf('string');
+  });
 
-    // Grandchild must be alive before stop
-    expect(() => process.kill(gcPid, 0)).not.toThrow();
+  // ── H3 RED regression: readiness only validates GET / ────────
 
-    await stopWorkerServer(server);
+  it('H3 RED: rejects when HTML responds 200 but a required JS chunk fails (503)', async () => {
+    const pi = portCounter++;
+    const port = 18_900 + pi;
 
-    // Grandchild must be dead after stop (process-group kill killed it).
-    // Linux may briefly expose the terminated grandchild as a zombie until
-    // init/subreaper reaps it, so poll with a bounded deadline instead of
-    // asserting the kill result immediately. A truly live grandchild is never
-    // hidden: the deadline error reports it with PID, elapsed time, and the
-    // last observed state.
-    const startedAt = Date.now();
-    const deadline = startedAt + 2_000;
-    const pollIntervalMs = 25;
-    for (;;) {
-      try {
-        process.kill(gcPid, 0);
-      } catch {
-        // kill(gcPid, 0) failed — the grandchild is no longer reachable
-        break;
+    let started: WorkerServer | null = null;
+    try {
+      started = await startWorkerServer({
+        workerIndex: 0,
+        parallelIndex: pi,
+        basePort: 18_900,
+        startupTimeoutMs: 10_000,
+        overrideCommand: process.execPath,
+        overrideArgs: ['-e', chunkFailingServerScript(port)],
+      });
+      // Reaching this line means the readiness gap is confirmed: the worker
+      // was considered ready although its JS chunk serves 503.
+      throw new Error(
+        'H3 RED: startWorkerServer resolved though the required JS chunk served 503 — ' +
+          'readiness gap confirmed (no chunk availability validation)',
+      );
+    } catch (err) {
+      if (started) {
+        await stopWorkerServer(started);
       }
-      if (Date.now() >= deadline) {
-        throw new Error(
-          `grandchild process ${gcPid} is still alive ${Date.now() - startedAt} ms after stop; ` +
-            `last observed state: process.kill(${gcPid}, 0) succeeded`,
-        );
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.includes('H3 RED')) {
+        throw err;
       }
-      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+      // Expected rejection (Phase 2 fix): the readiness failure must report
+      // the failing chunk.
+      expect(message).toMatch(/chunk/i);
+    }
+  });
+
+  // ── H4 RED regression: startup failure leaves descendants alive ──
+
+  it('H4 RED: kills descendant processes when startup fails before readiness', async () => {
+    // Negative-PID process-group semantics are POSIX-only
+    if (process.platform !== 'linux') return;
+
+    const pi = portCounter++;
+    const gcPidFile = join(tmpDir, `h4-red-gc-${pi}`);
+    let gcPid: number | null = null;
+
+    try {
+      await startWorkerServer({
+        workerIndex: 0,
+        parallelIndex: pi,
+        basePort: 18_900,
+        startupTimeoutMs: 3000,
+        overrideCommand: process.execPath,
+        overrideArgs: ['-e', spawnGrandchildThenExitScript(gcPidFile)],
+      });
+      // Reaching this line means the child never exited before readiness.
+      throw new Error('H4 RED: startWorkerServer resolved instead of rejecting on child exit');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.includes('H4 RED')) {
+        throw err;
+      }
+      // Expected rejection (child exited before readiness). The grandchild
+      // must be dead after the failed startup; poll with a bounded deadline
+      // (the same pattern as the existing grandchild cleanup test).
+      gcPid = Number(readFileSync(gcPidFile, 'utf-8').trim());
+      const deadline = Date.now() + 2_000;
+      for (;;) {
+        try {
+          process.kill(gcPid, 0);
+        } catch {
+          break; // grandchild no longer reachable
+        }
+        if (Date.now() >= deadline) {
+          throw new Error(
+            `H4 RED: grandchild ${gcPid} is still alive after failed startup — ` +
+              `descendant cleanup gap confirmed (killChild kills only the direct child)`,
+            { cause: err },
+          );
+        }
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+    } finally {
+      // The RED assertion above fails on purpose while the grandchild is
+      // alive; clean it up so the regression run does not leak processes.
+      if (gcPid !== null) {
+        try {
+          process.kill(gcPid, 'SIGKILL');
+        } catch {
+          // already dead
+        }
+      }
     }
   });
 });
@@ -417,6 +535,80 @@ describe('backstop and cleanupAllActiveServers', () => {
 });
 
 // ── R3: Real npm back-to-back regression ───────────────────
+
+describe('production mode override (baseline)', () => {
+  it('builds production preview args for a port', () => {
+    expect(buildServerArgs('production', 5173)).toEqual([
+      'run',
+      'preview',
+      '--',
+      '--host',
+      '127.0.0.1',
+      '--port',
+      '5173',
+      '--strictPort',
+    ]);
+  });
+
+  it('builds dev args by default', () => {
+    expect(buildServerArgs('dev', 5173)).toEqual([
+      'run',
+      'dev',
+      '--',
+      '--host',
+      '127.0.0.1',
+      '--port',
+      '5173',
+      '--strictPort',
+    ]);
+  });
+
+  it('starts a server with mode production while honoring test overrides', async () => {
+    const pi = portCounter++;
+    const port = 18_900 + pi;
+    const mode: WorkerServerMode = 'production';
+
+    const server = await startWorkerServer({
+      workerIndex: 0,
+      parallelIndex: pi,
+      basePort: 18_900,
+      startupTimeoutMs: 10_000,
+      mode,
+      overrideCommand: process.execPath,
+      overrideArgs: ['-e', httpServerScript(port)],
+    });
+    cleanupServers.push(server);
+
+    expect(server.port).toBe(port);
+    // The env vars still reach the child in production mode.
+    expect(server.baseURL).toBe(`http://127.0.0.1:${port}`);
+  });
+
+  it('production mode does not pass the dev-only in-memory DB flag', async () => {
+    const outFile = join(tmpDir, `env-prod-${portCounter}.json`);
+    const pi = portCounter++;
+
+    // The child writes its env and exits before readiness; the start rejects.
+    await expect(
+      startWorkerServer({
+        workerIndex: 0,
+        parallelIndex: pi,
+        basePort: 18_900,
+        startupTimeoutMs: 10_000,
+        mode: 'production',
+        overrideCommand: process.execPath,
+        overrideArgs: ['-e', envWriterScript()],
+        overrideEnv: { OUTPUT_FILE: outFile },
+      }),
+    ).rejects.toThrow();
+
+    const raw = readFileSync(outFile, 'utf-8');
+    const env = JSON.parse(raw);
+    // The production server fails closed when DIFFSCRIBE_E2E_IN_MEMORY_DB is
+    // set (dev-only in-memory database); the override must omit it.
+    expect(env.IN_MEMORY_DB).toBeUndefined();
+  });
+});
 
 describe('real npm-chain back-to-back', () => {
   it('R3: starts, stops, and restarts using real npm run dev', async () => {

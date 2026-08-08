@@ -4,7 +4,7 @@
   import type { FileChangeStatus } from '$lib/server/domain/value-objects/file-change-status';
   import { statusLabel, statusTone } from '$lib/web/components/file-status';
   import StatusBadge from '$lib/web/components/ui/StatusBadge.svelte';
-  import { loadStatusMap } from '$lib/web/services/file-list-status-loader';
+  import { fileListStatusLoader } from '$lib/web/services/file-list-status-loader';
   import {
     flattenFiles,
     projectTreeLoader,
@@ -94,17 +94,20 @@
   });
 
   // Join the comparison-aware file-list status map by path; failures and
-  // missing comparisons degrade to no badges.
+  // missing comparisons degrade to no badges. Shared loader: the Project tree
+  // and the Git context panel consume the same per-workspace cache.
   $effect(() => {
     if (!open || !activeWorkspaceId || !comparisonDraft) {
       statusMap = null;
       return;
     }
     let cancelled = false;
-    loadStatusMap(activeWorkspaceId, comparisonDraft).then((map) => {
-      if (cancelled) return;
-      statusMap = map;
-    });
+    fileListStatusLoader
+      .load({ workspaceId: activeWorkspaceId, comparison: comparisonDraft })
+      .then((map) => {
+        if (cancelled) return;
+        statusMap = map;
+      });
     return () => {
       cancelled = true;
     };
@@ -244,6 +247,7 @@
       class="quick-open-input"
       type="text"
       role="combobox"
+      data-testid="quick-open-filter"
       aria-expanded={results.length > 0 || loading || error !== null}
       aria-controls={LISTBOX_ID}
       aria-activedescendant={results[activeIndex] ? `quick-open-result-${activeIndex}` : undefined}

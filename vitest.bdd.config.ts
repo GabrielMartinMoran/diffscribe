@@ -46,6 +46,7 @@ export default defineConfig({
       'tests/steps/settings-panel.steps.ts',
       'tests/steps/line-wrapping.steps.ts',
       'tests/steps/file-list-tree.steps.ts',
+      'tests/steps/fast-menu-interactions.steps.ts',
       'tests/steps/git-branches.steps.ts',
       'tests/steps/workspace-invalid-state.steps.ts',
       'tests/steps/observation-draft.steps.ts',
@@ -54,6 +55,7 @@ export default defineConfig({
       'tests/steps/git-ref-popup.steps.ts',
       'tests/steps/mobile-hardening.steps.ts',
       'tests/steps/workspace-git-review-ux.steps.ts',
+      'tests/steps/workspace-management-e2e-flake.steps.ts',
     ],
   },
 });

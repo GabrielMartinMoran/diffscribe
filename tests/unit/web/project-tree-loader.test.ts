@@ -4,7 +4,9 @@ import {
   createProjectTreeLoader,
   flattenFiles,
   type ProjectTreeNode,
+  type ProjectTreeSnapshot,
 } from '$lib/web/services/project-tree-loader';
+import type { ResourceLoader } from '$lib/web/services/resource-loader';
 
 function node(
   name: string,
@@ -47,6 +49,15 @@ describe('flattenFiles', () => {
 });
 
 describe('createProjectTreeLoader', () => {
+  it('conforms to the shared ResourceLoader interface', () => {
+    const loader: ResourceLoader<string, ProjectTreeSnapshot> = createProjectTreeLoader(
+      vi.fn() as unknown as typeof fetch,
+    );
+    expect(typeof loader.load).toBe('function');
+    expect(typeof loader.invalidate).toBe('function');
+    expect(typeof loader.clear).toBe('function');
+  });
+
   it('fetches once per workspace and caches the result', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(okResponse(treeBody));
     const loader = createProjectTreeLoader(fetchImpl as unknown as typeof fetch);

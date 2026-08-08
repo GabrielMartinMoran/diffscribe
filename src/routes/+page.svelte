@@ -2,7 +2,7 @@
   import { PanelLeftClose, PanelLeftOpen } from 'svelte-lucide';
 
   import { browser } from '$app/environment';
-  import { invalidateAll } from '$app/navigation';
+  import { invalidate } from '$app/navigation';
   import type { WorkspaceListItem } from '$lib/server/application/dto/results/workspace-results';
   import CompleteDiffViewer from '$lib/web/components/complete-diff-viewer.svelte';
   import DiffViewer from '$lib/web/components/diff-viewer.svelte';
@@ -191,8 +191,10 @@
     }
   }
 
+  // Review mutations re-run only the declared app:active-review resource
+  // (targeted invalidation contract; no broad page reload).
   function handleReviewChange() {
-    invalidateAll();
+    invalidate('app:active-review');
   }
 
   function handleSelectionChange(sel: SelectionPayload | null) {
